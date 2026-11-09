@@ -1,0 +1,51 @@
+{% extends "audit_base.html" %}
+{% block view %}
+{% set passed = V.checks|selectattr(0, 'equalto', 'good')|list|length %}
+<div class="ov-mid">
+  <section class="panel">
+    <div class="panel-h"><h2>AI readiness</h2></div>
+    <p class="big-stat">{{ passed }} <small>of {{ V.checks|length }} checks passed</small></p>
+    <p class="small muted">Read from {{ A.profile.domain }}{% if A.profile.rendered_with_browser %} in a real Chrome browser (REA){% endif %}, plus robots.txt, llms.txt and {{ '{:,}'.format(A.profile.sitemap_count) }} sitemap pages.</p>
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h2>Google footprint</h2><span class="small muted">Semrush</span></div>
+    {% set D = (A.semrush or {}).get('domain') %}
+    {% if D %}
+    <div class="metric-row" style="border:0;padding:0">
+      <div class="metric"><span>Ranking keywords</span><b>{{ '{:,}'.format(D.organic_keywords) }}</b></div>
+      <div class="metric"><span>Show an AI Overview</span><b>{{ '{:,}'.format(D.aio_keywords) }}</b></div>
+      <div class="metric"><span>AI Overviews citing the site</span><b>{{ '{:,}'.format(D.aio_cited) }}</b></div>
+    </div>
+    {% else %}<div class="empty">Semrush data wasn't available for this audit.</div>{% endif %}
+  </section>
+</div>
+{% if V.gbp %}{% set g = V.gbp %}
+<section class="panel">
+  <div class="panel-h"><h2>Google Business Profile</h2><span class="small muted">via DataWise</span></div>
+  <div class="metric-row" style="margin-top:0">
+    <div class="metric"><span>Rating</span><b>{{ g.rating }}★</b></div>
+    <div class="metric"><span>Reviews</span><b>{{ g.reviews }}</b></div>
+    <div class="metric"><span>Photos</span><b>{{ g.photos if g.photos is not none else '—' }}</b></div>
+    <div class="metric"><span>Claimed</span><b>{{ 'Yes' if g.claimed else 'No' }}</b></div>
+  </div>
+  <div class="stars">{% for s in (5,4,3,2,1) %}{% set n = g.distribution.get(s|string, g.distribution.get(s, 0)) %}<div class="star-row"><span>{{ s }}★</span><div class="dist-bar"><i style="width:{{ (100 * n / (g.reviews or 1))|round }}%;background:{{ '#B42318' if s <= 2 else '#5B5FD9' }}"></i></div><span class="r tnum">{{ n }}</span></div>{% endfor %}</div>
+  <p class="small muted">{{ g.title }} · {{ g.category }}{% if g.categories %} · also {{ g.categories[:3]|join(', ') }}{% endif %} · {{ g.address }}</p>
+  {% if g.recent %}<details><summary class="small">Recent reviews</summary>{% for r in g.recent %}<p class="small"><b>{{ r.rating }}★</b> {{ r.text }}</p>{% endfor %}</details>{% endif %}
+</section>
+{% endif %}
+<section class="panel">
+  <div class="panel-h"><h2>Website checks</h2></div>
+  {% for st, title, detail in V.checks %}
+  <div class="ck ck-{{ st }}"><span class="ck-i">{{ '✓' if st == 'good' else ('!' if st == 'warn' else '✕') }}</span>
+    <div><b>{{ title }}</b> <em>{{ {'good':'Pass','warn':'Improve','bad':'Fix'}[st] }}</em><p>{{ detail }}</p></div></div>
+  {% endfor %}
+</section>
+{% if V.recommendations %}
+<section class="panel">
+  <div class="panel-h"><h2>What HBM would do</h2></div>
+  {% for r in V.recommendations %}
+  <div class="rec"><span class="rec-n">{{ loop.index }}</span><div><b>{{ r.title }}</b><p><span class="label-inline">Why it matters</span> {{ r.why }}</p><p><span class="label-inline">What HBM is doing</span> {{ r.how }}</p></div></div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

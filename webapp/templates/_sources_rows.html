@@ -1,0 +1,9 @@
+{% if rows %}
+<div class="tw"><table class="t"><thead><tr><th>Domain</th>
+  {% if mode == 'opp' %}<th class="r">Competitors Mentioned</th>{% for c in V.chosen %}<th class="r">{{ c }}</th>{% endfor %}{% else %}<th class="r">Your Mentions</th>{% endif %}
+  <th class="r">URLs</th><th class="r">Prompts</th><th>Type</th></tr></thead><tbody>
+  {% for r in rows %}<tr><td><b>{{ r.label }}</b>{% if r.label != r.domain %}<small class="muted">{{ r.domain }}</small>{% endif %}</td>
+    {% if mode == 'opp' %}<td class="r tnum">{{ r.competitors_mentioned }} of {{ V.chosen|length }}</td>{% for g in r.gap %}<td class="r tnum">{{ g if g else '—' }}</td>{% endfor %}{% else %}<td class="r tnum">{{ r.you }}</td>{% endif %}
+    <td class="r tnum">{{ r.urls }}</td><td class="r tnum">{{ r.prompts }}</td><td><span class="pill p-mute">{{ r.type }}</span></td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<div class="empty">{{ 'No sources in this group.' if V.measured_any else 'Sources appear once AI platforms are connected.' }}</div>{% endif %}

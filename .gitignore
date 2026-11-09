@@ -1,0 +1,28 @@
+# --- secrets: never commit ---
+.env
+.env.*
+!.env.example
+keys.env
+*.pem
+*.key
+secret_key
+
+# --- runtime data: users, audits, client reports (back up the data folder instead) ---
+appdata/
+audits/
+reports/
+data/semrush/
+data/site/
+data/sample_audit.json
+*.sqlite3
+*.sqlite3-*
+*.pdf
+
+# --- local tooling ---
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+.vscode/
+.idea/

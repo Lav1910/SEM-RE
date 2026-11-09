@@ -1,0 +1,14 @@
+{% set mx = [3] %}{% for key, col in series %}{% for p in t %}{% if p[key] > mx[-1] %}{% set _ = mx.append(p[key]) %}{% endif %}{% endfor %}{% endfor %}{% set mx = mx[-1] %}
+{% set n = t|length %}
+<div class="trend-wrap" role="img" aria-label="Trend across audits of this builder">
+  <div class="trend-y">{% for i in range(3, -1, -1) %}<span>{{ '{:,}'.format((mx * i / 3)|round(0)|int) }}</span>{% endfor %}</div>
+  <div class="trend-plot">
+    <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+      {% for i in range(4) %}<line x1="0" x2="600" y1="{{ 3 + i * 48 }}" y2="{{ 3 + i * 48 }}" class="grid" vector-effect="non-scaling-stroke"/>{% endfor %}
+      {% if n > 1 %}{% for key, col in series %}<polyline fill="none" stroke="{{ col }}" stroke-width="2.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"
+        points="{% for p in t %}{{ 16 + loop.index0 * 568 / (n - 1) }},{{ 147 - (p[key] / mx) * 144 }} {% endfor %}"/>{% endfor %}{% endif %}
+    </svg>
+    {% if n == 1 %}{% for key, col in series %}<span class="trend-dot" style="left:50%;top:{{ (147 - (t[0][key] / mx) * 144) / 150 * 100 }}%;background:{{ col }}"></span>{% endfor %}{% endif %}
+    <div class="trend-x">{% for p in t %}{% set x = (16 + loop.index0 * 568 / (n - 1)) / 6 if n > 1 else 50 %}<span class="{{ 'first' if loop.first and n > 1 else ('last' if loop.last and n > 1 else '') }}" style="left:{{ x }}%">{{ p.date }}</span>{% endfor %}</div>
+  </div>
+</div>

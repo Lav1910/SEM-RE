@@ -1,0 +1,15 @@
+<dialog class="fb" id="feedback">
+  <form method="post" action="{{ url_for('feedback') }}">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <input type="hidden" name="page" value="{{ request.full_path }}">
+    {% if a %}<input type="hidden" name="audit_id" value="{{ a.id }}">{% endif %}
+    <div class="fb-h"><h2>Send feedback</h2><button class="fb-x" type="button" value="cancel" formmethod="dialog" aria-label="Close">×</button></div>
+    <p class="small muted" style="margin:0 0 12px">Tell the HBM team what's wrong, confusing or missing on this page. Admins read every note.</p>
+    <div class="fb-kind" role="radiogroup" aria-label="Type">
+      {% for k, lab in (('idea', 'Idea'), ('data', 'Data looks wrong'), ('bug', 'Something broke')) %}
+      <label><input type="radio" name="kind" value="{{ k }}" {{ 'checked' if loop.first }}><span>{{ lab }}</span></label>{% endfor %}
+    </div>
+    <label><span class="label">Your note</span><textarea id="fb-text" name="message" rows="5" maxlength="4000" required></textarea></label>
+    <div class="fb-actions"><button class="btn btn-ghost" type="submit" formmethod="dialog" formnovalidate>Cancel</button><button class="btn btn-primary" type="submit">Send</button></div>
+  </form>
+</dialog>

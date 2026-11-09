@@ -1,0 +1,26 @@
+# Any Linux server (IONOS / Fasthosts / DigitalOcean VPS):
+#   1. Point a DNS record (e.g. audit.homebuildermarketers.com) at the server.
+#   2. cp .env.example .env and fill it in (DOMAIN below too).
+#   3. docker compose up -d        -> Caddy gets an HTTPS certificate automatically.
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      TRUSTED_PROXY: "*"
+    volumes:
+      - hbm-data:/data
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:-audit.homebuildermarketers.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [app]
+    restart: unless-stopped
+volumes:
+  hbm-data:
+  caddy-data:

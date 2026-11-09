@@ -1,0 +1,29 @@
+{% extends "audit_base.html" %}
+{% block view %}
+<div class="ov-mid">
+  <section class="panel">
+    <div class="panel-h"><h2>Share with the prospect</h2></div>
+    {% if share %}
+      <p class="small muted">Anyone with this link can view the full HBM report without signing in.</p>
+      <div class="copy-row"><input id="share" type="text" value="{{ share }}" readonly><button class="btn btn-primary btn-small" type="button" data-copy="share">Copy</button></div>
+      <form method="post" action="{{ url_for('share_toggle', aid=a.id) }}" class="actions" style="margin-top:12px">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <button class="btn btn-ghost btn-small" name="action" value="new">New link</button>
+        <button class="btn btn-ghost btn-small" name="action" value="off">Turn off link</button>
+      </form>
+    {% else %}
+      <p class="small muted">Sharing is off for this report.</p>
+      <form method="post" action="{{ url_for('share_toggle', aid=a.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" name="action" value="new">Create share link</button></form>
+    {% endif %}
+    <div class="actions" style="margin-top:18px">
+      <a class="btn btn-ghost btn-small" href="{{ url_for('export_pdf', aid=a.id) }}">Export PDF</a>
+      <a class="btn btn-ghost btn-small" href="{{ url_for('audit_data', aid=a.id) }}">Download raw data</a>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h2>Loom talking points</h2><button class="btn btn-ghost btn-small" type="button" data-copy="loom">Copy</button></div>
+    <pre id="loom" class="loom">{{ loom }}</pre>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}{% include "_tabs_js.html" %}{% endblock %}

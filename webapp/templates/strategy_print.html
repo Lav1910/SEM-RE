@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>{{ A.profile.name }} — AEO Strategy, {{ today }}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
+<style>{{ css|safe }}
+.lane-h { font-size:8pt; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#0A686A; margin:16px 0 6px; }
+.dl { width:100%; border-collapse:collapse; font-size:9pt; } .dl th { text-align:left; font-size:7.5pt; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#7A898B; border-bottom:1px solid #E3EBEC; padding:6px 8px; }
+.dl td { border-bottom:1px solid #E3EBEC; padding:8px; vertical-align:top; color:#4F5F61; } .dl td b { color:#16302F; font-weight:600; }
+.chip { display:inline-block; font-size:7.5pt; font-weight:600; padding:1px 7px; border-radius:99px; background:#EAF5F5; color:#0A686A; white-space:nowrap; }
+.chip.hi { background:#FDECEA; color:#B42318; } .chip.md { background:#FDF1E2; color:#A45B06; } .chip.dn { background:#E6F5EF; color:#0F7A55; }
+</style></head><body>
+{% set X = A.analysis %}{% set K = X.kpis %}{% set TOTAL = 3 %}
+{% macro footer(n) %}<footer><span class="f-brand">Home Builder Marketers</span><span class="f-mid">HomeBuilderMarketers.com · {{ A.profile.name }} · {{ today }}</span><span class="f-pg">{{ '%02d'|format(n) }} / {{ '%02d'|format(TOTAL) }}</span></footer>{% endmacro %}
+{% macro ph(num, title, sub) %}<div class="ph"><div class="ph-num">{{ num }}</div><div><h2>{{ title }}</h2><p>{{ sub }}</p></div><div class="ph-meta">{{ A.profile.name }}<span>{{ today }}</span></div></div>{% endmacro %}
+
+<section class="page p1">
+ <div class="band">
+  <div class="band-top">{% if logo %}<img class="logo" src="{{ logo }}" alt="Home Builder Marketers">{% else %}<b>Home Builder Marketers</b>{% endif %}<span class="band-tag">AEO Strategy</span></div>
+  <div class="band-title">
+   <div class="eyebrow">Priorities · Deliverables · Technical fixes</div>
+   <h1>{{ A.profile.name }}</h1>
+   <div class="period">{{ A.market.city }}, {{ A.market.state }} · Based on the AI visibility audit of {{ A.date }}</div>
+  </div>
+ </div>
+ <div class="p1-body">
+  <div class="hero">
+   <div class="hk"><div class="hk-l">AI visibility</div><div class="hk-v">{{ K.score if K.score is not none else '—' }}</div><div class="hk-s">out of 100, non-brand questions</div></div>
+   <div class="hk"><div class="hk-l">Named in AI answers</div><div class="hk-v">{{ K.mentioned }}</div><div class="hk-s">of {{ K.answers }} answers</div></div>
+   <div class="hk"><div class="hk-l">Maps 3-pack</div><div class="hk-v">{{ K.pack if K.pack is not none else '—' }}</div><div class="hk-s">{{ ('of ' ~ K.pack_of ~ ' local searches') if K.pack_of else 'Not available' }}</div></div>
+   <div class="hk"><div class="hk-l">Deliverables</div><div class="hk-v">{{ S['items']|length }}</div><div class="hk-s">{{ S.fixes|length }} technical fixes</div></div>
+  </div>
+  <div class="summary"><div class="sum-label">Executive summary</div>
+   <p>This plan covers the work that would raise how often AI platforms name <b>{{ A.profile.name }}</b> when buyers in <b>{{ A.market.city }}, {{ A.market.state_code }}</b>{% if A.locations and A.locations|length > 1 %} and {{ A.locations|length - 1 }} other service area{{ 's' if A.locations|length > 2 }}{% endif %} ask for a home builder.</p>
+   <p>It is built from the audit's AI answers, Google results and website checks. Items are ranked by expected visibility gain; the first {{ [S['items']|length, 5]|min }} are where HBM would start.</p>
+  </div>
+ </div>
+ {{ footer(1) }}
+</section>
+
+<section class="page">
+ {{ ph("01", "What we'd focus on first", "The highest-impact deliverables, in the order we would tackle them") }}
+ {% for it in S['items'][:5] %}
+ <div class="pri"><div class="pri-n">{{ loop.index }}</div><div><h3>{{ it.title }}</h3><div class="pri-g">
+  <div><span>Why it matters</span><p>{{ it.why }}</p></div><div><span>What HBM is doing</span><p>{{ it.how or 'Included in the deliverables below.' }}</p></div></div></div></div>
+ {% endfor %}
+ {{ footer(2) }}
+</section>
+
+<section class="page">
+ {{ ph("02", "All deliverables", "Grouped by type, with expected impact and effort") }}
+ {% for k, lab in S.lanes.items() %}{% set rows = S['items']|selectattr('lane', 'equalto', k)|list %}{% if rows %}
+ <div class="lane-h">{{ lab }}</div>
+ <table class="dl"><thead><tr><th style="width:34%">Deliverable</th><th>Why</th><th style="width:15%">Impact · effort</th><th style="width:10%">Status</th></tr></thead><tbody>
+ {% for it in rows %}<tr><td><b>{{ it.title }}</b></td><td>{{ it.why }}</td>
+  <td><span class="chip {{ 'hi' if it.impact == 'High' else ('md' if it.impact == 'Medium' else '') }}">{{ it.impact }}</span> {{ it.effort }} effort</td>
+  <td><span class="chip {{ 'dn' if it.status == 'done' else '' }}">{{ {'todo':'To do','doing':'In progress','done':'Done'}[it.status] }}</span></td></tr>{% endfor %}
+ </tbody></table>{% endif %}{% endfor %}
+ <div class="close">{% if logo %}<img class="logo" src="{{ logo }}" alt="Home Builder Marketers">{% endif %}<div class="close-r"><div class="close-k">Prepared by</div><div class="close-n">Home Builder Marketers</div><div class="close-u">HomeBuilderMarketers.com</div><div class="close-d">Plan date: {{ today }}<br>Sources: AI visibility audit of {{ A.date }} · Google search results · Semrush · Website checks</div></div></div>
+ {{ footer(3) }}
+</section>
+</body></html>

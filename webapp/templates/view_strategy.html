@@ -1,0 +1,49 @@
+{% extends "audit_base.html" %}
+{% block view %}{% set S = V.S %}
+<section class="panel strat-head">
+  <div>
+    <div class="eyebrow-sm">AEO strategy for {{ A.profile.name }}</div>
+    <h2 style="margin:4px 0 6px">{{ S['items']|length }} deliverables to raise AI visibility</h2>
+    <p class="small muted" style="margin:0">Ranked by expected visibility gain, from this audit's answers and site checks. Status is saved for this builder, so next month's audit shows what's done.</p>
+  </div>
+  <div class="strat-progress">
+    <div class="sp-ring" style="--p:{{ (100 * S.done_n / (S['items']|length or 1))|round|int }}"><b>{{ S.done_n }}</b><small>of {{ S['items']|length }} done</small></div>
+    <div class="strat-actions">
+      <form method="post" action="{{ url_for('strategy_generate', aid=a.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="all">
+        <button class="btn btn-primary btn-small" type="submit">Generate all content</button></form>
+      <a class="btn btn-ghost btn-small" href="{{ url_for('strategy_export', aid=a.id, fmt='pdf') }}">Export plan (PDF)</a>
+    </div>
+  </div>
+</section>
+
+<div class="lane-tabs" data-tabs="lane">
+  <button class="seg-item on" data-tab="all">All <b>{{ S['items']|length }}</b></button>
+  {% for k, lab in S.lanes.items() %}{% set n = S['items']|selectattr('lane', 'equalto', k)|list|length %}{% if n %}
+  <button class="seg-item" data-tab="{{ k }}">{{ lab }} <b>{{ n }}</b></button>{% endif %}{% endfor %}
+</div>
+
+<div class="strat-list">
+{% for it in S['items'] %}
+  <article class="strat-card st-{{ it.status }}" data-lane="{{ it.lane }}">
+    <div class="sc-top">
+      <span class="lane-chip lane-{{ it.lane }}">{{ it.lane_label }}</span>
+      <span class="imp imp-{{ it.impact|lower }}">{{ it.impact }} impact</span><span class="eff">{{ it.effort }} effort</span>
+      <form class="sc-status" method="post" action="{{ url_for('strategy_item', aid=a.id) }}">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="item" value="{{ it.id }}">
+        <label class="ctl ctl-select ctl-sm"><span class="sr-only">Status</span><select name="status" data-autosave>
+          {% for v, lab in (('todo', 'To do'), ('doing', 'In progress'), ('done', 'Done')) %}<option value="{{ v }}" {{ 'selected' if it.status == v }}>{{ lab }}</option>{% endfor %}
+        </select></label></form>
+    </div>
+    <h3>{{ it.title }}</h3>
+    <p class="sc-why">{{ it.why }}</p>
+    {% if it.how %}<p class="sc-how"><b>What to do:</b> {{ it.how }}</p>{% endif %}
+    <div class="sc-foot">
+      {% if it.generator %}<a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=a.id, view='content') }}#gen-{{ it.generator }}">Generate {{ {'faq':'FAQ answers','blog':'blog drafts','city_pages':'city pages','cost_guide':'cost guide','llms_txt':'llms.txt','gbp_posts':'profile posts','review_requests':'review requests'}[it.generator] }}</a>{% endif %}
+      {% if it.lane == 'technical' %}<a class="link" href="{{ url_for('audit_view', aid=a.id, view='fixes') }}">See the fix</a>{% endif %}
+      {% if it.lane == 'sources' %}<a class="link" href="{{ url_for('audit_view', aid=a.id, view='overview') }}#ts" >See cited sources</a>{% endif %}
+    </div>
+  </article>
+{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}{% include "_strategy_js.html" %}{% endblock %}

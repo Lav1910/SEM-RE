@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Audits{% endblock %}
+{% block body %}{% from "_analyze.html" import scope_field %}
+<div class="stack">
+  <section class="card">
+    <h1>Run an AI visibility audit</h1>
+    <p class="sub">Paste a home builder's website. We'll ask the AI platforms local buyer questions, check the site, and build a report you can share.</p>
+    <form class="new-audit" method="post" action="{{ url_for('create_audit') }}">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <div><span class="label">Builder website</span>
+        {{ scope_field('', 'root', big=true, id='url', placeholder='justindoylehomes.com') }}</div>
+      <button class="btn btn-primary" type="submit" style="height:52px">Run audit</button>
+      <div class="opts locs" data-locs="{{ url_for('api_locations') }}">
+        <span class="locs-label">Locations:</span>
+        <div class="loc-dd">
+          <button class="ctl ctl-select loc-btn" type="button" aria-haspopup="true" aria-expanded="false" disabled><span class="loc-btn-text">Enter a website first</span></button>
+          <div class="loc-panel" hidden>
+            <label class="loc-all"><input type="checkbox" name="loc_all" value="1" checked> <b>All locations</b> <span class="small muted">top cities by search demand</span></label>
+            <div class="loc-list"></div>
+            <div class="loc-add">
+              <input type="text" class="loc-add-city" placeholder="Add a city" aria-label="City to add">
+              <label class="ctl ctl-select loc-add-st"><span class="sr-only">State</span><select class="loc-add-state">
+                {% for code in states %}<option value="{{ code }}">{{ code }}</option>{% endfor %}</select></label>
+              <button class="btn btn-ghost btn-small loc-add-btn" type="button">Add</button>
+            </div>
+          </div>
+        </div>
+        <span class="loc-note small muted"></span>
+        <input type="hidden" id="city" name="city"><input type="hidden" id="state" name="state">
+        <label class="chk"><input id="test_mode" type="checkbox" name="test_mode" value="1"> Quick test (fewer questions, lower cost)</label>
+      </div>
+    </form>
+    <div class="status-row" style="margin-top:16px">
+      <div class="platforms">AI platforms connected:
+        {% for en, lab in engine_labels.items() %}{% set st = pstat[en] %}<span class="pill {{ {'good':'p-good','bad':'p-bad','warn':'p-warn'}.get(st.state, 'p-mute') }}" title="{{ st.label }}">{{ platform_logo(en, 14) }}{{ lab }}{% if st.state != 'good' %} · {{ st.label }}{% elif 'Semrush' in st.label %} · via Semrush{% endif %}</span>{% endfor %}
+      </div>
+      {% if can('see_costs') and budget.limit_usd is not none %}<span class="small muted">Spend ${{ '%.2f'|format(budget.spent_usd) }} of ${{ '%.2f'|format(budget.limit_usd) }} cap</span>{% endif %}
+    </div>
+    {% if not live %}<p class="small muted" style="margin:10px 0 0" data-x="none">No AI platforms are connected yet, so reports will cover website checks and Semrush data only. An admin can add keys.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="status-row"><h2 style="margin:0">Audits</h2>
+      {% if can('team_audits') %}<div class="tabs" style="margin:0"><a href="?scope=mine" class="{{ 'on' if scope != 'team' }}">Mine</a><a href="?scope=team" class="{{ 'on' if scope == 'team' }}">Whole team</a></div>{% endif %}
+    </div>
+    {% if rows %}
+    <div class="tw" style="margin-top:10px"><table>
+      <thead><tr><th>Builder</th><th>Status</th><th class="r">Score</th><th class="r">Named in AI</th><th class="r">Maps 3-pack</th><th class="r">Site checks</th>{% if scope == 'team' %}<th>By</th>{% endif %}<th>Run</th><th></th></tr></thead>
+      <tbody>
+      {% for a in rows %}
+        <tr>
+          <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.market or a.url }}</small></td>
+          <td>{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad" title="{{ a.error }}">Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
+              {% if a.test_mode %}<span class="pill p-mute">Test</span>{% endif %}</td>
+          <td class="r">{% if a.score is not none %}<span class="score-badge {{ 'sb-low' if a.score < 35 else ('sb-mid' if a.score < 70 else 'sb-great') }}">{{ a.score }}</span>{% else %}—{% endif %}</td>
+          <td class="r">{% if a.answers %}{{ a.mentioned }} of {{ a.answers }}{% else %}—{% endif %}</td>
+          <td class="r">{% if a.pack_of %}{{ a.pack }} of {{ a.pack_of }}{% else %}—{% endif %}</td>
+          <td class="r">{% if a.checks_total %}{{ a.checks_passed }} of {{ a.checks_total }}{% else %}—{% endif %}</td>
+          {% if scope == 'team' %}<td>{{ a.owner }}</td>{% endif %}
+          <td class="muted">{{ a.created_at|ago }}</td>
+          <td class="r"><a class="btn btn-ghost btn-small" href="{{ url_for('audit_page', aid=a.id) }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}
+      <p class="muted" style="margin:12px 0 0">No audits yet. Paste a builder's website above to run the first one.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

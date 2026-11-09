@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }}{% endblock %}
+{% block body %}
+<section class="card" style="max-width:32rem">
+  <h1>{% if code == 404 %}We couldn't find that page{% elif code == 403 %}You don't have access to this page{% else %}Something's off with that request{% endif %}</h1>
+  <p class="sub">{% if code == 404 %}The link may be old, or the share link was turned off.{% elif code == 400 %}{{ message }}{% else %}Ask an admin if you need access.{% endif %}</p>
+  {% if g.user %}<a class="btn btn-primary" href="{{ url_for('dashboard') }}">Back to audits</a>{% endif %}
+</section>
+{% endblock %}

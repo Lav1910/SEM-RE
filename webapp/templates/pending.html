@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waiting for approval · HBM AI Visibility Audits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-card stack">
+    <img class="login-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
+    <div><h1>Waiting for approval</h1>
+      <p class="sub" style="margin:0">You're signed in as <b>{{ email }}</b>. An HBM admin needs to approve your account and choose your role before you can use the app.</p></div>
+    <p class="small muted" style="margin:0">Ask your admin to open Admin → Team and approve you, then sign in again.</p>
+    <a class="btn btn-ghost" href="{{ url_for('login') }}">Back to sign in</a>
+  </div>
+</div>
+</body>
+</html>

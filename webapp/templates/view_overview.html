@@ -1,0 +1,173 @@
+{% extends "audit_base.html" %}
+{% block view %}
+{% set s = V.score %}{% set G = V.gauge %}
+{% set prev = V.trend[-2].score if V.trend|length > 1 else none %}
+<div class="ov-top">
+  <section class="panel gauge-panel">
+    <div class="panel-h"><h2>AI Visibility</h2><span class="info" title="Share of AI answers to local buyer questions that name the builder, weighted by each question's search demand. Brand-name questions don't count.">i</span></div>
+    <div class="gauge2 band-{{ V.band|lower }}" data-score="{{ s if s is not none else '' }}">
+      <div class="gauge-glow" aria-hidden="true"></div>
+      <svg viewBox="0 0 240 214" role="img" aria-label="AI visibility score {{ s if s is not none else 'not measured' }} out of 100">
+        <defs>
+          <linearGradient id="gprog" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="var(--g-a)"/><stop offset="1" stop-color="var(--g-b)"/></linearGradient>
+          <filter id="gshadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="var(--g-a)" flood-opacity=".35"/></filter>
+        </defs>
+        {% for sg in G.segs %}<path d="{{ G.path }}" fill="none" class="gseg gseg-{{ loop.index }}" stroke-width="14" stroke-linecap="butt" stroke-dasharray="{{ sg.dash }}" stroke-dashoffset="{{ sg.offset }}"/>{% endfor %}
+        {% if s %}<path class="gprog" d="{{ G.path }}" fill="none" stroke="url(#gprog)" stroke-width="14" stroke-linecap="round" filter="url(#gshadow)"
+          style="--len:{{ G.len }};--L:{{ G.L }}" stroke-dasharray="{{ G.len }} {{ G.L }}"/>
+        <circle class="gmark" cx="{{ G.mx }}" cy="{{ G.my }}" r="9" fill="#fff" stroke="var(--g-a)" stroke-width="3.5"/>{% endif %}
+        <text x="30" y="210" class="gtick">0</text><text x="210" y="210" class="gtick" text-anchor="end">100</text>
+      </svg>
+      <div class="gauge-text2">
+        <div class="g-num"><span class="g-count">{{ s if s is not none else '—' }}</span><small>/100</small></div>
+        <div class="g-band2">{{ V.band }}</div>
+        {% if prev is not none and s is not none %}<div class="g-delta {{ 'up' if s > prev else ('down' if s < prev else '') }}">{{ '▲' if s > prev else ('▼' if s < prev else '▬') }} {{ (s - prev)|abs }} vs last audit</div>{% endif %}
+      </div>
+    </div>
+    <div class="g-legend"><span><i class="lg-1"></i>Low 0–34</span><span><i class="lg-2"></i>Medium 35–69</span><span><i class="lg-3"></i>Great 70+</span></div>
+    <p class="gauge-caption">{{ V.caption }}</p>
+  </section>
+
+  <section class="panel metrics-panel">
+    <div class="tabs-row">
+      <div class="seg" data-chart-tabs><button class="seg-item on" data-set="main">Main Metrics</button><button class="seg-item" data-set="audience">Monthly Audience</button><button class="seg-item" data-set="vis">AI Visibility</button></div>
+      <div class="range" data-range><button data-r="1">1M</button><button class="on" data-r="6">6M</button><button data-r="12">All time</button></div>
+    </div>
+    <div class="metric-row" data-metrics="main">
+      <div class="metric"><span><i class="dot" style="background:#5B5FD9"></i>Mentions <em class="info" title="AI answers that name the builder (this audit).">i</em></span><b>{{ V.mentions if V.measured_any else '—' }}</b></div>
+      <div class="metric"><span><i class="dot" style="background:#18C3A4"></i>Citations <em class="info" title="AI answers that link to the builder's website (this audit).">i</em></span><b>{{ V.citations if V.measured_any else '—' }}</b></div>
+      <div class="metric"><span><i class="dot" style="background:#B37FEB"></i>Cited Pages <em class="info" title="Distinct pages on the builder's site that AI answers cite (this audit).">i</em></span><b>{{ V.cited_pages if V.measured_any else '—' }}</b></div>
+      {% set semh = (A.semrush or {}).get('history') or [] %}
+      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>AI Overviews <em class="info" title="Searches where a Google AI Overview cites the site, latest month, from Semrush.">i</em></span><b>{{ semh[-1].aio_cited if semh else '—' }}</b></div>
+    </div>
+    <div class="metric-row" data-metrics="audience" hidden>
+      <div class="metric"><span><i class="dot" style="background:#5B5FD9"></i>Monthly Audience <em class="info" title="Monthly Google searches behind the questions where AI names the builder.">i</em></span><b>{{ '{:,}'.format(V.audience) if V.measured_any else '—' }}</b></div>
+      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>Searches showing an AI Overview <em class="info" title="Of the searches the site ranks for, how many show a Google AI Overview (Semrush).">i</em></span><b>{{ '{:,}'.format(semh[-1].aio_keywords) if semh else '—' }}</b></div>
+    </div>
+    <div class="metric-row" data-metrics="vis" hidden>
+      <div class="metric"><span><i class="dot" style="background:#0A686A"></i>AI Visibility score <em class="info" title="0–100 score for each audit of this builder.">i</em></span><b>{{ s if s is not none else '—' }}</b></div>
+    </div>
+    <div class="chart" id="trend-chart" aria-label="Trend chart"></div>
+    <p class="small muted chart-note" id="chart-note">Dashed line: Google AI Overview history from Semrush. Solid lines: HBM audits, one point per month; they grow each time this builder is audited again.</p>
+    <script type="application/json" id="chart-data">{{ V.chart|tojson }}</script>
+  </section>
+</div>
+
+<div class="ov-mid">
+  <section class="panel">
+    <div class="panel-h"><h2>Distribution by AI platform</h2>
+      <div class="seg" data-tabs="dist"><button class="seg-item on" data-tab="m">Mentions</button><button class="seg-item" data-tab="p">Cited Pages</button></div></div>
+    <div class="dist-row dist-head"><span>Platform</span><span></span><span class="r">Share</span><span class="r" title="AI visibility score on this platform">Score</span><span class="r">Count</span></div>
+    {% for key in ('m', 'p') %}
+    <div class="dist" data-pane="dist-{{ key }}" {% if key == 'p' %}hidden{% endif %}>
+      {% for d in V.dist %}
+        {% set val = d.mentions if key == 'm' else d.pages %}{% set pc = d.mentions_pct if key == 'm' else d.pages_pct %}
+        <div class="dist-row">
+          <span class="eng">{{ platform_logo(d.engine) }}{{ d.label }}</span>
+          {% if d.measured %}<div class="dist-bar"><i style="width:{{ pc }}%"></i></div>
+          {% else %}<span class="st-note st-{{ d.status.state }}" title="{{ d.status.detail }}">{{ d.status.label }}</span>{% endif %}
+          <span class="r tnum">{{ (pc ~ '%') if d.measured else '—' }}</span>
+          <span class="r tnum muted">{{ d.visibility if d.visibility is not none else '—' }}</span>
+          <span class="r tnum link">{{ val if d.measured else '—' }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h2>Mentions by area</h2></div>
+    {% if V.by_area %}
+      <div class="stackbar">{% for r in V.by_area %}<i style="width:{{ r.pct }}%;background:var(--a{{ loop.index0 % 5 }})"></i>{% endfor %}</div>
+      <table class="t"><thead><tr><th>Area</th><th></th><th class="r">Mentions</th></tr></thead><tbody>
+        {% for r in V.by_area %}<tr><td>{{ r.area }}</td><td><i class="dot" style="background:var(--a{{ loop.index0 % 5 }})"></i>{{ r.pct }}%</td><td class="r link tnum">{{ r.mentions }} <small class="muted">of {{ r.answers }}</small></td></tr>{% endfor %}
+      </tbody></table>
+    {% else %}<div class="empty">Area figures appear once AI platforms are connected.</div>{% endif %}
+  </section>
+</div>
+
+{% if V.recommendations %}
+<section class="panel next2" id="whats-next">
+  <div class="next2-h"><h2>What's next?</h2><button class="next2-toggle" type="button" aria-expanded="true"><span>Collapse</span>
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 14l5-5 5 5M7 19l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+  <div class="next2-body">
+    <button class="next2-arrow prev" type="button" aria-label="Previous" hidden>‹</button>
+    <div class="next2-track">
+      {% for r in V.recommendations %}{% set t = r.title|lower %}
+      {% if 'maps' in t %}{% set icon, link, href = 'pin', 'See who holds the Maps 3-pack', url_for('audit_view', aid=a.id, view='competitors') %}
+      {% elif 'named in' in t %}{% set icon, link, href = 'chat', 'Find competitor gaps', url_for('audit_view', aid=a.id, view='competitors') %}
+      {% elif 'sources' in t %}{% set icon, link, href = 'link', 'Uncover source opportunities', '#ts' %}
+      {% elif 'lift' in t %}{% set icon, link, href = 'shield', "See what's missing on the site", url_for('audit_view', aid=a.id, view='site') %}
+      {% elif 'review' in t %}{% set icon, link, href = 'star', 'Check the Google profile', url_for('audit_view', aid=a.id, view='site') %}
+      {% elif 'page' in t %}{% set icon, link, href = 'map', 'Uncover topic opportunities', '#ts' %}
+      {% else %}{% set icon, link, href = 'shield', "Check the website's AI health", url_for('audit_view', aid=a.id, view='site') %}{% endif %}
+      <article class="next2-card">
+        <h3><span class="nx-ico nx-{{ icon }}" aria-hidden="true"></span>{{ r.title }}</h3>
+        <p>{{ r.why }}</p>
+        <a href="{{ href }}" {% if href == '#ts' %}data-open-tab="{{ 'srcopps' if icon == 'link' else 'opps' }}"{% endif %}>{{ link }}</a>
+      </article>
+      {% endfor %}
+    </div>
+    <button class="next2-arrow next" type="button" aria-label="Next">›</button>
+  </div>
+</section>
+{% endif %}
+
+<h2 class="section-title" id="ts">Topics &amp; Sources</h2>
+{% if V.detected %}
+<form class="vs-bar" method="get">
+  {% if platform != 'all' %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
+  {% if V.area %}<input type="hidden" name="area" value="{{ V.area }}">{% endif %}
+  <span class="small muted">Compared with</span>
+  {% for c in V.chosen %}<label class="vs-chip"><input type="checkbox" name="vs" value="{{ c }}" checked onchange="this.form.submit()">{{ c }} <span aria-hidden="true">×</span></label>{% endfor %}
+  {% if V.chosen|length < 5 %}
+  <label class="vs-add"><span class="sr-only">Add competitor</span><select name="vs" onchange="this.form.submit()"><option value="">+ Add competitor</option>
+    {% for c in V.detected if c not in V.chosen %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></label>
+  {% endif %}
+</form>
+{% endif %}
+<div class="tile-tabs" data-tabs="ts">
+  <button class="tile on" data-tab="topics"><span>Your Performing Topics</span><b>{{ V.topics|length }}</b></button>
+  <button class="tile" data-tab="opps"><span>Topic Opportunities</span><b>{{ V.opportunities|length }}</b></button>
+  <button class="tile" data-tab="sources"><span>Cited Sources</span><b>{{ V.cited_sources|length }}</b></button>
+  <button class="tile" data-tab="srcopps"><span>Source Opportunities</span><b>{{ V.source_opportunities|length }}</b></button>
+  <button class="tile" data-tab="pages"><span>Cited Pages</span><b>{{ V.pages|length }}</b></button>
+</div>
+
+<section class="panel" data-pane="ts-topics">
+  <div class="panel-h"><h2>Your Performing Topics <span class="muted">({{ V.topics|length }})</span></h2></div>
+  {% if V.topics %}
+  <div class="tw"><table class="t"><thead><tr><th>Topic</th><th class="r">Visibility</th><th class="r">Your Mentions</th><th class="r">Search Volume</th><th class="r">Difficulty</th><th>Intent</th><th>Named by</th></tr></thead><tbody>
+    {% for r in V.topics %}<tr><td><b>{{ r.topic }}</b><small class="muted">{{ r.keyword }}</small></td><td class="r tnum">{{ r.visibility }}</td><td class="r tnum">{{ r.mentions }} <small class="muted">of {{ r.answers }}</small></td>
+      <td class="r tnum">{{ '{:,}'.format(r.volume) if r.volume is not none else '—' }}{% set tr = r.trend %}{% include "_spark.html" %}</td><td class="r tnum">{{ r.difficulty if r.difficulty is not none else '—' }}</td><td><span class="intent" style="--ic:{{ r.intent_color }}">{{ r.intent }}</span></td><td class="small">{{ r.platforms|join(', ') }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty">{{ 'No AI answer named this builder for any question.' if V.measured_any else 'Topics appear once AI platforms are connected.' }}</div>{% endif %}
+</section>
+<section class="panel" data-pane="ts-opps" hidden>
+  <div class="panel-h"><h2>Topic Opportunities <span class="muted">({{ V.opportunities|length }})</span></h2><span class="small muted">Questions where AI names competitors but not this builder</span></div>
+  {% if V.opportunities %}
+  <div class="tw"><table class="t"><thead><tr><th>Topic</th>{% for c in V.chosen %}<th class="r">{{ c }}</th>{% endfor %}<th class="r">Search Volume</th><th class="r">Difficulty</th><th>Intent</th></tr></thead><tbody>
+    {% for r in V.opportunities %}<tr><td><b>{{ r.topic }}</b><small class="muted">{{ r.keyword }}</small></td>
+      {% for g in r.gap %}<td class="r tnum">{{ g if g else '—' }}</td>{% endfor %}
+      <td class="r tnum">{{ '{:,}'.format(r.volume) if r.volume is not none else '—' }}{% set tr = r.trend %}{% include "_spark.html" %}</td>
+      <td class="r tnum">{{ r.difficulty if r.difficulty is not none else '—' }}</td>
+      <td><span class="intent" style="--ic:{{ r.intent_color }}">{{ r.intent }}</span></td></tr>{% endfor %}
+  </tbody></table></div>
+  <p class="small muted">Numbers are how many AI answers named each competitor for that question, while this builder wasn't named.</p>
+  {% else %}<div class="empty">{{ 'The selected competitors were not named where this builder was missing.' if V.measured_any else 'Opportunities appear once AI platforms are connected.' }}</div>{% endif %}
+</section>
+<section class="panel" data-pane="ts-sources" hidden>
+  <div class="panel-h"><h2>Cited Sources <span class="muted">({{ V.cited_sources|length }})</span></h2><span class="small muted">Sites cited in answers that name this builder</span></div>
+  {% set rows = V.cited_sources %}{% set mode = 'cited' %}{% include "_sources_rows.html" %}
+</section>
+<section class="panel" data-pane="ts-srcopps" hidden>
+  <div class="panel-h"><h2>Source Opportunities <span class="muted">({{ V.source_opportunities|length }})</span></h2><span class="small muted">Sites AI cites when it names other builders, not this one</span></div>
+  {% set rows = V.source_opportunities %}{% set mode = 'opp' %}{% include "_sources_rows.html" %}
+</section>
+<section class="panel" data-pane="ts-pages" hidden>
+  <div class="panel-h"><h2>Cited Pages <span class="muted">({{ V.pages|length }})</span></h2><span class="small muted">Pages on {{ a.domain }} that AI answers link to</span></div>
+  {% if V.pages %}<table class="t"><thead><tr><th>Page</th><th class="r">Answers citing it</th></tr></thead><tbody>
+    {% for p in V.pages %}<tr><td><a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.path }}</a></td><td class="r tnum">{{ p.count }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<div class="empty">{{ 'No AI answer linked to this site.' if V.measured_any else 'Cited pages appear once AI platforms are connected.' }}</div>{% endif %}
+</section>
+{% endblock %}
+{% block scripts %}{% include "_tabs_js.html" %}{% include "_overview_js.html" %}{% endblock %}

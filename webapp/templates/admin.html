@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block body %}
+<h1>Admin</h1>
+<p class="sub">Team accounts, connected platforms and spending.</p>
+<div class="stack">
+  <div class="grid2">
+    <section class="card">
+      <h2>Connected data sources</h2>
+      <table><tbody>
+        {% for name, st, label in platforms %}<tr><td>{{ name }}</td><td class="r"><span class="pill {{ {'good':'p-good','bad':'p-bad','warn':'p-warn'}.get(st, 'p-mute') }}">{{ label }}</span></td></tr>{% endfor %}
+      </tbody></table>
+      <p class="small muted">Keys are set as environment variables on the host (or with <code>python3 setup_keys.py</code> on a single machine), then the app is restarted. Status comes from each platform's latest real call.</p>
+    </section>
+    <section class="card">
+      <h2>Spending cap</h2>
+      <p style="margin:0 0 12px">Spent so far: <b>${{ '%.2f'|format(budget.spent_usd) }}</b>{% if budget.limit_usd is not none %} of <b>${{ '%.2f'|format(budget.limit_usd) }}</b>{% else %} (no cap){% endif %}</p>
+      <form method="post" class="stack" style="gap:10px">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="cap">
+        <label><span class="label">Cap in USD (blank for no cap)</span><input id="limit" type="number" step="1" min="0" name="limit" value="{{ budget.limit_usd if budget.limit_usd is not none else '' }}"></label>
+        <label class="chk small"><input id="reset" type="checkbox" name="reset" value="1"> Reset spend to $0</label>
+        <button class="btn btn-ghost btn-small" type="submit" style="justify-self:start">Save cap</button>
+      </form>
+      <p class="small muted">Covers AI platform calls across all audits. Provider billing pages are the final record.</p>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="status-row"><h2 style="margin:0">Last 24 hours</h2>
+      <span class="small muted">{{ stats.total or 0 }} audits · {{ stats.done or 0 }} ready · {{ stats.failed or 0 }} failed · {{ stats.active or 0 }} running or queued · {{ workers }} run at a time</span></div>
+  </section>
+
+  <section class="card">
+    <div class="status-row"><h2 style="margin:0">Team</h2>
+      <span class="small muted">Sign-in: email + password · emailed code{{ ' · Google' if auth_info.google }} ({{ auth_info.domain }} only){% if not auth_info.mail %} · <b>email not set up</b>{% endif %}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th class="r">Audits (24 h)</th><th class="r">Audits (30 days)</th><th></th></tr></thead>
+      <tbody>
+      {% for u in users %}
+        <tr class="{{ 'row-pending' if u.pending }}">
+          <td><b>{{ u.name }}</b>{% if u.pending %} <span class="pill p-warn">Waiting for approval</span>{% elif not u.active %} <span class="pill p-mute">Deactivated</span>{% endif %}</td>
+          <td>{{ u.email }}</td>
+          <td>{% if u.id != g.user.id and not u.pending %}
+            <form method="post" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="uid" value="{{ u.id }}"><input type="hidden" name="action" value="set_role">
+              <label class="ctl ctl-select ctl-sm"><span class="sr-only">Role</span><select name="role" onchange="this.form.submit()">
+                {% for k, lab in roles.items() %}<option value="{{ k }}" {{ 'selected' if role_label(u) == lab }}>{{ lab }}</option>{% endfor %}</select></label></form>
+            {% else %}{{ role_label(u) if not u.pending else '—' }}{% endif %}</td>
+          <td class="small">{{ u.last_login|ago if u.last_login else 'Never' }}</td>
+          <td class="r">{{ u.day_n }}</td><td class="r">{{ u.month_n }}</td>
+          <td class="r">{% if u.id != g.user.id %}
+            <form method="post" class="row-actions"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="uid" value="{{ u.id }}">
+              {% if u.pending %}
+                <label class="ctl ctl-select ctl-sm"><span class="sr-only">Role</span><select name="role">{% for k, lab in roles.items() %}<option value="{{ k }}" {{ 'selected' if k == 'sales' }}>{{ lab }}</option>{% endfor %}</select></label>
+                <button class="btn btn-primary btn-small" name="action" value="approve">Approve</button>
+                <button class="btn btn-ghost btn-small" name="action" value="reject">Reject</button>
+              {% elif u.active %}<button class="btn btn-ghost btn-small" name="action" value="deactivate">Deactivate</button>
+              {% else %}<button class="btn btn-ghost btn-small" name="action" value="activate">Reactivate</button>{% endif %}
+            </form>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    <details class="perm-help"><summary class="small">What each role can do</summary>
+      <ul class="small">
+        <li><b>Admin:</b> everything, including this page (team, roles, approvals, spending cap, platform status, security log), cost figures and raw audit data.</li>
+        <li><b>Sales:</b> run audits, open every audit screen (overview, competitors, prompts, site audit, strategy, content generator, fixes), PDF exports, share links, Loom talking points and feedback. No Admin page, spending figures or raw data.</li>
+      </ul></details>
+    <h2 style="margin-top:22px">Add a team member</h2>
+    <p class="small muted" style="margin:-4px 0 10px">Only @{{ auth_info.domain }} addresses. Leave the password blank and they'll sign in with an emailed code, then set their own password.{% if auth_info.google %} Google sign-in also works (new Google sign-ins wait for approval).{% endif %}</p>
+    <form method="post" class="new-audit" style="grid-template-columns:repeat(3, minmax(0,1fr)) auto">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add_user">
+      <label><span class="label">Name</span><input id="new_name" type="text" name="name" required></label>
+      <label><span class="label">Email</span><input id="new_email" type="email" name="email" required></label>
+      <label><span class="label">Temporary password (optional)</span><input id="new_password" type="text" name="password" minlength="12" autocomplete="off" placeholder="Blank = emailed code"></label>
+      <button class="btn btn-primary" type="submit">Add</button>
+      <div class="opts"><label>Role <select id="new_role" name="role">{% for k, lab in roles.items() %}<option value="{{ k }}" {{ 'selected' if k == 'sales' }}>{{ lab }}</option>{% endfor %}</select></label></div>
+    </form>
+    <h2 style="margin-top:26px">Feedback from the team</h2>
+    {% if feedback %}<div class="tw"><table>
+      <thead><tr><th>When</th><th>From</th><th>Type</th><th>Note</th><th>Page</th></tr></thead><tbody>
+      {% for f in feedback %}<tr><td class="small">{{ f.created_at|ago }}</td><td>{{ f.who }}</td>
+        <td><span class="pill {{ {'bug':'p-bad','data':'p-warn'}.get(f.kind, 'p-info') }}">{{ {'bug':'Something broke','data':'Data looks wrong'}.get(f.kind, 'Idea') }}</span></td>
+        <td style="white-space:pre-wrap;max-width:460px">{{ f.message }}</td>
+        <td class="small">{% if f.audit_id %}<a href="{{ url_for('audit_page', aid=f.audit_id) }}">Open audit</a>{% else %}{{ f.page }}{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% else %}<p class="small muted">No feedback yet. Salespeople can send it from any audit page.</p>{% endif %}
+    <h2 style="margin-top:26px">Security log</h2>
+    {% if seclog %}<div class="tw"><table>
+      <thead><tr><th>When</th><th>Event</th><th>Email</th><th>Detail</th><th>IP</th></tr></thead><tbody>
+      {% for e in seclog %}<tr><td class="small">{{ e.t|ago }}</td><td><span class="pill {{ 'p-bad' if 'failed' in e.event or 'blocked' in e.event else 'p-info' }}">{{ e.event|replace('_', ' ') }}</span></td>
+        <td class="small">{{ e.email or '—' }}</td><td class="small">{{ e.detail or '' }}</td><td class="small muted">{{ e.ip }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% else %}<p class="small muted">Sign-ins, failed attempts, approvals and role changes will appear here.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

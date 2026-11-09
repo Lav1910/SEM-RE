@@ -1,0 +1,82 @@
+<script>
+(function () {
+  var csrf = '{{ session.csrf }}';
+  /* lane filter on the plan */
+  document.querySelectorAll('.lane-tabs [data-tab]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.lane-tabs [data-tab]').forEach(function (o) { o.classList.toggle('on', o === b); });
+      document.querySelectorAll('.strat-card').forEach(function (c) { c.hidden = b.dataset.tab !== 'all' && c.dataset.lane !== b.dataset.tab; });
+    });
+  });
+  /* status saves as soon as it changes */
+  document.querySelectorAll('select[data-autosave]').forEach(function (s) {
+    s.addEventListener('change', function () {
+      var f = s.form, card = f.closest('.strat-card, .fix');
+      fetch(f.action, {method: 'POST', body: new FormData(f), headers: {'X-Requested-With': 'fetch'}, credentials: 'same-origin'}).then(function () {
+        if (card) card.className = card.className.replace(/\bst-\w+/, 'st-' + s.value);
+      });
+    });
+  });
+  /* content generator */
+  var writer = document.getElementById('writer');
+  function pieces() { return Array.prototype.slice.call(document.querySelectorAll('.piece')); }
+  function setState(p, st, err) {
+    p.dataset.status = st;
+    var lab = p.querySelector('.piece-state');
+    lab.textContent = st === 'done' ? 'Ready' : st === 'failed' ? 'Failed: ' + (err || 'try again') : (st === 'queued' || st === 'running') ? 'Writing…' : 'Not generated';
+    lab.classList.toggle('writing', st === 'queued' || st === 'running');
+    p.querySelector('.piece-copy').hidden = st !== 'done';
+    p.querySelector('.piece-toggle').hidden = st !== 'done';
+  }
+  function loadPiece(p, open) {
+    return fetch(p.dataset.piece, {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (d) {
+      p._text = d.text; var body = p.querySelector('.piece-body'); body.innerHTML = d.html;
+      if (open) { body.hidden = false; p.querySelector('.piece-toggle').textContent = 'Hide'; }
+    });
+  }
+  var polling = false;
+  function poll() {
+    if (polling) return; polling = true;
+    (function tick() {
+      fetch('{{ url_for("strategy_content_json", aid=a.id) }}', {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (rows) {
+        var map = {}; rows.forEach(function (r) { map[r.kind + '/' + r.key] = r; });
+        var busy = false;
+        pieces().forEach(function (p) {
+          var r = map[p.dataset.kind + '/' + p.dataset.key]; if (!r) return;
+          var was = p.dataset.status;
+          if (r.status !== was) { setState(p, r.status, r.error); if (r.status === 'done') loadPiece(p, false); }
+          if (r.status === 'queued' || r.status === 'running') busy = true;
+        });
+        if (busy) setTimeout(tick, 2500); else polling = false;
+      }).catch(function () { setTimeout(tick, 5000); });
+    })();
+  }
+  document.querySelectorAll('form[data-gen-form], form.gen-all').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var pv = f.querySelector('input[name=provider]'); if (pv && writer) pv.value = writer.value;
+      var fd = new FormData(f), kind = fd.get('kind'), key = fd.get('key');
+      pieces().forEach(function (p) { if (kind === 'all' || (p.dataset.kind === kind && (!key || p.dataset.key === key))) setState(p, 'queued'); });
+      fetch(f.action, {method: 'POST', body: fd, headers: {'X-Requested-With': 'fetch'}, credentials: 'same-origin'}).then(function () { setTimeout(poll, 800); });
+    });
+  });
+  pieces().forEach(function (p) {
+    p.querySelector('.piece-toggle').addEventListener('click', function (e) {
+      var body = p.querySelector('.piece-body'), btn = e.currentTarget;
+      if (body.hidden && !body.innerHTML) { loadPiece(p, true); return; }
+      body.hidden = !body.hidden; btn.textContent = body.hidden ? 'Show' : 'Hide';
+    });
+    p.querySelector('.piece-copy').addEventListener('click', function (e) {
+      var btn = e.currentTarget, go = function () {
+        navigator.clipboard.writeText(p._text || '').then(function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); });
+      };
+      if (p._text === undefined) loadPiece(p, false).then(go); else go();
+    });
+  });
+  if (pieces().some(function (p) { return p.dataset.status === 'queued' || p.dataset.status === 'running'; })) poll();
+  if (location.hash) { var t = document.querySelector(location.hash); if (t) t.classList.add('flash-target'); }
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    if (b._wired) return; b._wired = true;
+  });
+})();
+</script>

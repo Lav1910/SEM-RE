@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}AI Visibility{% endblock %} · Home Builder Marketers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="{% if g.user %}has-rail{% endif %}">
+{% if g.user %}
+<aside class="rail" aria-label="Main">
+  <a class="rail-logo" href="{{ url_for('dashboard') }}" title="Home Builder Marketers" aria-label="Home Builder Marketers"><span class="mono-crop"><img src="{{ url_for('static', filename='hbm-logo.png') }}" alt=""></span></a>
+  <a class="rail-item {{ 'on' if request.endpoint in ('audit_view','audit_page') }}" href="{{ url_for('audit_view', aid=latest_audit_id, view='overview') if latest_audit_id else url_for('dashboard') }}" title="Latest AI visibility audit">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.6L20 9.5l-4 4 1 5.8L12 16.6 7 19.3l1-5.8-4-4 5.4-.9z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg><span>AI</span></a>
+  <a class="rail-item {{ 'on' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}" aria-label="Audits">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 9h8M8 13h8M8 17h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Audits</span></a>
+  {% if can('admin') %}
+  <a class="rail-item {{ 'on' if request.endpoint == 'admin' }}" href="{{ url_for('admin') }}" aria-label="Admin">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Admin</span></a>
+  {% endif %}
+  <div class="rail-bottom">
+    <a class="rail-item {{ 'on' if request.endpoint == 'account' }}" href="{{ url_for('account') }}" title="{{ g.user.name }}">
+      <span class="avatar">{{ g.user.name[:1]|upper }}</span><span>Account</span></a>
+    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <button class="rail-item" type="submit" aria-label="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Sign out</span></button></form>
+  </div>
+</aside>
+{% endif %}
+<div class="shell">
+  {% block sidebar %}{% endblock %}
+  <main class="content">
+    {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}{% endwith %}
+    {% block body %}{% endblock %}
+  </main>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

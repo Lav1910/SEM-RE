@@ -1,0 +1,8 @@
+.venv
+appdata
+audits
+reports
+data/semrush
+data/site
+__pycache__
+*.pyc

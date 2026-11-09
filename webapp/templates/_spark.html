@@ -1,0 +1,1 @@
+{% if tr and tr|length > 1 %}{% set m = (tr|max) or 1 %}<svg class="spark" viewBox="0 0 48 16" aria-hidden="true"><polyline fill="none" stroke="#5B5FD9" stroke-width="1.4" points="{% for v in tr %}{{ (loop.index0 * 48 / (tr|length - 1))|round(1) }},{{ (15 - v / m * 14)|round(1) }} {% endfor %}"/></svg>{% endif %}

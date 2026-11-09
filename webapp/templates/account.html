@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block body %}
+<section class="card" style="max-width:32rem">
+  <h1>{{ 'Set a password' if setup or not has_pw else 'Your account' }}</h1>
+  <p class="sub">{{ g.user.name }} · {{ g.user.email }} · {{ role_label(g.user) }}</p>
+  {% if setup or not has_pw %}<p class="small muted">You're signed in with an emailed code. Set a password for next time, or <a href="{{ url_for('dashboard') }}">skip</a>: you can always sign in with a code instead.</p>
+  {% elif via_code %}<p class="small muted">You signed in with an emailed code, so you can set a new password without the old one.</p>{% endif %}
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    {% if has_pw and not via_code %}<label><span class="label">Current password</span><input id="current" type="password" name="current" autocomplete="current-password" required></label>{% endif %}
+    <label><span class="label">{{ 'New password' if has_pw else 'Password' }} (12+ characters)</span><input id="new" type="password" name="new" minlength="12" autocomplete="new-password" required></label>
+    <label><span class="label">Repeat it</span><input id="confirm" type="password" name="confirm" minlength="12" autocomplete="new-password" required></label>
+    <button class="btn btn-primary" type="submit" style="justify-self:start">{{ 'Change password' if has_pw else 'Save password' }}</button>
+  </form>
+</section>
+{% endblock %}

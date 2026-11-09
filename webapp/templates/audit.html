@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}{{ a.builder_name or a.domain }}{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('dashboard') }}">Audits</a> <span>›</span> {{ a.domain }}</div>
+
+{% if a.status == 'failed' %}
+<section class="panel run-head">
+  <div class="status-row">
+    <div><h1 class="page-title" style="margin:2px 0 4px">{{ a.builder_name or a.domain }}</h1>
+      <p class="small muted" style="margin:0">{{ a.url }} · started by {{ a.owner }} {{ a.created_at|ago }}</p></div>
+    <form method="post" action="{{ url_for('rerun', aid=a.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary" type="submit">Run again</button></form>
+  </div>
+  <div class="flash bad" style="margin:18px 0 0">{{ a.error }}</div>
+  {% if 'city and state' in (a.error or '') %}
+  <form class="retry-market" method="post" action="{{ url_for('create_audit') }}">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="url" value="{{ a.url }}"><input type="hidden" name="scope" value="{{ a.scope or 'root' }}"><input type="hidden" name="confirm_duplicate" value="1">
+    <label><span class="label">City</span><input id="retry-city" type="text" name="city" required></label>
+    <label><span class="label">State</span><input id="retry-state" type="text" name="state" required placeholder="e.g. NC"></label>
+    <button class="btn btn-primary" type="submit">Run with this market</button>
+  </form>
+  {% endif %}
+</section>
+{% else %}
+<div id="live" data-url="{{ url_for('api_status', aid=a.id) }}" data-started="{{ a.created_at }}">
+  <section class="panel run-head">
+    <div class="run-head-top">
+      <div class="run-title">
+        <span class="run-pulse" aria-hidden="true"></span>
+        <div><div class="eyebrow-sm">AI visibility audit in progress</div>
+          <h1 class="page-title" style="margin:2px 0 2px">{{ a.builder_name or a.domain }}</h1>
+          <p class="small muted" style="margin:0">{{ a.url }} · started by {{ a.owner }}{% if a.test_mode %} · quick test, 6 questions{% endif %}</p></div>
+      </div>
+      <div class="run-meta">
+        <div><span class="label">Elapsed</span><b id="elapsed">0:00</b></div>
+        <div><span class="label">Progress</span><b id="pct">{{ a.progress or 0 }}%</b></div>
+      </div>
+    </div>
+    <div class="bar run-bar"><i id="bar" style="width:{{ a.progress or 0 }}%"></i></div>
+    <p id="stage" class="small muted" style="margin:0">{% if a.status == 'queued' %}Waiting to start{% if ahead %} ({{ ahead }} audit{{ 's' if ahead != 1 }} ahead){% endif %}{% else %}{{ a.stage }}{% endif %}</p>
+  </section>
+
+  <div class="run-grid">
+    <section class="panel">
+      <div class="panel-h"><h2>Audit pipeline</h2><span class="small muted">You can leave this page; the audit keeps running</span></div>
+      <ol class="pipe">
+        <li class="phase" data-from="0" data-to="18">
+          <div class="phase-h"><span class="dotstate"></span><b>Website and business profile</b></div>
+          <ul class="phase-items"><li>Rendering the homepage in a real browser</li><li>Business markup, phone and address details</li><li>AI crawler access, llms.txt and sitemap</li></ul>
+        </li>
+        <li class="phase" data-from="18" data-to="30">
+          <div class="phase-h"><span class="dotstate"></span><b>Local search data</b></div>
+          <ul class="phase-items"><li>Search demand and keyword difficulty for each question</li><li>Google Business Profile and reviews</li></ul>
+        </li>
+        <li class="phase" data-from="30" data-to="91">
+          <div class="phase-h"><span class="dotstate"></span><b>AI platform visibility</b></div>
+          <div class="eng-list">
+            {% for en, lab in engine_labels.items() %}
+            <div class="eng-row" data-engine="{{ en }}">
+              {{ platform_logo(en, 20) }}
+              <div class="eng-main"><div class="eng-line"><span class="eng-name">{{ 'Checking Google AI Overviews' if en == 'google_aio' else 'Checking ' ~ lab ~ ' visibility' }}</span><span class="eng-count small muted"></span></div>
+                <div class="mini-bar"><i></i></div></div>
+              <span class="eng-state st-note st-off">Waiting</span>
+            </div>
+            {% endfor %}
+          </div>
+        </li>
+        <li class="phase" data-from="91" data-to="96">
+          <div class="phase-h"><span class="dotstate"></span><b>Competitive analysis</b></div>
+          <ul class="phase-items"><li>Identifying the builders AI recommends</li><li>Mapping the sources AI platforms rely on</li><li>Comparing the AI mentions database</li></ul>
+        </li>
+        <li class="phase" data-from="96" data-to="100">
+          <div class="phase-h"><span class="dotstate"></span><b>Report</b></div>
+          <ul class="phase-items"><li>Visibility overview, PDF report and Loom talking points</li></ul>
+        </li>
+      </ol>
+    </section>
+
+    <section class="panel run-feed">
+      <div class="panel-h"><h2>Live activity</h2><span class="live-dot small">Live</span></div>
+      <ol id="feed" class="feed"><li class="feed-empty small muted">Waiting for the first step…</li></ol>
+    </section>
+  </div>
+
+  <section class="run-cover">
+    <div class="cover-tile"><span class="label">AI platforms</span><div class="logo-row">{% for en in engine_labels %}{{ platform_logo(en, 22) }}{% endfor %}</div></div>
+    <div class="cover-tile"><span class="label">Buyer questions</span><b>{{ 6 if a.test_mode else 14 }}</b><span class="small muted">asked on every platform</span></div>
+    <div class="cover-tile"><span class="label">Website checks</span><b>10</b><span class="small muted">markup, reviews, crawlers, pages</span></div>
+    <div class="cover-tile"><span class="label">Google data</span><b>3</b><span class="small muted">Maps pack, Business Profile, demand</span></div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var live = document.getElementById('live'); if (!live) return;
+  var started = +live.dataset.started * 1000, seen = 0;
+  var STATE = {running: ['Running', 'st-good'], done: ['Complete', 'st-done'], off: ['Not connected', 'st-off'], needs_credits: ['Needs credits', 'st-bad'], waiting: ['Waiting', 'st-off']};
+  function fmtTime(t) { var d = new Date(t * 1000); return d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit', second: '2-digit'}); }
+  setInterval(function () {
+    var s = Math.max(0, Math.floor((Date.now() - started) / 1000));
+    document.getElementById('elapsed').textContent = Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2);
+  }, 1000);
+  function paint(d) {
+    var p = d.progress || 0;
+    document.getElementById('bar').style.width = p + '%';
+    document.getElementById('pct').textContent = p + '%';
+    document.getElementById('stage').textContent = d.status === 'queued'
+      ? 'Waiting to start' + (d.ahead ? ' (' + d.ahead + ' audit' + (d.ahead === 1 ? '' : 's') + ' ahead)' : '') : (d.stage || 'Working');
+    document.querySelectorAll('.phase').forEach(function (ph) {
+      var from = +ph.dataset.from, to = +ph.dataset.to;
+      ph.className = 'phase' + (d.status === 'queued' ? '' : (p >= to ? ' done' : (p >= from ? ' now' : '')));
+    });
+    var eng = d.engines || {};
+    document.querySelectorAll('.eng-row').forEach(function (row) {
+      var e = eng[row.dataset.engine], st = e ? e.state : (p >= 30 ? 'running' : 'waiting');
+      if (e && e.state === 'running' && e.done === 0) st = 'running';
+      var lab = STATE[st] || STATE.waiting, badge = row.querySelector('.eng-state');
+      badge.textContent = lab[0]; badge.className = 'eng-state st-note ' + lab[1];
+      var pct = e && e.total ? Math.round(100 * e.done / e.total) : 0;
+      row.querySelector('.mini-bar i').style.width = (st === 'off' ? 0 : pct) + '%';
+      row.querySelector('.eng-count').textContent = e && st !== 'off' ? e.done + ' of ' + e.total + ' questions' : '';
+      row.classList.toggle('muted-row', st === 'off' || st === 'needs_credits');
+    });
+    var feed = d.activity || [];
+    if (feed.length && feed.length !== seen) {
+      var ol = document.getElementById('feed'); ol.innerHTML = '';
+      feed.slice(-16).reverse().forEach(function (ev, i) {
+        var li = document.createElement('li'); if (i < feed.length - seen) li.className = 'fresh';
+        var t = document.createElement('span'); t.className = 'feed-t'; t.textContent = fmtTime(ev.t);
+        var x = document.createElement('span'); x.textContent = ev.text;
+        li.appendChild(t); li.appendChild(x); ol.appendChild(li);
+      });
+      seen = feed.length;
+    }
+  }
+  (function poll() {
+    fetch(live.dataset.url, {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (d) {
+      paint(d);
+      if (d.status === 'done' || d.status === 'failed') { setTimeout(function () { location.reload(); }, 900); } else { setTimeout(poll, 1500); }
+    }).catch(function () { setTimeout(poll, 4000); });
+  })();
+})();
+</script>
+{% endblock %}

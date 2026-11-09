@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Already audited{% endblock %}
+{% block body %}
+<section class="card" style="max-width:36rem">
+  <h1>{{ prev.owner }} already audited this builder</h1>
+  <p class="sub">{{ prev.builder_name or prev.domain }} was audited {{ prev.created_at|ago }}. Check with {{ prev.owner }} before reaching out, so the prospect doesn't hear from two of us.</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('audit_page', aid=prev.id) }}">Open their audit</a>
+    <form method="post" action="{{ url_for('create_audit') }}" style="margin:0">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      {% for k in ('url', 'scope', 'city', 'state', 'test_mode') %}{% if form.get(k) %}<input type="hidden" name="{{ k }}" value="{{ form.get(k) }}">{% endif %}{% endfor %}
+      <input type="hidden" name="confirm_duplicate" value="1">
+      <button class="btn btn-ghost" type="submit">Run a new audit anyway</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
