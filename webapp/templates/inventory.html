@@ -32,7 +32,7 @@
       {% for f in folders %}
       <a class="inv-folder" href="{{ url_for('inventory', scope=scope, q=q or None, type=kind, when=when, folder=f.key, mode='folders') }}">
         <span class="inv-fico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="currentColor"/></svg></span>
-        <span class="inv-fname"><b>{{ f.name }}</b><small>{{ f.market or f.key }}</small></span>
+        <span class="inv-fname"><b title="{{ f.name }}">{{ f.name }}</b><small>{{ f.market or f.key }}</small></span>
         <span class="inv-fmeta">{{ f.audits }} audit{{ 's' if f.audits != 1 }} · {{ f.files }} files · {{ f.last|ago }}</span>
       </a>
       {% endfor %}
@@ -49,7 +49,7 @@
       <div class="inv-file">
         <label class="inv-pick"><input type="checkbox" name="f" value="{{ f.aid }}:{{ f.kind }}" aria-label="Select {{ f.label }} for {{ f.builder }}"></label>
         <span class="inv-ic inv-{{ ic[0] }}" aria-hidden="true">{{ ic[1] }}</span>
-        <span class="inv-name"><b>{{ f.label }}</b><small class="inv-sub">{{ f.builder }}</small></span>
+        <span class="inv-name"><b>{{ f.label }}</b><small class="inv-sub" title="{{ f.builder }}">{{ f.builder }}</small></span>
         <span class="inv-builder">{{ f.builder }}</span>
         <span class="inv-type">{{ f.type }}</span>
         <span class="inv-size r tnum">{{ size(f.size) }}</span>

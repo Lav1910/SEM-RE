@@ -1094,3 +1094,9 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .inv-sbar { width:160px; height:6px; background:#EEF3F3; border-radius:999px; overflow:hidden; } .inv-sbar i { display:block; height:100%; background:var(--teal-b); }
 .inv-storage.warn { color:#B26A00; } .inv-storage.warn .inv-sbar i { background:#F0A13A; }
 @media (max-width: 900px) { .inv-files.as-list .inv-head { display:none; } .inv-files.as-list .inv-file { grid-template-columns:28px 1fr; } .inv-files.as-list .inv-builder, .inv-files.as-list .inv-type, .inv-files.as-list .inv-size, .inv-files.as-list .inv-date, .inv-files.as-list .inv-by { display:none; } .inv-files.as-list .inv-acts { grid-column:2; justify-content:flex-start; } .inv-modes { margin-left:0; } }
+/* change 48 fix: long builder names stay inside their folder card ("…" instead of running past the edge) */
+.inv-folder { grid-template-columns:auto minmax(0, 1fr); min-width:0; }
+.inv-folders.as-list .inv-folder { grid-template-columns:auto minmax(0, 1fr) auto; }
+.inv-fname, .inv-fmeta { min-width:0; }
+.inv-fname b, .inv-fname small, .inv-fmeta { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inv-files.as-grid .inv-file, .inv-name { min-width:0; }
