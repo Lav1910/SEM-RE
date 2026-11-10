@@ -7,7 +7,7 @@
   <section class="card">
     <div class="status-row">
       <div><h1 class="page-title" style="margin:0">{{ a.builder_name or a.domain }}</h1>
-        <p class="small muted" style="margin:2px 0 0">{{ a.domain }} · sent {{ a.client_created_at|ago }}{% if sender %} by {{ sender.name }}{% endif %} ·
+        <p class="small muted" style="margin:2px 0 0">{{ a.domain }} · sent {{ (a.client_created_at or (a.client_expires or 0) - 2592000)|ago }}{% if sender %} by {{ sender.name }}{% endif %} ·
           {% if client %}<b>active</b>, expires {{ client.expires|datefmt }} · {{ 'Full access' if client.full else 'Preview' }}{% elif a.client_token %}expired{% else %}turned off{% endif %}</p></div>
       <div class="row-actions">
         <a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=a.id, view='overview') }}">Open audit</a>
