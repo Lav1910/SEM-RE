@@ -2,18 +2,37 @@
 {# change 31: the client's interactive page. Visibility Overview and Competitor Research only, read-only, no sign-in. #}
 {% block title %}{{ views_nav[view] }}: {{ A.profile.name or a.domain }}{% endblock %}
 {% block body %}
-<header class="client-top">
-  <img class="client-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
-  <div class="client-who">
-    <span class="eyebrow-sm">AI visibility audit</span>
-    <b>{{ A.profile.name or a.domain }}</b>
-    <span class="small muted">{{ a.domain }} · {{ A.market.city }}, {{ A.market.state_code }} · {{ a.created_at|datefmt }}</span>
+<div class="client-page">
+<header class="client-hero">
+  <div class="client-hero-top">
+    <img class="client-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
+    <span class="client-div" aria-hidden="true"></span>
+    <div class="client-who">
+      <span class="client-eyebrow">AI visibility audit</span>
+      <h1>{{ A.profile.name or a.domain }}</h1>
+      <div class="client-chips">
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.4 5.3 3.4 8.5s-1 6.1-3.4 8.5c-2.4-2.4-3.4-5.3-3.4-8.5s1-6.1 3.4-8.5z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{{ a.domain }}</span>
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.4" fill="currentColor"/></svg>{{ A.market.city }}, {{ A.market.state_code }}</span>
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 10h16M9 3v4M15 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>{{ a.created_at|datefmt }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="client-hero-bar">
+    <nav class="client-tabs" aria-label="Report sections">
+      <a class="{{ 'on' if view == 'overview' }}" href="{{ vurl(a.id, 'overview', platform=platform if platform != 'all' else None, area=V.area or None) }}">Visibility Overview</a>
+      <a class="{{ 'on' if view == 'competitors' }}" href="{{ vurl(a.id, 'competitors', platform=platform if platform != 'all' else None, area=V.area or None) }}">Competitor Research</a>
+    </nav>
+    <form method="get" class="ctl-form">
+      {% for v in request.args.getlist('vs') %}<input type="hidden" name="vs" value="{{ v }}">{% endfor %}
+      {% if V.area %}<input type="hidden" name="area" value="{{ V.area }}">{% endif %}
+      <label class="ctl ctl-select"><span class="sr-only">AI platform</span>
+        <select name="platform" id="platform" onchange="this.form.submit()">
+          <option value="all" {{ 'selected' if platform == 'all' }}>All AI platforms</option>
+          {% for en in V.platforms %}<option value="{{ en }}" {{ 'selected' if platform == en }}>{{ engine_labels[en] }}</option>{% endfor %}
+        </select></label>
+    </form>
   </div>
 </header>
-<nav class="client-tabs" aria-label="Report sections">
-  <a class="{{ 'on' if view == 'overview' }}" href="{{ vurl(a.id, 'overview', platform=platform if platform != 'all' else None, area=V.area or None) }}">Visibility Overview</a>
-  <a class="{{ 'on' if view == 'competitors' }}" href="{{ vurl(a.id, 'competitors', platform=platform if platform != 'all' else None, area=V.area or None) }}">Competitor Research</a>
-</nav>
 {% if V.areas and V.areas|length > 1 %}
 <div class="area-bar">
 <nav class="area-tabs" aria-label="Market areas">
@@ -23,21 +42,7 @@
 </nav>
 </div>
 {% endif %}
-<div class="filters">
-  <div class="ctl ctl-market" title="Search location used for every AI question">
-    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.5" fill="currentColor"/></svg>
-    <span>{{ A.market.city }}, {{ A.market.state_code }}</span>
-  </div>
-  <form method="get" class="ctl-form">
-    {% for v in request.args.getlist('vs') %}<input type="hidden" name="vs" value="{{ v }}">{% endfor %}
-    {% if V.area %}<input type="hidden" name="area" value="{{ V.area }}">{% endif %}
-    <label class="ctl ctl-select"><span class="sr-only">AI platform</span>
-      <select name="platform" id="platform" onchange="this.form.submit()">
-        <option value="all" {{ 'selected' if platform == 'all' }}>All AI platforms</option>
-        {% for en in V.platforms %}<option value="{{ en }}" {{ 'selected' if platform == en }}>{{ engine_labels[en] }}</option>{% endfor %}
-      </select></label>
-  </form>
-</div>
 {% block view %}{% endblock %}
 <footer class="client-foot small muted">Prepared by Home Builder Marketers · AI answers collected {{ a.created_at|datefmt }}. Answers from AI platforms change over time.</footer>
+</div>
 {% endblock %}
