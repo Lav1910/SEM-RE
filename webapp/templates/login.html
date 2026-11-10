@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · HBM AI Visibility Audits</title>
+<title>Sign in · AEO Snapshot</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
@@ -11,7 +11,7 @@
 <div class="login-shell">
   <form class="login-card stack" method="post" action="{{ url_for('login', next=request.args.get('next')) }}">
     <img class="login-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
-    <div><h1>AI Visibility Audits</h1><p class="sub" style="margin:0">Sign in with your @{{ domain }} account.</p></div>
+    <div><h1>AEO Snapshot</h1><p class="small muted" style="margin:-2px 0 6px">by Home Builder Marketers</p><p class="sub" style="margin:0">Sign in with your @{{ domain }} account.</p></div>
     {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}" style="margin:0">{{ m }}</div>{% endfor %}{% endwith %}
     <input type="hidden" name="csrf" value="{{ session.csrf }}">
     {% if google %}

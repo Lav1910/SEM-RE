@@ -1,0 +1,8 @@
+{# change 47: every deliverable as one clean Word file #}
+{% set busy = S.cards|sum(attribute='busy') %}
+<div class="dl-word">
+  <a class="btn btn-primary btn-small" data-download href="{{ url_for('client_docx', token=g.client_token) if g.client_token else url_for('audit_docx', aid=a.id) }}">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Download all (Word)</a>
+  {% if busy %}<span class="small muted">{{ busy }} piece{{ 's' if busy != 1 }} still being written; download now or in a minute.</span>{% endif %}
+</div>

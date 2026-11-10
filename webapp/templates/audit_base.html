@@ -3,7 +3,7 @@
 {% block sidebar %}
 <nav class="side" aria-label="AI Visibility">
   <img class="side-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
-  <div class="side-title">AI Visibility</div>
+  <div class="side-title">AEO Snapshot</div>
   <div class="side-group">AI Analysis</div>
   {% for key in ('overview', 'competitors', 'prompts') %}
     <a class="side-link {{ 'on' if view == key }}" href="{{ url_for('audit_view', aid=a.id, view=key, platform=platform if platform != 'all' else None) }}">{{ views_nav[key] }}</a>

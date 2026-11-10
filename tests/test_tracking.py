@@ -83,7 +83,8 @@ class Tracking(unittest.TestCase):
         self.app.test_client().get(self.path(l))  # one client visit
         for who in ("trboss", "trrep"):
             c = self.client(who)
-            for url in ("/", "/?scope=team", f"/audits/{self.aid}/tracking", "/todo", f"/audits/{self.aid}/overview", "/bulk", "/account"):
+            for url in ("/", "/?scope=team", f"/audits/{self.aid}/tracking", "/links", "/inventory", "/inventory?mode=all", "/todo",
+                        f"/audits/{self.aid}/overview", f"/audits/{self.aid}/content", "/bulk", "/account"):
                 self.assertEqual(c.get(url).status_code, 200, (who, url))
         self.assertEqual(self.client("trboss").get("/admin").status_code, 200)
 
@@ -105,6 +106,7 @@ class Tracking(unittest.TestCase):
             for hidden in ("<form", "data-gen-form", "Export plan", "status-ctl", 'class="locked"'):
                 self.assertNotIn(hidden, html, (view, hidden))
             self.assertIn("Want Home Builder Marketers to put this live for you?", html)
+            self.assertIn("Download all (Word)", html)
         html = anon.get(self.path(l, "strategy")).get_data(as_text=True)
         self.assertIn(str(escape(hows[0])), html)
         self.assertIn("Being written", anon.get(self.path(l, "content")).get_data(as_text=True))
@@ -117,8 +119,30 @@ class Tracking(unittest.TestCase):
         page = c.get(f"/audits/{self.aid}/tracking").get_data(as_text=True)
         self.assertIn("Report tracking", page)
         self.assertIn(l["url"], page)
-        self.assertNotIn("Client links", c.get("/").get_data(as_text=True))
+        self.assertIn("Report tracking", c.get("/").get_data(as_text=True))  # change 48: in the Audits sidebar
         self.assertIn(f"/audits/{self.aid}/tracking", c.get(f"/links/{self.aid}").headers["Location"])
+
+    def test_inventory_word_and_zip(self):
+        """change 47/48: Inventory lists every audit's files; the Word file and zip download work."""
+        c = self.client("trrep")
+        html = c.get("/inventory?mode=all").get_data(as_text=True)
+        for want in ("Full report", "Overview (1 page)", "All deliverables", "Strategy plan", "Loom talking points", "storage used"):
+            self.assertIn(want, html)
+        self.assertNotIn("Audit data", html)  # Sales don't get raw data
+        self.assertIn(self.A["profile"]["name"], c.get("/inventory").get_data(as_text=True))  # folders view
+        r = c.get(f"/audits/{self.aid}/deliverables.docx")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data[:2], b"PK")  # a real .docx (zip) file
+        import zipfile, io as _io
+        r = c.post("/inventory/zip", data={"csrf": "t", "f": [f"{self.aid}:word", f"{self.aid}:loom"]})
+        self.assertEqual(r.status_code, 200)
+        names = zipfile.ZipFile(_io.BytesIO(r.data)).namelist()
+        self.assertTrue(any(n.endswith("All-Deliverables.docx") for n in names), names)
+        l = self.link()
+        r = self.app.test_client().get(self.path(l, "deliverables.docx"))  # the client can download it too
+        self.assertEqual(r.data[:2], b"PK")
+        self.assertIn("Talk to us", self.app.test_client().get(self.path(l, "content")).get_data(as_text=True))
+        self.assertIn("info%40homebuildermarketers.com", self.app.test_client().get(self.path(l, "content")).get_data(as_text=True).replace("@", "%40"))
 
     def test_todo_bulk_actions(self):
         uid = self.ids["trrep2"]

@@ -1,0 +1,89 @@
+{# change 47: compact, modern content layout shared by the client link and the internal Content Generator.
+   Expects: S (strategy ctx), internal (bool) — internal adds Generate / Regenerate buttons. #}
+{% set busy_total = S.cards|sum(attribute='busy') %}
+{% for g in S.cards %}
+<section class="cg-sec" id="gen-{{ g.kind }}">
+  <header class="cg-h">
+    <span class="cg-ico" aria-hidden="true">{{ g.icon }}</span>
+    <h2>{{ g.label }}</h2>
+    <span class="cg-count">{{ g.ready }} of {{ g.total }} ready</span>
+    {% if g.busy %}<span class="cg-prog"><i style="width:{{ (100 * g.ready / (g.total or 1))|round|int }}%"></i></span>{% endif %}
+    {% if internal %}
+    <form method="post" action="{{ url_for('strategy_generate', aid=a.id) }}" class="cg-gen">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="{{ g.kind }}"><input type="hidden" name="provider" value="gemini">
+      <button class="link-btn small" type="submit">{{ 'Regenerate' if g.ready else 'Generate' }}{{ ' all' if g.total > 1 }}</button>
+    </form>{% endif %}
+    {% if g.kind == 'faq' and g.ready %}<button class="link-btn small cg-expand" type="button" data-expand="{{ g.kind }}">Expand all</button>{% endif %}
+  </header>
+
+  {% if g.kind == 'faq' %}
+    {% for c in g.cards %}
+      {% if c.status == 'done' and c.faq %}
+      <div class="faq-list" data-faq="{{ g.kind }}">
+        {% for q, ans in c.faq %}
+        <details class="faq"><summary><span>{{ q }}</span><i aria-hidden="true"></i></summary><div class="faq-a md">{{ ans }}</div></details>
+        {% endfor %}
+        <div class="cg-row-acts"><button class="link-btn small" type="button" data-copy-text="cg-{{ g.kind }}-{{ loop.index }}" data-track-copy="{{ c.label }}">Copy all FAQs</button></div>
+        <textarea id="cg-{{ g.kind }}-{{ loop.index }}" hidden>{{ c.text }}</textarea>
+      </div>
+      {% elif c.status in ('queued', 'running') %}<p class="cg-wait"><span class="spin" aria-hidden="true"></span>Being written…</p>
+      {% elif c.status == 'done' %}<div class="md cg-plain">{{ c.html }}</div>
+      {% else %}<p class="cg-none">{{ 'Not generated yet.' if internal else 'Available from Home Builder Marketers.' }}</p>{% endif %}
+    {% endfor %}
+  {% else %}
+  <div class="cg-grid">
+    {% for c in g.cards %}
+    <article class="cg-card cg-{{ c.status }}">
+      <h3>{{ c.label }}</h3>
+      {% if c.status == 'done' %}
+        <p class="cg-prev">{{ c.preview }}{{ '…' if c.words > 30 }}</p>
+        <div class="cg-meta"><span>{{ '{:,}'.format(c.words) }} words · {{ c.mins }} min read</span>
+          <span class="cg-acts"><button class="link-btn small" type="button" data-read="cg-{{ g.kind }}-{{ c.key }}" data-title="{{ c.label }}">Read</button>
+            <button class="link-btn small" type="button" data-copy-text="cg-{{ g.kind }}-{{ c.key }}-t" data-track-copy="{{ c.label }}">Copy</button></span></div>
+        <template id="cg-{{ g.kind }}-{{ c.key }}"><div class="md">{{ c.html }}</div></template>
+        <textarea id="cg-{{ g.kind }}-{{ c.key }}-t" hidden>{{ c.text }}</textarea>
+      {% elif c.status in ('queued', 'running') %}<p class="cg-wait"><span class="spin" aria-hidden="true"></span>Being written…</p>
+      {% elif c.status == 'failed' and internal %}<p class="cg-none">Couldn't write this one. {{ (c.error or '')[:80] }}</p>
+      {% else %}<p class="cg-none">{{ 'Not generated yet.' if internal else 'Available from Home Builder Marketers.' }}</p>{% endif %}
+      {% if internal %}
+      <form method="post" action="{{ url_for('strategy_generate', aid=a.id) }}" class="cg-gen-one">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="{{ g.kind }}"><input type="hidden" name="key" value="{{ c.key }}"><input type="hidden" name="provider" value="gemini">
+        <button class="link-btn small" type="submit">{{ 'Regenerate' if c.status == 'done' else 'Generate' }}</button></form>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+
+<dialog class="cg-reader" id="cg-reader">
+  <div class="cg-reader-h"><b data-reader-title></b><span><button class="link-btn small" type="button" data-reader-copy>Copy</button>
+    <button class="link-btn small" type="button" data-reader-close aria-label="Close">Close ✕</button></span></div>
+  <div class="cg-reader-body" data-reader-body></div>
+</dialog>
+<script>
+(function () {  // change 47: reader, copy, expand-all; refresh while pieces are being written
+  var dlg = document.getElementById('cg-reader'), body = dlg && dlg.querySelector('[data-reader-body]'), current = null;
+  function copyText(t, b) {
+    var ok = function () { var o = b.textContent; b.textContent = '✓ Copied'; setTimeout(function () { b.textContent = o; }, 1600); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(ok);
+    else { var x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); ok(); }
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-read], [data-copy-text], [data-expand], [data-reader-close], [data-reader-copy]'); if (!b) return;
+    if (b.dataset.read !== undefined) {
+      var tpl = document.getElementById(b.dataset.read); current = document.getElementById(b.dataset.read + '-t');
+      body.innerHTML = ''; body.appendChild(tpl.content.cloneNode(true));
+      dlg.querySelector('[data-reader-title]').textContent = b.dataset.title; dlg.showModal ? dlg.showModal() : dlg.setAttribute('open', '');
+    } else if (b.dataset.copyText !== undefined) { var el = document.getElementById(b.dataset.copyText); if (el) copyText(el.value, b); }
+    else if (b.dataset.readerCopy !== undefined) { if (current) copyText(current.value, b); }
+    else if (b.dataset.readerClose !== undefined) { dlg.close ? dlg.close() : dlg.removeAttribute('open'); }
+    else if (b.dataset.expand !== undefined) {
+      var ds = document.querySelectorAll('[data-faq="' + b.dataset.expand + '"] details'), open = b.textContent.indexOf('Expand') === 0;
+      ds.forEach(function (d) { d.open = open; }); b.textContent = open ? 'Collapse all' : 'Expand all';
+    }
+  });
+  if (dlg) dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+  {% if busy_total %}setTimeout(function () { location.reload(); }, 15000);{% endif %}
+})();
+</script>

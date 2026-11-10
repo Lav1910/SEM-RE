@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block sidebar %}{% include "_audits_side.html" %}{% endblock %}
+{% block body %}
+{# change 48: every audit's files in one place, like a shared drive. Saved in the cloud; download only when you want. #}
+{% set ICON = {'PDF': ('pdf', 'PDF'), 'Word': ('doc', 'DOC'), 'Text': ('txt', 'TXT'), 'JSON': ('json', '{ }')} %}
+{% macro size(n) %}{% if n %}{{ ('%.0f KB'|format(n / 1024)) if n < 1048576 else ('%.1f MB'|format(n / 1048576)) }}{% else %}—{% endif %}{% endmacro %}
+<div class="crumbs"><a href="{{ url_for('dashboard') }}">Audits</a> <span>›</span> <a href="{{ url_for('inventory', scope=scope) }}">Inventory</a>{% if folder_name %} <span>›</span> {{ folder_name }}{% endif %}</div>
+<section class="card inv">
+  <div class="status-row"><h2 style="margin:0">Inventory {{ tip("Every report and deliverable for every audit, saved in the cloud. Nothing downloads to your computer until you click Download.") }}</h2>
+    {% if can('team_audits') %}<div class="tabs" style="margin:0"><a class="{{ 'on' if scope == 'mine' }}" href="{{ url_for('inventory', scope='mine', q=q or None, type=kind, when=when, mode=mode, folder=folder) }}">Mine</a><a class="{{ 'on' if scope == 'team' }}" href="{{ url_for('inventory', scope='team', q=q or None, type=kind, when=when, mode=mode, folder=folder) }}">Whole team</a></div>{% endif %}
+  </div>
+
+  <form class="inv-tools" method="get" action="{{ url_for('inventory') }}" role="search">
+    <input type="hidden" name="scope" value="{{ scope }}"><input type="hidden" name="mode" value="{{ mode }}">{% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+    <label class="hist-search"><span class="sr-only">Search files</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search by builder or website" autocomplete="off"></label>
+    <label class="ctl ctl-select"><span class="sr-only">File type</span><select name="type" onchange="this.form.submit()">
+      <option value="all">All types</option>{% for k, v in kinds.items() %}{% if k != 'data' or can('raw_data') %}<option value="{{ k }}" {{ 'selected' if kind == k }}>{{ v[0] }} ({{ v[1] }})</option>{% endif %}{% endfor %}</select></label>
+    <label class="ctl ctl-select"><span class="sr-only">Date</span><select name="when" onchange="this.form.submit()">
+      {% for k, lab in (('all','Any time'), ('today','Today'), ('week','This week'), ('month','This month')) %}<option value="{{ k }}" {{ 'selected' if when == k }}>{{ lab }}</option>{% endfor %}</select></label>
+    <div class="inv-modes">
+      <div class="seg">{% for k, lab in (('folders', 'Folders'), ('all', 'All files')) %}<a class="seg-item {{ 'on' if mode == k }}" href="{{ url_for('inventory', scope=scope, q=q or None, type=kind, when=when, mode=k) }}">{{ lab }}</a>{% endfor %}</div>
+      <div class="seg" role="radiogroup" aria-label="View"><button type="button" class="seg-item" data-view="grid" title="Grid view">▦ Grid</button><button type="button" class="seg-item" data-view="list" title="List view">☰ List</button></div>
+    </div>
+  </form>
+
+  {% if mode == 'folders' and not folder %}
+    {% if folders %}
+    <div class="inv-folders" data-views>
+      {% for f in folders %}
+      <a class="inv-folder" href="{{ url_for('inventory', scope=scope, q=q or None, type=kind, when=when, folder=f.key, mode='folders') }}">
+        <span class="inv-fico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="currentColor"/></svg></span>
+        <span class="inv-fname"><b>{{ f.name }}</b><small>{{ f.market or f.key }}</small></span>
+        <span class="inv-fmeta">{{ f.audits }} audit{{ 's' if f.audits != 1 }} · {{ f.files }} files · {{ f.last|ago }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<p class="muted" style="margin:12px 0 0">{{ 'No files match.' if q or when != 'all' else 'No finished audits yet. Files appear here as soon as an audit is ready.' }}</p>{% endif %}
+  {% else %}
+    {% if folder %}<div class="inv-folder-bar"><a class="link-btn small" href="{{ url_for('inventory', scope=scope, q=q or None, type=kind, when=when) }}">← All folders</a>
+      <button class="btn btn-ghost btn-small" type="button" data-pick-all>Select whole folder</button></div>{% endif %}
+    {% if files %}
+    <form id="inv-zip" method="post" action="{{ url_for('inventory_zip') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <div class="inv-files" data-views>
+      <div class="inv-head"><span></span><span>Name</span><span>Builder</span><span>Type</span><span class="r">Size</span><span>Date</span><span>By</span><span></span></div>
+      {% for f in files %}{% set ic = ICON[f.type] %}
+      <div class="inv-file">
+        <label class="inv-pick"><input type="checkbox" name="f" value="{{ f.aid }}:{{ f.kind }}" aria-label="Select {{ f.label }} for {{ f.builder }}"></label>
+        <span class="inv-ic inv-{{ ic[0] }}" aria-hidden="true">{{ ic[1] }}</span>
+        <span class="inv-name"><b>{{ f.label }}</b><small class="inv-sub">{{ f.builder }}</small></span>
+        <span class="inv-builder">{{ f.builder }}</span>
+        <span class="inv-type">{{ f.type }}</span>
+        <span class="inv-size r tnum">{{ size(f.size) }}</span>
+        <span class="inv-date">{{ f.created_at|ago }}</span>
+        <span class="inv-by">{{ f.owner }}</span>
+        <span class="inv-acts">
+          {% if f.preview %}<a class="link-btn small" href="{{ f.preview }}" target="_blank" rel="noopener">Preview</a>{% endif %}
+          <a class="link-btn small" href="{{ f.url }}">Download</a>
+          {% if f.client %}<a class="link-btn small" href="{{ url_for('audit_view', aid=f.aid, view='tracking') }}">Client link</a>{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="inv-actbar" hidden><b data-pick-count>0 selected</b><button class="btn btn-primary btn-small" type="submit">Download selected (.zip)</button>
+      <button class="link-btn small" type="button" data-pick-clear>Clear</button></div>
+    </form>
+    {% else %}<p class="muted" style="margin:12px 0 0">No files match.</p>{% endif %}
+  {% endif %}
+
+  {% set pct = (100 * used / limit)|round|int if limit else 0 %}
+  <div class="inv-storage {{ 'warn' if pct >= 80 }}">
+    <div class="inv-sbar"><i style="width:{{ [pct, 100]|min }}%"></i></div>
+    <span>{{ size(used) }} of {{ (limit / 1048576)|round|int }} MB storage used{% if pct >= 80 %} · almost full. Ask an admin about moving files to cloud storage.{% endif %}</span>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {  // change 48: grid / list view (remembered), multi-select and zip download
+  var KEY = 'inv-view', box = document.querySelectorAll('[data-views]');
+  function setView(v) {
+    box.forEach(function (b) { b.classList.toggle('as-list', v === 'list'); b.classList.toggle('as-grid', v !== 'list'); });
+    document.querySelectorAll('[data-view]').forEach(function (x) { x.classList.toggle('on', x.dataset.view === v); });
+    try { localStorage.setItem(KEY, v); } catch (e) {}
+  }
+  var saved = 'grid'; try { saved = localStorage.getItem(KEY) || 'grid'; } catch (e) {}
+  setView(saved);
+  document.querySelectorAll('[data-view]').forEach(function (b) { b.addEventListener('click', function () { setView(b.dataset.view); }); });
+  var bar = document.querySelector('.inv-actbar'); if (!bar) return;
+  var picks = function () { return Array.prototype.slice.call(document.querySelectorAll('.inv-pick input')); };
+  function upd() { var n = picks().filter(function (p) { return p.checked; }).length; bar.hidden = !n;
+    bar.querySelector('[data-pick-count]').textContent = n + ' selected' + (n > 30 ? ' (first 30 will be zipped)' : '');
+    picks().forEach(function (p) { p.closest('.inv-file').classList.toggle('picked', p.checked); }); }
+  document.addEventListener('change', function (e) { if (e.target.closest('.inv-pick')) upd(); });
+  var all = document.querySelector('[data-pick-all]'); if (all) all.addEventListener('click', function () { picks().forEach(function (p) { p.checked = true; }); upd(); });
+  bar.querySelector('[data-pick-clear]').addEventListener('click', function () { picks().forEach(function (p) { p.checked = false; }); upd(); });
+})();
+</script>
+{% endblock %}

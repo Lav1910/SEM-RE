@@ -1,8 +1,6 @@
-{# change 46: a friendly offer instead of locks #}
-{% if contact %}
+{# change 46/47: a friendly offer; emails HBM's main inbox with the person who sent the link copied #}
 <section class="client-cta">
   <div><b>Want Home Builder Marketers to put this live for you?</b>
     <span>We'll publish the content, add the fixes to the website and keep track of how AI recommends {{ A.profile.name }} month by month.</span></div>
-  <a class="btn btn-primary" data-contact href="mailto:{{ contact.email }}?subject={{ ('AI visibility plan for ' ~ (A.profile.name or a.domain))|urlencode }}&body={{ ('Hi ' ~ (contact.name or '').split(' ')[0] ~ ', I looked at the AI visibility report for ' ~ (A.profile.name or a.domain) ~ ' and would like help putting it live.')|urlencode }}">Talk to {{ (contact.name or 'HBM').split(' ')[0] }}</a>
+  <a class="btn btn-primary" data-contact href="mailto:{{ contact_email }}?{% if contact and contact.email and contact.email != contact_email %}cc={{ contact.email|urlencode }}&{% endif %}subject={{ ('AI visibility plan for ' ~ (A.profile.name or a.domain))|urlencode }}&body={{ ('Hi Home Builder Marketers team, I looked at the AEO Snapshot for ' ~ (A.profile.name or a.domain) ~ ' and would like help putting it live.')|urlencode }}">Talk to us</a>
 </section>
-{% endif %}

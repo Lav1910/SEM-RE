@@ -1,3 +1,4 @@
 flask>=3.1,<4
 waitress>=3.0,<4
 psycopg[binary]>=3.2,<4   # Postgres on Vercel (DATABASE_URL); not needed with SQLite
+python-docx>=1.1,<2      # Word download of all deliverables (change 47)

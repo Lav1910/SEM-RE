@@ -11,37 +11,11 @@
     <label class="ctl ctl-select ctl-sm"><span class="sr-only">Writer</span><select name="provider" id="writer">
       <option value="gemini">Writer: Gemini</option><option value="chatgpt" {{ 'disabled' if not S.chat_ok }}>Writer: ChatGPT{{ '' if S.chat_ok else ' (needs credits)' }}</option></select></label>
     <button class="btn btn-primary btn-small" type="submit">Generate all</button>
-    <a class="btn btn-ghost btn-small" href="{{ url_for('strategy_export', aid=a.id, fmt='doc') }}">Word</a>
+    <a class="btn btn-ghost btn-small" href="{{ url_for('audit_docx', aid=a.id) }}">Download all (Word)</a>
     <a class="btn btn-ghost btn-small" href="{{ url_for('strategy_export', aid=a.id, fmt='md') }}">Markdown</a>
   </form>
 </section>
 
-{% for gname in S.gens %}
-<section class="panel gen" id="gen-{{ gname.kind }}">
-  <div class="panel-h"><h2>{{ gname.label }}</h2>
-    <form method="post" action="{{ url_for('strategy_generate', aid=a.id) }}" data-gen-form>
-      <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="{{ gname.kind }}"><input type="hidden" name="provider" value="gemini">
-      <button class="btn btn-ghost btn-small" type="submit">{{ 'Regenerate' if gname['items'] else 'Generate' }}{{ ' all ' ~ (gname.targets|length) if gname.targets|length > 1 else '' }}</button>
-    </form></div>
-  <div class="gen-pieces">
-  {% for key, label in gname.targets %}{% set it = gname['items'].get(key) %}
-    <div class="piece" data-piece="{{ url_for('strategy_piece', aid=a.id, kind=gname.kind, key=key) }}" data-kind="{{ gname.kind }}" data-key="{{ key }}" data-status="{{ it.status if it else 'none' }}">
-      <div class="piece-h">
-        <b>{{ label }}</b>
-        <span class="piece-state small muted">{% if not it %}Not generated{% elif it.status == 'done' %}Ready{% if it.provider %} · {{ 'ChatGPT' if it.provider == 'chatgpt' else 'Gemini' }}{% endif %}{% elif it.status == 'failed' %}Failed: {{ it.error }}{% else %}Writing…{% endif %}</span>
-        <span class="piece-actions">
-          {% if gname.targets|length > 1 %}<form method="post" action="{{ url_for('strategy_generate', aid=a.id) }}" data-gen-form>
-            <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="{{ gname.kind }}"><input type="hidden" name="key" value="{{ key }}"><input type="hidden" name="provider" value="gemini">
-            <button class="link-btn" type="submit">{{ 'Regenerate' if it else 'Generate' }}</button></form>{% endif %}
-          <button class="link-btn piece-copy" type="button" {{ 'hidden' if not it or it.status != 'done' }}>Copy</button>
-          <button class="link-btn piece-toggle" type="button" {{ 'hidden' if not it or it.status != 'done' }}>Show</button>
-        </span>
-      </div>
-      <div class="piece-body md" hidden></div>
-    </div>
-  {% endfor %}
-  </div>
-</section>
-{% endfor %}
+{% with internal = True %}{% include "_content_cards.html" %}{% endwith %}
 {% endblock %}
 {% block scripts %}{% include "_strategy_js.html" %}{% endblock %}
