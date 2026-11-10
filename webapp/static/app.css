@@ -875,3 +875,10 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .tip-bubble.on { opacity:1; transform:none; }
 .tip-bubble::after { content:""; position:absolute; left:calc(var(--ax) - 6px); bottom:-6px; border:6px solid transparent; border-bottom:0; border-top-color:#0C3335; }
 .tip-bubble.below::after { bottom:auto; top:-6px; border:6px solid transparent; border-top:0; border-bottom-color:#0C3335; }
+/* change 37 fix: the (i) keeps its own shape wherever it sits (metric labels, table headers and the summary strip
+   style their spans, which pushed the "i" out of its circle) */
+.info, span.info, em.info, .metric span.info, .hist-summary span.info, .dist-head span.info, .panel-h span.info {
+  display:inline-grid !important; place-items:center; flex:none; box-sizing:border-box; width:15px; height:15px; padding:0; margin-left:4px;
+  border-radius:50%; border:1px solid #B9C6C7; color:#8A9A9C; font:600 9.5px/1 var(--font) !important; font-style:normal;
+  letter-spacing:0; text-transform:none; text-align:center; gap:0; grid-column:auto; white-space:nowrap; vertical-align:middle; }
+.info:hover, .info:focus-visible { border-color:var(--teal-b) !important; color:var(--teal) !important; background:#EAF6F6; }
