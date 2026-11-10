@@ -21,5 +21,6 @@
 {% else %}
 <div class="empty">{% if A.profile.site_blocked %}The website couldn't be checked in this audit.{% else %}Every website check passed. Nothing to fix.{% endif %}</div>
 {% endfor %}
+{% include "_client_cta.html" %}
 {% endblock %}
 {% block scripts %}{% include "_client_strategy_js.html" %}{% endblock %}

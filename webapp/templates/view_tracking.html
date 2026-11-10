@@ -1,0 +1,12 @@
+{% extends "audit_base.html" %}
+{% block view %}{% set T = V.T %}{% with s = T.s, days = T.days, acts = T.acts, client = T.client, sender = T.sender, max_day = T.max_day, max_sec = T.max_sec %}{% include "_tracking.html" %}{% endwith %}{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var t = b.dataset.copy, done = function () { b.textContent = '✓ Copied'; setTimeout(function () { b.textContent = 'Copy link'; }, 2000); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done); else { var i = document.createElement('input'); i.value = t; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); done(); }
+  });
+});
+</script>
+{% endblock %}

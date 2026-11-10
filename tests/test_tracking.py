@@ -73,13 +73,9 @@ class Tracking(unittest.TestCase):
         self.assertEqual((v["device"], v["city"], v["region"], v["pages"], v["seconds"]), ("Phone", "Cincinnati", "OH", 2, 72))
         self.assertEqual(json.loads(v["sections"])["Search demand"], 60)
         self.assertEqual(self.db.q("SELECT client_views FROM audits WHERE id=?", (self.aid,), one=True)["client_views"], 1)
-        detail = self.client("trrep").get(f"/links/{self.aid}").get_data(as_text=True)
+        detail = self.client("trrep").get(f"/audits/{self.aid}/tracking").get_data(as_text=True)
         for want in ("Search demand", "Switched to", "ChatGPT", "Cincinnati, OH", "Phone"):
             self.assertIn(want, detail)
-        lst = self.client("trrep").get("/links").get_data(as_text=True)
-        self.assertIn(self.A["profile"]["name"], lst)
-        self.assertNotIn(self.A["profile"]["name"], self.client("trrep2").get("/links").get_data(as_text=True))  # Sales see their own
-        self.assertIn(self.A["profile"]["name"], self.client("trboss").get("/links").get_data(as_text=True))   # admins see everyone's
 
     def test_every_main_page_loads_with_visits(self):
         """The Client links badge and markers run on every page; they must work on Postgres too."""
@@ -87,30 +83,42 @@ class Tracking(unittest.TestCase):
         self.app.test_client().get(self.path(l))  # one client visit
         for who in ("trboss", "trrep"):
             c = self.client(who)
-            for url in ("/", "/?scope=team", "/links", f"/links/{self.aid}", "/todo", f"/audits/{self.aid}/overview", "/bulk", "/account"):
+            for url in ("/", "/?scope=team", f"/audits/{self.aid}/tracking", "/todo", f"/audits/{self.aid}/overview", "/bulk", "/account"):
                 self.assertEqual(c.get(url).status_code, 200, (who, url))
         self.assertEqual(self.client("trboss").get("/admin").status_code, 200)
 
-    def test_strategy_tabs_preview_and_full(self):
-        l = self.link()
-        anon = self.app.test_client()
+    def test_strategy_tabs_open_and_content_written(self):
+        """change 46: no locks on the client link, and every content piece is queued when the link is created."""
         from aeo import strategy as strat
+        from markupsafe import escape
+        with mock.patch("webapp.jobs.kick"):
+            l = self.link()
+            queued = self.db.q("SELECT COUNT(*) AS n FROM strategy_content WHERE audit_id=? AND status='queued'", (self.aid,), one=True)["n"]
+            want = sum(len(strat.targets(self.A, k)) for k in strat.GENERATORS)
+            self.assertEqual(queued, want)
+            self.link()  # opening the panel again doesn't queue (or pay for) anything twice
+            self.assertEqual(self.db.q("SELECT COUNT(*) AS n FROM strategy_content WHERE audit_id=?", (self.aid,), one=True)["n"], want)
+        anon = self.app.test_client()
         hows = [it["how"] for it in strat.plan(self.A) if it.get("how")]
         for view in ("strategy", "content", "fixes"):
-            r = anon.get(self.path(l, view))
-            self.assertEqual(r.status_code, 200, view)
-            html = r.get_data(as_text=True)
-            for hidden in ("<form", "data-gen-form", "Export plan", "status-ctl", "Regenerate"):
-                self.assertNotIn(hidden, html, (view, hidden))  # read-only: no controls for the client
+            html = anon.get(self.path(l, view)).get_data(as_text=True)
+            for hidden in ("<form", "data-gen-form", "Export plan", "status-ctl", 'class="locked"'):
+                self.assertNotIn(hidden, html, (view, hidden))
+            self.assertIn("Want Home Builder Marketers to put this live for you?", html)
         html = anon.get(self.path(l, "strategy")).get_data(as_text=True)
-        self.assertIn("Get this done with HBM", html)  # Preview by default
-        from markupsafe import escape
-        for h in hows:
-            self.assertNotIn(str(escape(h)), html)  # the how-to is never sent to a Preview link, not even hidden
-        self.link(act="full")
-        html = self.app.test_client().get(self.path(l, "strategy")).get_data(as_text=True)
-        self.assertNotIn('class="locked"', html)
         self.assertIn(str(escape(hows[0])), html)
+        self.assertIn("Being written", anon.get(self.path(l, "content")).get_data(as_text=True))
+
+    def test_tracking_lives_in_the_audit(self):
+        """change 44: Report tracking in the audit sidebar; the Audits page has no Client links tab."""
+        l = self.link()
+        self.app.test_client().get(self.path(l))
+        c = self.client("trrep")
+        page = c.get(f"/audits/{self.aid}/tracking").get_data(as_text=True)
+        self.assertIn("Report tracking", page)
+        self.assertIn(l["url"], page)
+        self.assertNotIn("Client links", c.get("/").get_data(as_text=True))
+        self.assertIn(f"/audits/{self.aid}/tracking", c.get(f"/links/{self.aid}").headers["Location"])
 
     def test_todo_bulk_actions(self):
         uid = self.ids["trrep2"]

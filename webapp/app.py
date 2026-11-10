@@ -722,7 +722,7 @@ def feedback():
 
 VIEWS = {"overview": "Visibility Overview", "competitors": "Competitor Research", "prompts": "Prompt Research",
          "site": "Site Audit", "sharing": "Share & Loom",
-         "strategy": "Strategy Plan", "content": "Content Generator", "fixes": "Technical Fixes"}
+         "strategy": "Strategy Plan", "content": "Content Generator", "fixes": "Technical Fixes", "tracking": "Report tracking"}
 
 
 def _strategy_ctx(a, A):
@@ -980,6 +980,8 @@ def audit_view(aid, view):
     V["chart"] = views.chart(A, hist)
     if view in VIEWS_STRATEGY:
         V["S"] = _strategy_ctx(a, A)
+    if view == "tracking":  # change 44
+        V["T"] = _tracking_ctx(a)
     V["score_all"] = V["score"] if not area else views.build(A, platform)["score"]
     V["area_scores"] = _area_scores(a, A, platform, clean) if len(V["areas"]) > 1 else {}
     others = db.q("SELECT id, created_at FROM audits WHERE domain=? AND status='done' ORDER BY created_at DESC LIMIT 12", (a["domain"],))
@@ -1135,11 +1137,30 @@ def client_link(aid):
             security_event("client_link_created", g.user["email"], aid)
         from . import todo
         todo.mark_exported(g.user["id"], a, "client")  # sending the link counts like exporting a PDF
+        _write_all_content(a, g.user["id"])  # change 46: every deliverable ready for the client
         info = _client_info(get_audit(aid))
     if request.headers.get("Accept", "").startswith("application/json"):
         return jsonify({"link": _link_json(info)})
-    flash(("Client link ready: " + info["url"]) if info else "Client link turned off.", "good")
-    return redirect(url_for("audit_view", aid=aid, view="overview"))
+    flash(("Client link ready and copied below: " + info["url"]) if info else "Client link turned off.", "good")
+    return redirect(url_for("audit_view", aid=aid, view="tracking" if request.form.get("next") == "tracking" else "overview"))
+
+
+def _write_all_content(a, user_id):
+    """change 46: queue every Content Generator piece this builder doesn't have yet (written in the background with
+    Gemini, about 1-2 minutes). Pieces already written are left alone, so nothing is paid for twice."""
+    from aeo import strategy as strat
+    from . import strategy_jobs
+    A = store.load_json(a["id"])
+    if A is None:
+        return 0
+    have = {(r["kind"], r["key"]) for r in db.q("SELECT kind, key FROM strategy_content WHERE audit_id=? AND status IN ('done','queued','running')", (a["id"],))}
+    n = 0
+    for kind in strat.GENERATORS:
+        missing = [k for k, _ in strat.targets(A, kind) if (kind, k) not in have]
+        if missing:
+            strategy_jobs.queue(a, kind, "gemini", user_id, missing)
+            n += len(missing)
+    return n
 
 
 def _client_audit(token):
@@ -1170,7 +1191,7 @@ def _alert_owner(a):
     db.x("UPDATE audits SET client_alerted_at=? WHERE id=?", (time.time(), a["id"]))
     name = a["builder_name"] or a["domain"]
     first = not (a["client_views"] or 0)
-    link = (PUBLIC_URL or request.host_url.rstrip("/")) + url_for("links_detail", aid=a["id"])
+    link = (PUBLIC_URL or request.host_url.rstrip("/")) + url_for("audit_view", aid=a["id"], view="tracking")
     subject = f"{name} {'just opened' if first else 'is back on'} their AI visibility report"
     text = (f"{name} {'opened their AI visibility report for the first time' if first else 'opened their AI visibility report again'} "
             f"({_device().lower()}). See what they looked at: {link}")
@@ -1229,7 +1250,7 @@ def client_view(token, view="overview"):
     tpl = f"client_{view}.html" if view in VIEWS_STRATEGY else f"view_{view}.html"  # change 42: read-only Strategy tabs
     resp = app.make_response(render_template(tpl, base_tpl="client_base.html", a=a, A=A, V=V, view=view,
                                              views_nav=VIEWS, platform=platform, others=[], loom="", share=None,
-                                             now_ts=time.time(), exp_date=f"{exp:%b} {exp.day}", client_full=bool(a["client_full"]),
+                                             now_ts=time.time(), exp_date=f"{exp:%b} {exp.day}", client_full=True,  # change 46: no locks
                                              contact=owner, track=not team))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     resp.headers["Referrer-Policy"] = "no-referrer"
@@ -1288,7 +1309,9 @@ def _link_summary(aid):
 @app.route("/links")
 @login_required
 def links_home():
-    """Audits › Client links: every link sent, how often it was opened, when, and where clients spend their time."""
+    """Kept for old bookmarks; tracking now lives in each audit's sidebar (change 44)."""
+    if not request.args.get("all"):
+        return redirect(url_for("dashboard"))
     if not auth.can(g.user, "share"):
         abort(403)
     see_all = auth.can(g.user, "admin")
@@ -1316,31 +1339,30 @@ def links_home():
     return render_template("links.html", rows=rows, show=show, sort=sort, see_all=see_all)
 
 
-@app.route("/links/<aid>")
-@login_required
-def links_detail(aid):
-    if not auth.can(g.user, "share"):
-        abort(403)
-    a = get_audit(aid)
-    if not a["client_created_at"] and not a["client_token"]:
-        abort(404)
-    s = _link_summary(aid)
+def _tracking_ctx(a):
+    s_ = _link_summary(a["id"])
     days = collections.OrderedDict()
     for i in range(13, -1, -1):  # views per day, last 14 days
-        d = datetime.date.today() - datetime.timedelta(days=i)
-        days[d] = 0
-    for v in s["visits"]:
+        days[datetime.date.today() - datetime.timedelta(days=i)] = 0
+    for v in s_["visits"]:
         d = datetime.date.fromtimestamp(v["started_at"])
         if d in days:
             days[d] += 1
     acts = collections.Counter()
-    for v in s["visits"]:
+    for v in s_["visits"]:
         for x in v["actions"]:
             acts[(x["k"], x["d"])] += 1
     sender = db.q("SELECT name FROM users WHERE id=?", (a["client_by"] or a["user_id"],), one=True)
-    return render_template("link_detail.html", a=a, s=s, days=list(days.items()), acts=acts.most_common(20),
-                           client=_client_info(a), sender=sender, max_day=max(days.values()) or 1,
-                           max_sec=(s["sections"][0][1] if s["sections"] else 1) or 1)
+    return {"s": s_, "days": list(days.items()), "acts": acts.most_common(20), "client": _client_info(a), "sender": sender,
+            "max_day": max(days.values()) or 1, "max_sec": (s_["sections"][0][1] if s_["sections"] else 1) or 1}
+
+
+@app.route("/links/<aid>")
+@login_required
+def links_detail(aid):
+    """Old address: tracking now lives in the audit's sidebar (change 44)."""
+    get_audit(aid)
+    return redirect(url_for("audit_view", aid=aid, view="tracking"))
 
 
 def _links_new():
