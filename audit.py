@@ -81,6 +81,12 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         step("Reading the website", 12, event=f"Checked business markup, phone details and {profile['sitemap_count']:,} sitemap pages")
         step("Reading the website", 14, event="Checked robots.txt and llms.txt for AI crawler access")
     market = site.market_from(profile, city, state)
+    if not market["city"] or not market["state"]:  # change 30: look it up instead of stopping
+        lc, ls, how = site.lookup_market(profile["name"] or site.name_from_domain(profile["domain"]), profile["domain"])
+        if lc:
+            market = site.market_from(profile, lc, ls)
+            if market["city"] and market["state"]:
+                step("Reading the website", 15, event=f"Found the builder's market with {how}: {market['city']}, {market['state_code']}")
     if not market["city"] or not market["state"]:
         raise AuditError("This website turns away automated visitors, so we couldn't read the builder's city and state. Enter them and run again."
                          if blocked else "Couldn't find the builder's city and state on the website. Enter them and run again.")
@@ -88,6 +94,22 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     log(f"  {profile['name']} · market {market['city']}, {market['state_code']} · areas {profile['areas_served'] or '—'}")
     qs = questions.build(profile, market, max_q)
     main_label = f"{market['city']}, {market['state_code']}"
+    # change 29: start asking the AI platforms now, while locations, search demand and the Google profile load
+    import threading
+    chosen = [en for en in engines.ENGINES if not only or en in only]
+    live = [en for en in chosen if engines.is_configured(en)]
+    early_qs = [q for q in qs if not q["id"].startswith("area_")]  # area questions may be swapped for per-city sets
+    for q in early_qs:
+        if q.get("kind") != "brand":
+            q["area"] = main_label
+    est = {en: {"done": 0, "total": len(early_qs), "state": "running" if en in live else "off"} for en in chosen}
+    early = {"questions": early_qs, "chosen": chosen, "est": est, "answers": {}, "market": market, "profile": profile}
+    shared_lock = threading.Lock()  # both early batches write to the same answers and counters
+    # nothing new starts after 150 s, so this step always fits in one serverless run; the next step asks whatever is left
+    step("Asking AI platforms", 17, event=f"Asking {len(live)} AI platform{'s' if len(live) != 1 else ''} the main local questions "
+                                          "while the rest of the local data loads", engines_state={k: dict(v) for k, v in est.items()})
+    t_early = threading.Thread(target=ask_batch, args=(early, progress), kwargs={"pct_range": (18, 50), "lock": shared_lock, "deadline": t0 + 150}, daemon=True)
+    t_early.start()
     # ---- service locations: each city is measured on its own, searched from that city ----
     step("Finding service locations", 17, event="Finding the cities and neighbourhoods this builder serves")
     found = locations.find(profile, market)
@@ -114,11 +136,21 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     from concurrent.futures import ThreadPoolExecutor
     city_kw = {l["label"]: questions.CITY_KEYWORD.format(kw=questions.loc_kw(l)) for l in pool_locs[1:9]}
     kws = list(dict.fromkeys([q["keyword"] for q in qs] + list(city_kw.values())))
-    with ThreadPoolExecutor(max_workers=2) as pool:  # Semrush and DataWise run side by side
-        f_sem = pool.submit(semrush.context, scope.semrush_target(sc), kws) if (use_semrush and semrush.available()) else None
-        f_dw = pool.submit(datawise.early, profile, market, kws) if datawise.available() else None
-        sem = f_sem.result() if f_sem else None
-        dw = f_dw.result() if f_dw else None
+    pool = ThreadPoolExecutor(max_workers=2)  # Semrush and DataWise run side by side
+    f_sem = pool.submit(semrush.context, scope.semrush_target(sc), kws) if (use_semrush and semrush.available()) else None
+    f_dw = pool.submit(datawise.early, profile, market, kws) if datawise.available() else None
+    wait_until = time.time() + config.SETTINGS["DATA_WAIT"]  # change 29: a slow data source can't hold the audit up
+
+    def _within(f, label):
+        if not f:
+            return None
+        try:
+            return f.result(timeout=max(1, wait_until - time.time()))
+        except Exception as ex:  # too slow or failed: carry on without it
+            log(f"  {label} skipped: {'took too long' if type(ex).__name__ == 'TimeoutError' else ex}")
+            return None
+    sem, dw = _within(f_sem, "Semrush"), _within(f_dw, "DataWise")
+    pool.shutdown(wait=False)
     for err in (sem or {}).get("errors", []):
         log(f"  Semrush warning: {err}")
     vols = dict((sem or {}).get("volumes", {}))
@@ -141,6 +173,21 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         step("Preparing questions", 19, event="Measuring " + ", ".join([main_label] + [l["label"] for l in measured]) + " separately")
     questions.apply_volumes(qs, vols, (sem or {}).get("trends", {}))
     step("Preparing questions", 20, event=f"Prepared {len(qs)} local home-buyer questions")
+    # change 29: the city questions start now too, instead of waiting for the rest of this step
+    early_ids = {q["id"] for q in early_qs}
+    rest_qs = [q for q in qs if q["id"] not in early_ids]
+    for q in rest_qs:
+        if q.get("kind") != "brand" and not q.get("area"):
+            q["area"] = main_label
+    with shared_lock:
+        for st in est.values():
+            st["total"] = len(qs)
+            if st["state"] == "done" and st["done"] < st["total"]:
+                st["state"] = "running"
+    rest = {"questions": rest_qs, "chosen": chosen, "est": est, "answers": early["answers"], "market": market, "profile": profile}
+    t_rest = threading.Thread(target=ask_batch, args=(rest, progress), daemon=True,
+                              kwargs={"pct_range": (30, 90), "lock": shared_lock, "total": len(qs) * len(chosen), "deadline": t0 + 150})
+    t_rest.start()
 
     if dw is not None:
         for q in qs:
@@ -155,18 +202,17 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     step("Getting search demand and the Google profile", 28, event="Reviewed the Google Business Profile and local search data")
     checks = [] if profile.get("site_blocked") else site.checks(profile, market)
 
-    chosen = [en for en in engines.ENGINES if not only or en in only]
-    live = [en for en in chosen if engines.is_configured(en)]
     log(f"Asking {len(qs)} questions on {len(live)} platforms: {', '.join(engines.ENGINE_LABELS[x] for x in live) or 'none configured'}")
-    est = {en: {"done": 0, "total": len(qs), "state": "running" if en in live else "off"} for en in chosen}
-    step("Asking AI platforms", 30, event="Asking each AI platform the same local questions, with the location set to "
+    step("Asking AI platforms", 30, event="Asking each AI platform the local questions, with the location set to "
          + (f"{main_label} and each service city" if measured else main_label), engines_state={k: dict(v) for k, v in est.items()})
+    t_early.join()  # the answers were coming in alongside everything above
+    t_rest.join()
     return {"url": url, "t0": t0, "profile": profile, "market": market, "questions": qs, "sem": sem, "dw": dw, "checks": checks,
-            "chosen": chosen, "est": est, "answers": {}, "pool_locs": pool_locs,
+            "chosen": chosen, "est": est, "answers": early["answers"], "pool_locs": pool_locs,
             "found": [l for l in found if l not in pool_locs]}
 
 
-def ask_batch(S, progress=None, deadline=None):
+def ask_batch(S, progress=None, deadline=None, pct_range=(30, 90), lock=None, total=None):
     """Step 2: ask the AI platforms the questions not answered yet, in parallel. Stops starting new work at `deadline`
     (epoch seconds) so a serverless request can save and continue in the next one. Returns True when all are answered."""
     import threading
@@ -174,10 +220,18 @@ def ask_batch(S, progress=None, deadline=None):
     step = _stepper(progress)
     qmap = {q["id"]: q for q in S["questions"]}
     todo = [(en, q["id"]) for q in S["questions"] for en in S["chosen"] if f"{en}|{q['id']}" not in S["answers"]]
-    total = len(S["questions"]) * len(S["chosen"])
-    lock = threading.Lock()
+    total = total or len(S["questions"]) * len(S["chosen"])
+    lock = lock or threading.Lock()
     est = S["est"]
-    workers = config.SETTINGS["WORKERS"]
+    # change 29: a quick "named so far" count for the live progress screen (the final analysis is the exact figure)
+    P = S.get("profile") or {}
+    name_l = re.sub(r"\s+", " ", (P.get("name") or "").lower()).strip()
+    dom_label = (P.get("domain") or "").lower().split(".")[0]
+
+    def named(r):
+        t = (r.get("text") or "").lower()
+        return bool((name_l and len(name_l) > 3 and name_l in t) or (dom_label and len(dom_label) > 3 and dom_label in t.replace(" ", ""))
+                    or any(dom_label and dom_label in (c.get("domain") or "") for c in r.get("citations") or []))
 
     def ask(j):
         en, qid = j
@@ -187,6 +241,9 @@ def ask_batch(S, progress=None, deadline=None):
             S["answers"][f"{en}|{qid}"] = r
             st = est[en]
             st["done"] += 1
+            if r["status"] == "ok":
+                st["answered"] = st.get("answered", 0) + 1
+                st["named"] = st.get("named", 0) + (1 if named(r) else 0)
             label = engines.ENGINE_LABELS[en]
             ev = None
             if r["status"] == "error" and "credit" in (r.get("error") or "").lower():
@@ -203,14 +260,23 @@ def ask_batch(S, progress=None, deadline=None):
                 ev = f"Asked {label}: {q['prompt']}"
             n = len(S["answers"])
             snapshot = {k: dict(v) for k, v in est.items()}
-        step(f"Asking AI platforms ({n} of {total})", 30 + int(60 * n / max(1, total)), event=ev, engines_state=snapshot)
+        lo, hi = pct_range
+        step(f"Asking AI platforms ({n} of {total})", lo + int((hi - lo) * n / max(1, total)), event=ev, engines_state=snapshot)
         return r
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        for i in range(0, len(todo), workers):  # one wave at a time, so a deadline can stop cleanly between waves
+    # change 29: every platform gets its own lane of up to PER_PLATFORM questions at once, so one slow platform
+    # never holds up the others; nothing new starts after the deadline (a serverless run saves and continues later)
+    per = max(1, config.SETTINGS["PER_PLATFORM"])
+    lanes = {en: threading.BoundedSemaphore(per) for en in S["chosen"]}
+
+    def lane(j):
+        with lanes[j[0]]:
             if deadline and time.time() > deadline:
-                break
-            list(pool.map(ask, todo[i:i + workers]))
+                return None
+            return ask(j)
+    if todo:
+        with ThreadPoolExecutor(max_workers=min(len(todo), per * len({en for en, _ in todo}))) as pool:
+            list(pool.map(lane, todo))
     return len(S["answers"]) >= total
 
 
@@ -235,7 +301,12 @@ def finish(S, progress=None):
         doms = [profile["domain"]] + [b["domain"] for b in analysis["leaderboard"] if b.get("domain") and not b.get("prospect")]
         doms += analyze.competitor_domains(analysis, answers, profile["domain"])
         step("Checking the AI mentions database", 94, event="Comparing the AI mentions database for this builder and its competitors")
-        dw["mentions"] = datawise.mentions(list(dict.fromkeys(doms))[:5])
+        mpool = ThreadPoolExecutor(max_workers=1)  # change 29: capped like the other search data
+        try:
+            dw["mentions"] = mpool.submit(datawise.mentions, list(dict.fromkeys(doms))[:5]).result(timeout=config.SETTINGS["DATA_WAIT"])
+        except Exception:
+            dw["mentions"] = {"google": {}, "chatgpt": {}, "sources": {}, "errors": ["AI mentions database took too long; skipped"]}
+        mpool.shutdown(wait=False)
         for err in dw["mentions"]["errors"]:
             log(f"  DataWise warning: {err}")
     audit = {

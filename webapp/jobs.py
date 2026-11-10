@@ -39,8 +39,15 @@ def _progress_writer(aid, row):
     feed = json.loads(row["activity"] or "[]") if row["activity"] else []
     eng = json.loads(row["engines"] or "{}") if row["engines"] else {}
     last = [0.0]
+    top = [int(row["progress"] or 0)]
+    lock = threading.Lock()
 
     def progress(stage, pct, event=None, engines=None):
+        with lock:  # change 29: answers arrive from several threads at once; the bar only ever moves forward
+            top[0] = pct = max(top[0], int(pct))
+            _write(stage, pct, event, engines)
+
+    def _write(stage, pct, event, engines):
         if event:
             feed.append({"t": time.time(), "text": event})
             del feed[:-40]

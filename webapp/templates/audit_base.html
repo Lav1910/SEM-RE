@@ -103,6 +103,14 @@
     </select></label>
   {% if a.test_mode %}<span class="pill p-mute">Quick test · 6 questions</span>{% endif %}
 </div>
+{% if request.args.get('reopened') %}{# change 29: a recent audit opened instantly, with the option to run a new one #}
+<div class="reopen-note">
+  <span>Opened instantly: this builder was audited <b>{{ a.created_at|ago }}</b>{% if a.owner %} by {{ a.owner }}{% endif %}.</span>
+  <form method="post" action="{{ url_for('create_audit') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <input type="hidden" name="url" value="{{ a.url }}"><input type="hidden" name="scope" value="{{ a.scope or 'root' }}"><input type="hidden" name="confirm_duplicate" value="1">
+    <button class="btn btn-primary btn-small" type="submit">Run fresh</button></form>
+</div>
+{% endif %}
 {% block view %}{% endblock %}
 {% include "_feedback.html" %}
 {% endblock %}

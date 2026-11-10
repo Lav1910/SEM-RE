@@ -572,6 +572,9 @@ def create_audit():
     prev = db.q("""SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id
                    WHERE a.domain=? AND a.status='done' AND a.created_at>? ORDER BY a.created_at DESC LIMIT 1""",
                 (domain, time.time() - 30 * 86400), one=True)
+    if prev and prev["created_at"] > time.time() - REOPEN_DAYS * 86400 and not request.form.get("confirm_duplicate") \
+            and (prev["scope"] or "root") == kind:  # change 29: audited this week, so open it instantly
+        return redirect(url_for("audit_view", aid=prev["id"], view="overview", reopened=1))
     if prev and prev["user_id"] != g.user["id"] and not request.form.get("confirm_duplicate"):
         return render_template("duplicate.html", prev=prev, form=request.form)
     aid = uuid.uuid4().hex[:12]
@@ -584,6 +587,9 @@ def create_audit():
           1 if request.form.get("test_mode") else 0, secrets.token_urlsafe(18), time.time()))
     jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=aid))
+
+
+REOPEN_DAYS = int(os.environ.get("HBM_REOPEN_DAYS", "7"))
 
 
 @app.route("/audits/<aid>")

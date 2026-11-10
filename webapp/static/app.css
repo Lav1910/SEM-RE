@@ -787,3 +787,10 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .pg:hover { border-color:#9CCFD0; background:#F6FAFA; }
 .pg.on { background:var(--teal); border-color:var(--teal); color:#fff; font-weight:600; }
 .pg-gap { color:var(--muted); padding:0 2px; }
+
+/* change 30: a plain question for Sales, not an error */
+.flash.ask { background:#F2F8F8; color:var(--ink); border:1px solid var(--line); }
+
+/* change 29: instant re-open note */
+.reopen-note { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:#F2F8F8; border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin:0 0 14px; font-size:14px; }
+.reopen-note form { margin:0; }

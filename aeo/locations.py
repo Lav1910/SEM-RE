@@ -88,7 +88,7 @@ def validate(cands, market, provider="gemini"):
                   '[{"input": "...", "name": "Indian Hill", "state_code": "OH", "kind": "city", "parent": null}]\n'
                   + "\n".join(f"- {c['name']}" + (f" ({c['state_code']})" if c.get("state_code") else "") for c in rest))
         try:
-            checked, _ = llm.json_answer(prompt, provider, timeout=60)
+            checked, _ = llm.json_answer(prompt, provider, timeout=15)  # change 29: fall back to the site's own list if slow
         except Exception:
             checked = None
     out, seen = [main], {market["city"].lower()}
