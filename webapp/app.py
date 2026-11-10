@@ -6,6 +6,7 @@ the prospect, and grab Loom talking points. Admins manage users, see platform st
 import collections
 import datetime
 import functools
+import io
 import json
 import logging
 import os
@@ -24,7 +25,7 @@ sys.path.insert(0, ROOT)
 from aeo import budget, config, engines, semrush, site  # noqa: E402
 from aeo import dates  # noqa: E402
 from aeo import scope as scopes  # noqa: E402
-from . import auth, db, jobs, mailer, markdown, pdf, status, views  # noqa: E402
+from . import auth, db, jobs, mailer, markdown, pdf, status, store, views  # noqa: E402
 
 DAILY_LIMIT = int(os.environ.get("DAILY_AUDITS_PER_USER", "100"))
 
@@ -33,6 +34,8 @@ def _secret_key():
     k = os.environ.get("SECRET_KEY")
     if k:
         return k
+    if jobs.SERVERLESS:
+        raise SystemExit("Set SECRET_KEY in the host's environment variables (a long random string).")
     path = os.path.join(db.DATA_DIR, "secret_key")
     os.makedirs(db.DATA_DIR, exist_ok=True)
     if not os.path.exists(path):
@@ -50,15 +53,7 @@ app.config.update(SECRET_KEY=_secret_key(), SESSION_COOKIE_HTTPONLY=True, SESSIO
                   SESSION_COOKIE_SECURE=SECURE, SESSION_COOKIE_NAME="__Host-hbm" if SECURE else "hbm_session",
                   PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=int(os.environ.get("SESSION_DAYS", "7"))),
                   MAX_CONTENT_LENGTH=2 * 1024 * 1024)
-_failed_logins = collections.defaultdict(list)
-_failed_emails = collections.defaultdict(list)
-_code_requests = collections.defaultdict(list)
-
-
-def _too_many(bucket, key, limit, window=900):
-    now = time.time()
-    bucket[key] = [t for t in bucket[key] if now - t < window]
-    return len(bucket[key]) >= limit
+WINDOW = 900  # rate-limit window (15 minutes); counts come from the security log, so they hold across servers
 
 
 def client_ip():
@@ -95,7 +90,7 @@ def load_user():
             g.user = None; session.pop("uid", None)  # only HBM addresses, even for accounts created before the rule
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
-    if request.method == "POST":
+    if request.method == "POST" and request.path != "/api/jobs/tick":  # the tick endpoint is checked by its own secret
         if not secrets.compare_digest(request.form.get("csrf", ""), session.get("csrf", "")):
             abort(400, "Your form expired. Go back and try again.")
 
@@ -238,9 +233,8 @@ def login():
             flash("Enter your password, or choose “Email me a sign-in code”.", "bad")
             return render_template("login.html", **ctx)
         now = time.time()
-        _failed_logins[ip] = [t for t in _failed_logins[ip] if now - t < 900]
-        _failed_emails[email] = [t for t in _failed_emails[email] if now - t < 900]
-        if len(_failed_logins[ip]) >= 8 or len(_failed_emails[email]) >= 5:
+        if (db.recent_count("login_failed", now - WINDOW, ip=ip) >= 8 or
+                db.recent_count("login_failed", now - WINDOW, email=email) >= 5):
             security_event("login_blocked", email, "too many attempts")
             flash("Too many attempts. Wait 15 minutes and try again.", "bad")
             return render_template("login.html", **ctx), 429
@@ -249,12 +243,10 @@ def login():
         if ok and not auth.allowed_email(email):
             ok = False
         if ok:
-            _failed_emails.pop(email, None)
             _start_session(u, "password")
             return redirect(_safe_next(request.args.get("next")))
         if not u:
             check_password_hash("pbkdf2:sha256:600000$x$" + "0" * 64, "x")  # same work either way: don't reveal which emails exist
-        _failed_logins[ip].append(now); _failed_emails[email].append(now)
         security_event("login_failed", email, "password")
         flash("That email and password don't match.", "bad")
     return render_template("login.html", **ctx)
@@ -272,11 +264,12 @@ def login_code():
     if not auth.allowed_email(email):
         flash(f"Use your @{auth.ALLOWED_DOMAIN} email address.", "bad")
         return redirect(url_for("login", next=nxt))
-    if _too_many(_code_requests, "ip:" + client_ip(), 10) or _too_many(_code_requests, email, 3):
+    since = time.time() - WINDOW
+    if (db.recent_count("code_sent,code_unknown_email", since, ip=client_ip()) >= 10 or
+            db.recent_count("code_sent,code_unknown_email", since, email=email) >= 3):
         security_event("code_blocked", email, "too many code requests")
         flash("Too many codes requested. Wait 15 minutes and try again.", "bad")
         return redirect(url_for("login", next=nxt))
-    _code_requests["ip:" + client_ip()].append(time.time()); _code_requests[email].append(time.time())
     u = db.q("SELECT * FROM users WHERE email=? AND active=1 AND pending=0", (email,), one=True)
     if u:
         code, token = auth.new_code(db, u, app.secret_key, client_ip())
@@ -300,7 +293,7 @@ def login_verify():
     if not email:
         return redirect(url_for("login"))
     if request.method == "POST":
-        if _too_many(_failed_logins, client_ip(), 8):
+        if db.recent_count("login_failed", time.time() - WINDOW, ip=client_ip()) >= 8:
             flash("Too many attempts. Wait 15 minutes and try again.", "bad")
             return render_template("login_code.html", email=email), 429
         u = db.q("SELECT * FROM users WHERE email=? AND active=1 AND pending=0", (email,), one=True)
@@ -310,7 +303,6 @@ def login_verify():
             _start_session(u, "email code")
             session["code_login_t"] = time.time()
             return redirect(url_for("account", setup=1) if u["password_hash"] in ("", "!") else _safe_next(nxt))
-        _failed_logins[client_ip()].append(time.time())
         security_event("login_failed", email, "email code")
         flash("That code isn't right or has expired. Check the latest email, or request a new code.", "bad")
     return render_template("login_code.html", email=email)
@@ -415,10 +407,8 @@ def dashboard():
     rows = db.q(f"SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id {where} ORDER BY a.created_at DESC LIMIT 100", args)
     live = [en for en in engines.ENGINES if engines.is_configured(en)]
     b = budget.status()
-    last = db.q("SELECT out_dir FROM audits WHERE status='done' ORDER BY created_at DESC LIMIT 1", one=True)
-    LA = None
-    if last and last["out_dir"] and os.path.exists(os.path.join(last["out_dir"], "audit.json")):
-        LA = json.load(open(os.path.join(last["out_dir"], "audit.json")))
+    last = db.q("SELECT id FROM audits WHERE status='done' ORDER BY created_at DESC LIMIT 1", one=True)
+    LA = store.load_json(last["id"]) if last else None
     from aeo.engines import STATE_CODES
     return render_template("dashboard.html", rows=rows, scope=scope, live=live, budget=b if auth.can(g.user, "see_costs") else {}, pstat=status.current(LA),
                            states=sorted(STATE_CODES.values()))
@@ -431,7 +421,8 @@ def create_audit():
     if not url:
         flash("Enter a website address, like justindoylehomes.com.", "bad")
         return redirect(url_for("dashboard"))
-    today = db.q("SELECT COUNT(*) AS n FROM audits WHERE user_id=? AND created_at>?", (g.user["id"], time.time() - 86400), one=True)["n"]
+    today = db.q("SELECT COUNT(*) AS n FROM audits WHERE user_id=? AND created_at>? AND batch_id IS NULL",
+                 (g.user["id"], time.time() - 86400), one=True)["n"]  # bulk audits have their own limits
     if today >= DAILY_LIMIT:
         flash(f"You've run {DAILY_LIMIT} audits in the last 24 hours, the daily limit. Ask an admin to raise it.", "bad")
         return redirect(url_for("dashboard"))
@@ -454,6 +445,7 @@ def create_audit():
             VALUES (?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
          (aid, g.user["id"], url, domain, kind, json.dumps(locs) if locs else None, request.form.get("city", "").strip() or None, request.form.get("state", "").strip() or None,
           1 if request.form.get("test_mode") else 0, secrets.token_urlsafe(18), time.time()))
+    jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=aid))
 
 
@@ -496,9 +488,9 @@ def api_locations():
     live = [e for e in engines.ENGINES if engines.is_configured(e) and status.current().get(e, {}).get("state") != "bad"]
     meta = {"cap": config.SETTINGS["MAX_LOCATIONS"], "platforms": len(live),
             "cost_per_city": round(budget.per_question(live) * 3, 2) if auth.can(g.user, "see_costs") else None}
-    last = db.q("SELECT out_dir FROM audits WHERE domain=? AND status='done' ORDER BY created_at DESC LIMIT 1", (domain,), one=True)
-    if last and last["out_dir"] and os.path.exists(os.path.join(last["out_dir"], "audit.json")):
-        A = json.load(open(os.path.join(last["out_dir"], "audit.json")))
+    last = db.q("SELECT id FROM audits WHERE domain=? AND status='done' ORDER BY created_at DESC LIMIT 1", (domain,), one=True)
+    A = store.load_json(last["id"]) if last else None
+    if A:
         locs = A.get("locations")
         if locs:
             return jsonify(dict(meta, source="last audit", market=A["market"],
@@ -610,8 +602,8 @@ def strategy_item(aid):
     item, st = request.form.get("item", "")[:60], request.form.get("status")
     if st not in ("todo", "doing", "done"):
         abort(400)
-    db.x("INSERT OR REPLACE INTO strategy_status (domain, item_id, status, user_id, updated_at) VALUES (?,?,?,?,?)",
-         (a["domain"], item, st, g.user["id"], time.time()))
+    db.upsert("strategy_status", {"domain": a["domain"], "item_id": item, "status": st, "user_id": g.user["id"],
+                                  "updated_at": time.time()}, ("domain", "item_id"))
     if request.headers.get("X-Requested-With") == "fetch":
         return jsonify({"ok": True, "status": st, "who": (g.user["name"] or "").split(" ")[0]})
     return redirect(request.referrer or url_for("audit_view", aid=aid, view="strategy"))
@@ -624,7 +616,7 @@ def strategy_export(aid, fmt):
     a = get_audit(aid)
     if a["status"] != "done" or fmt not in ("md", "doc", "pdf"):
         abort(404)
-    A = json.load(open(os.path.join(a["out_dir"], "audit.json")))
+    A = store.load_json(aid)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
     rows = db.q("SELECT * FROM strategy_content WHERE audit_id=? AND status='done' ORDER BY kind, key", (aid,))
     only = request.args.get("kind")
@@ -634,14 +626,10 @@ def strategy_export(aid, fmt):
         from aeo import render as rnd
         html = render_template("strategy_print.html", a=a, A=A, S=ctx, today=dates.long_date(),
                                css=open(os.path.join(ROOT, "tools", "report.css")).read(), logo=rnd._logo())
-        hp, pp = os.path.join(a["out_dir"], "strategy.html"), os.path.join(a["out_dir"], "strategy.pdf")
-        open(hp, "w").write(html)
-        try:
-            pdf.html_to_pdf(hp, pp)
-        except Exception as e:
-            flash(f"The PDF couldn't be created: {e}", "bad")
-            return redirect(url_for("audit_view", aid=aid, view="strategy"))
-        return send_file(pp, mimetype="application/pdf", as_attachment=True, download_name=f"{name}-AEO-Strategy.pdf")
+        data = pdf.make_pdf(html)
+        if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
+            return _print_page(html)
+        return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=True, download_name=f"{name}-AEO-Strategy.pdf")
     if not rows:
         flash("Generate some content first; exports include every finished piece.", "bad")
         return redirect(url_for("audit_view", aid=aid, view="content"))
@@ -667,7 +655,9 @@ def audit_view(aid, view):
     a = get_audit(aid)
     if a["status"] != "done":
         return redirect(url_for("audit_page", aid=aid))
-    A = json.load(open(os.path.join(a["out_dir"], "audit.json")))
+    A = store.load_json(aid)
+    if A is None:
+        abort(404)
     platform = request.args.get("platform", "all")
     if platform != "all" and platform not in engines.ENGINES:
         platform = "all"
@@ -675,8 +665,8 @@ def audit_view(aid, view):
     hist = []
     for h in db.q("SELECT * FROM audits WHERE domain=? AND status='done' AND created_at<=? ORDER BY created_at",
                   (a["domain"], a["created_at"])):
-        if h["out_dir"] and os.path.exists(os.path.join(h["out_dir"], "audit.json")):
-            HA = json.load(open(os.path.join(h["out_dir"], "audit.json")))
+        HA = A if h["id"] == aid else store.load_json(h["id"])
+        if HA:
             hv = views.build(HA, platform)
             if not hv["measured_any"]:  # an audit run before any AI platform was connected isn't a real zero
                 continue
@@ -695,7 +685,7 @@ def audit_view(aid, view):
     V["score_all"] = V["score"] if not area else views.build(A, platform)["score"]
     V["area_scores"] = {ar: views.build(A, platform, None, None, ar)["score"] for ar in (V["areas"] if len(V["areas"]) > 1 else [])}
     others = db.q("SELECT id, created_at FROM audits WHERE domain=? AND status='done' ORDER BY created_at DESC LIMIT 12", (a["domain"],))
-    loom = open(os.path.join(a["out_dir"], "loom.txt")).read() if os.path.exists(os.path.join(a["out_dir"], "loom.txt")) else ""
+    loom = store.get_text(aid, "loom.txt") or ""
     share = url_for("shared_report", token=a["share_token"], _external=True) if a["share_token"] else None
     return render_template(f"view_{view}.html", a=a, A=A, V=V, view=view, views_nav=VIEWS, platform=platform,
                            others=others, loom=loom, share=share)
@@ -707,16 +697,17 @@ def export_pdf(aid):
     a = get_audit(aid)
     if a["status"] != "done":
         abort(404)
-    html_path = os.path.join(a["out_dir"], "report.html")
-    pdf_path = os.path.join(a["out_dir"], "report.pdf")
-    if not os.path.exists(pdf_path) or os.path.getmtime(pdf_path) < os.path.getmtime(html_path):
-        try:
-            pdf.html_to_pdf(html_path, pdf_path)
-        except Exception as e:
-            flash(f"The PDF couldn't be created: {e}", "bad")
-            return redirect(url_for("audit_view", aid=aid, view="overview"))
+    html = store.get_text(aid, "report.html")
+    if html is None:
+        abort(404)
+    data = store.get_bytes(aid, "report.pdf")
+    if data is None or (store.updated_at(aid, "report.pdf") or 0) < (store.updated_at(aid, "report.html") or 0):
+        data = pdf.make_pdf(html)
+        if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
+            return _print_page(html)
+        store.put(aid, "report.pdf", data)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
-    return send_file(pdf_path, mimetype="application/pdf", as_attachment=True,
+    return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=True,
                      download_name=f"{name}-AI-Visibility-Audit-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
 
 
@@ -729,27 +720,50 @@ def api_status(aid):
     data["ahead"] = ahead
     data["activity"] = json.loads(a["activity"] or "[]")
     data["engines"] = json.loads(a["engines"] or "{}")
+    if a["status"] in ("queued", "running") and (a["lease_until"] or 0) < time.time():
+        jobs.kick(PUBLIC_URL or request.host_url)  # serverless: nobody is working on it right now, start a tick
     return jsonify(data)
+
+
+def _print_page(html):
+    """Report HTML that opens the browser's print dialog, for hosts without a PDF engine."""
+    snippet = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},400)})</script>'
+    body = html.replace("</body>", snippet + "</body>") if "</body>" in html else html + snippet
+    resp = app.response_class(body, mimetype="text/html")
+    resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'"
+    return resp
+
+
+@app.route("/api/jobs/tick", methods=["GET", "POST"])
+def jobs_tick():
+    """Serverless worker: Vercel Cron (GET, every minute) and the app itself (POST) call this to run queued work."""
+    sent = request.headers.get("Authorization", "")
+    if not jobs.tick_secret() or not secrets.compare_digest(sent, "Bearer " + jobs.tick_secret()):
+        abort(404)
+    did = jobs.work()
+    if did and jobs.pending():  # hand over only after real work, so idle ticks never chain forever
+        jobs.kick(PUBLIC_URL or request.host_url)
+    return jsonify({"worked": did})
 
 
 @app.route("/audits/<aid>/report")
 @login_required
 def audit_report(aid):
     a = get_audit(aid)
-    path = os.path.join(a["out_dir"] or "", "report.html")
-    if a["status"] != "done" or not os.path.exists(path):
+    html = store.get_text(aid, "report.html") if a["status"] == "done" else None
+    if html is None:
         abort(404)
-    return send_file(path, mimetype="text/html")
+    return app.response_class(html, mimetype="text/html")
 
 
 @app.route("/audits/<aid>/data.json")
 @permission_required("raw_data")
 def audit_data(aid):
     a = get_audit(aid)
-    path = os.path.join(a["out_dir"] or "", "audit.json")
-    if not os.path.exists(path):
+    data = store.get_bytes(aid, "audit.json")
+    if data is None:
         abort(404)
-    return send_file(path, mimetype="application/json", as_attachment=True, download_name=f"{a['domain']}-audit.json")
+    return send_file(io.BytesIO(data), mimetype="application/json", as_attachment=True, download_name=f"{a['domain']}-audit.json")
 
 
 @app.route("/audits/<aid>/rerun", methods=["POST"])
@@ -760,6 +774,7 @@ def rerun(aid):
     db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, city, state, test_mode, status, stage, progress, share_token, created_at)
             VALUES (?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
          (nid, g.user["id"], a["url"], a["domain"], a["scope"] or "root", a["locations"], a["city"], a["state"], a["test_mode"], secrets.token_urlsafe(18), time.time()))
+    jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=nid))
 
 
@@ -778,9 +793,10 @@ def share_toggle(aid):
 @app.route("/r/<token>")
 def shared_report(token):
     a = db.q("SELECT * FROM audits WHERE share_token=? AND status='done'", (token,), one=True)
-    if not a or not a["out_dir"]:
+    html = store.get_text(a["id"], "report.html") if a else None
+    if html is None:
         abort(404)
-    return send_file(os.path.join(a["out_dir"], "report.html"), mimetype="text/html")
+    return app.response_class(html, mimetype="text/html")
 
 
 @app.route("/logo.webp")
@@ -846,8 +862,9 @@ def admin():
     platforms = [(engines.ENGINE_LABELS[en], live[en]["state"], live[en]["label"]) for en in engines.ENGINES]
     platforms += [("Semrush", "good" if semrush.available() else "off", "Connected" if semrush.available() else "Not connected"),
                   ("Browser page rendering (REA)", "good" if site.rea_available() else "off", "On" if site.rea_available() else "Off (plain page fetch)")]
-    stats = db.q("""SELECT COUNT(*) AS total, SUM(status='done') AS done, SUM(status='failed') AS failed,
-                    SUM(status IN ('queued','running')) AS active FROM audits WHERE created_at>?""", (time.time() - 86400,), one=True)
+    stats = db.q("""SELECT COUNT(*) AS total, SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
+                    SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+                    SUM(CASE WHEN status IN ('queued','running') THEN 1 ELSE 0 END) AS active FROM audits WHERE created_at>?""", (time.time() - 86400,), one=True)
     fb = db.q("""SELECT f.*, u.name AS who FROM feedback f JOIN users u ON u.id=f.user_id ORDER BY f.created_at DESC LIMIT 50""")
     seclog = db.q("SELECT * FROM security_log ORDER BY t DESC LIMIT 40")
     return render_template("admin.html", feedback=fb, seclog=seclog, auth_info={"google": auth.google_enabled(),
@@ -878,6 +895,8 @@ def _bootstrap_admins():
 
 
 def create_app():
+    if jobs.SERVERLESS and not db.PG:
+        raise SystemExit("This host has no lasting disk: add a Postgres database (Vercel → Storage → Neon) so DATABASE_URL is set.")
     db.init()
     _bootstrap_admins()
     if os.environ.get("APP_ENV") == "production":
@@ -887,3 +906,6 @@ def create_app():
             logging.getLogger("hbm").warning("SMTP not set: emailed sign-in codes won't work until SMTP_HOST/MAIL_FROM are set")
     jobs.start()
     return app
+
+
+from . import bulk  # noqa: E402,F401  (Bulk Analysis routes)

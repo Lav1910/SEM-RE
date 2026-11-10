@@ -10,19 +10,11 @@ _lock = threading.Lock()
 
 
 def load():
-    try:
-        with open(PATH) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+    from . import kv
+    return kv.get("health", None) or {}
 
 
 def note(engine, ok, error=None, via=None):
-    with _lock:
-        d = load()
-        d[engine] = {"t": time.time(), "ok": bool(ok), "error": (error or "")[:300] or None, "via": via}
-        os.makedirs(os.path.dirname(PATH), exist_ok=True)
-        tmp = PATH + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, PATH)
+    from . import kv
+    entry = {"t": time.time(), "ok": bool(ok), "error": (error or "")[:300] or None, "via": via}
+    kv.update("health", lambda d: dict(d or {}, **{engine: entry}), {})

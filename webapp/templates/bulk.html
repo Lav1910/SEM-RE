@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Bulk analysis{% endblock %}
+{% block body %}
+<div class="stack">
+  <section class="card bulk-hero">
+    <div>
+      <div class="eyebrow-sm">Bulk analysis</div>
+      <h1 style="margin:4px 0 6px">Audit up to {{ bulk_max }} builders at once</h1>
+      <p class="sub" style="margin:0">Upload a CSV of builder websites. Each one becomes a full audit you can open, share and present, and the results table ranks the best prospects first.</p>
+    </div>
+    <form class="bulk-upload" method="post" action="{{ url_for('bulk_preview') }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label class="drop" for="csv">
+        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M5 15v4h14v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <b>Choose a CSV file</b> <span class="small muted">or drag it here · .csv from Excel or Google Sheets</span>
+        <span class="drop-name small" data-file-name></span>
+        <input id="csv" type="file" name="csv" accept=".csv,text/csv,.txt">
+      </label>
+      <details class="paste"><summary class="small">Or paste websites (one per line)</summary>
+        <textarea id="paste" name="paste" rows="5" placeholder="justindoylehomes.com&#10;chrisgormanhomes.com"></textarea></details>
+      <div class="bulk-upload-foot">
+        <a class="small" href="{{ url_for('bulk_sample') }}">Download a sample CSV</a>
+        <button class="btn btn-primary" type="submit">Check the list</button>
+      </div>
+      <p class="small muted" style="margin:0">Only a <b>website</b> column is required. Optional columns: builder, city, state, notes.</p>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="status-row"><h2 style="margin:0">Bulk analyses</h2></div>
+    {% if batches %}
+    <div class="tw"><table>
+      <thead><tr><th>Name</th><th>Status</th><th>Progress</th><th class="r">Sites</th><th>Depth</th><th>Started</th><th></th></tr></thead>
+      <tbody>{% for b in batches %}{% set fin = b.done + b.failed %}
+      <tr><td><b>{{ b.name }}</b><small>by {{ b.owner }}</small></td>
+        <td><span class="pill {{ {'running':'p-info','paused':'p-warn','done':'p-good'}.get(b.status, 'p-mute') }}">{{ {'running':'Running','paused':'Paused','done':'Finished'}.get(b.status, b.status) }}</span></td>
+        <td style="min-width:160px"><div class="bar"><i style="width:{{ (100 * fin / (b.total or 1))|round|int }}%"></i></div><small>{{ fin }} of {{ b.total }}{% if b.failed %} · {{ b.failed }} failed{% endif %}</small></td>
+        <td class="r">{{ b.total }}</td><td>{{ 'Full' if b.depth == 'full' else 'Quick' }}</td><td>{{ b.created_at|ago }}</td>
+        <td class="r"><a class="btn btn-ghost btn-small" href="{{ url_for('bulk_run', bid=b.id) }}">Open</a></td></tr>
+      {% endfor %}</tbody></table></div>
+    {% else %}<div class="empty">No bulk analyses yet. Upload a list above to start one.</div>{% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var inp = document.getElementById('csv'), lab = document.querySelector('[data-file-name]'), drop = document.querySelector('.drop');
+  if (!inp) return;
+  inp.addEventListener('change', function () { lab.textContent = inp.files[0] ? '✓ ' + inp.files[0].name : ''; drop.classList.toggle('has-file', !!inp.files[0]); });
+  ['dragenter', 'dragover'].forEach(function (e) { drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (e) { drop.addEventListener(e, function () { drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function (ev) { ev.preventDefault(); if (ev.dataTransfer.files[0]) { inp.files = ev.dataTransfer.files; inp.dispatchEvent(new Event('change')); } });
+})();
+</script>
+{% endblock %}

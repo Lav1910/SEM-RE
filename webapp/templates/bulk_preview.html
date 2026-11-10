@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Check your list{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var skip = document.getElementById('skip_recent'), btn = document.querySelector('[data-start]'); if (!skip || !btn) return;
+  var EST = {all: {quick: {{ ("About " ~ (est.quick.minutes|mins) ~ ((" · about $%.2f"|format(est.quick.cost)) if can('see_costs') else ""))|tojson }},
+                   full: {{ ("About " ~ (est.full.minutes|mins) ~ ((" · about $%.2f"|format(est.full.cost)) if can('see_costs') else ""))|tojson }}},
+             new: {quick: {{ ("About " ~ (est_new.quick.minutes|mins) ~ ((" · about $%.2f"|format(est_new.quick.cost)) if can('see_costs') else ""))|tojson }},
+                   full: {{ ("About " ~ (est_new.full.minutes|mins) ~ ((" · about $%.2f"|format(est_new.full.cost)) if can('see_costs') else ""))|tojson }}}};
+  function upd() {
+    var k = skip.checked ? 'new' : 'all', n = +btn.dataset[k];
+    btn.textContent = 'Start bulk analysis (' + n + ' site' + (n === 1 ? '' : 's') + ')'; btn.disabled = !n;
+    ['quick', 'full'].forEach(function (d) { document.querySelector('[data-est="' + d + '"]').textContent = EST[k][d]; });
+  }
+  skip.addEventListener('change', upd);
+})();
+</script>
+{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('bulk_home') }}">Bulk analysis</a> <span>›</span> Check your list</div>
+<div class="stack">
+  <section class="card">
+    <h1 style="margin:0 0 6px">Check your list</h1>
+    <p class="sub" style="margin:0 0 14px">{{ rows|length }} row{{ 's' if rows|length != 1 }} found.
+      <b>{{ counts.ok }}</b> ready{% if counts.recent %} · <b>{{ counts.recent }}</b> audited in the last 30 days{% endif %}{% if counts.duplicate %} · {{ counts.duplicate }} duplicate{{ 's' if counts.duplicate != 1 }} (skipped){% endif %}{% if counts.invalid %} · {{ counts.invalid }} not a website (skipped){% endif %}.</p>
+    {% if over %}<div class="flash bad" style="margin:0 0 14px">That's more than {{ bulk_max }} websites. Only the first {{ bulk_max }} will run; split the rest into another batch.</div>{% endif %}
+    <form class="bulk-start" method="post" action="{{ url_for('bulk_start') }}">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="hidden" name="rows" value="{{ payload }}">
+      <label><span class="label">Name this batch</span><input id="bname" type="text" name="name" value="{{ default_name }}" maxlength="80"></label>
+      <div><span class="label">Depth</span>
+        <div class="depth">
+          <label class="depth-opt"><input type="radio" name="depth" value="quick" checked><span><b>Quick</b> · main city, fewer questions<br>
+            <small><span data-est="quick">About {{ est_new.quick.minutes|mins if counts.recent else est.quick.minutes|mins }}{% if can('see_costs') %} · about ${{ '%.2f'|format(est_new.quick.cost if counts.recent else est.quick.cost) }}{% endif %}</span>. Best for cold prospect lists.</small></span></label>
+          <label class="depth-opt"><input type="radio" name="depth" value="full"><span><b>Full</b> · every service city, like a normal audit<br>
+            <small><span data-est="full">About {{ est_new.full.minutes|mins if counts.recent else est.full.minutes|mins }}{% if can('see_costs') %} · about ${{ '%.2f'|format(est_new.full.cost if counts.recent else est.full.cost) }}{% endif %}</span>.</small></span></label>
+        </div></div>
+      {% if counts.recent %}<label class="chk"><input id="skip_recent" type="checkbox" name="skip_recent" value="1" checked> Skip the {{ counts.recent }} builder{{ 's' if counts.recent != 1 }} audited in the last 30 days</label>{% endif %}
+      <div class="bulk-start-foot"><a class="btn btn-ghost" href="{{ url_for('bulk_home') }}">Back</a>
+        {% set n_new = usable|selectattr('flag', 'equalto', 'ok')|list|length %}{% set n0 = n_new if counts.recent else usable|length %}
+        <button class="btn btn-primary" type="submit" data-start data-all="{{ usable|length }}" data-new="{{ n_new }}" {{ 'disabled' if not n0 }}>Start bulk analysis ({{ n0 }} site{{ 's' if n0 != 1 }})</button></div>
+      <p class="small muted" style="margin:0">Runs 3 at a time in the background. Your own single audits always go first. You can close this page; you'll get an email when it's done.</p>
+    </form>
+  </section>
+  <section class="card">
+    <div class="tw"><table>
+      <thead><tr><th class="r">Row</th><th>Website</th><th>Builder</th><th>City</th><th>State</th><th>Check</th></tr></thead>
+      <tbody>{% for r in rows %}
+        <tr class="{{ 'row-muted' if r.flag in ('invalid','duplicate') }}"><td class="r small muted">{{ r.line }}</td><td><b>{{ r.domain or r.url or '—' }}</b></td><td>{{ r.name or '—' }}</td><td>{{ r.city or '—' }}</td><td>{{ r.state or '—' }}</td>
+          <td>{% if r.flag == 'ok' %}<span class="pill p-good">Ready</span>{% elif r.flag == 'recent' %}<span class="pill p-warn">Audited recently</span>{% if r.recent_id %} <a class="small" href="{{ url_for('audit_view', aid=r.recent_id, view='overview') }}">open</a>{% endif %}{% elif r.flag == 'duplicate' %}<span class="pill p-mute">Duplicate</span>{% else %}<span class="pill p-bad">Not a website</span>{% endif %}</td></tr>
+      {% endfor %}</tbody></table></div>
+  </section>
+</div>
+{% endblock %}

@@ -22,18 +22,12 @@ def per_question(live_engines):
     return sum(TYPICAL.get(e, 0) for e in live_engines)
 
 
+EMPTY = {"limit_usd": None, "spent_usd": 0.0, "calls": {}}
+
+
 def _load():
-    try:
-        return json.load(open(LEDGER))
-    except Exception:
-        return {"limit_usd": None, "spent_usd": 0.0, "calls": {}}
-
-
-def _save(d):
-    os.makedirs(os.path.dirname(LEDGER), exist_ok=True)
-    tmp = LEDGER + ".tmp"
-    json.dump(d, open(tmp, "w"), indent=1)
-    os.replace(tmp, LEDGER)
+    from . import kv
+    return kv.get("spend", None) or dict(EMPTY, calls={})
 
 
 def status():
@@ -41,33 +35,43 @@ def status():
 
 
 def set_limit(limit_usd, reset=False):
-    with _lock:
-        d = _load()
+    from . import kv
+
+    def fn(d):
+        d = d or dict(EMPTY, calls={})
         d["limit_usd"] = limit_usd
         if reset:
             d["spent_usd"], d["calls"] = 0.0, {}
-        _save(d)
         return d
+    return kv.update("spend", fn, dict(EMPTY, calls={}))
 
 
 def reserve(engine):
     """Reserve the estimate for one call. Returns the reserved amount, or None when the cap would be exceeded."""
+    from . import kv
     est = ESTIMATE[engine]
-    with _lock:
-        d = _load()
+    ok = [False]
+
+    def fn(d):
+        d = d or dict(EMPTY, calls={})
         if d.get("limit_usd") is not None and d["spent_usd"] + est > d["limit_usd"]:
             return None
         d["spent_usd"] = round(d["spent_usd"] + est, 4)
-        d["calls"][engine] = d["calls"].get(engine, 0) + 1
-        _save(d)
-        return est
+        d.setdefault("calls", {})[engine] = d["calls"].get(engine, 0) + 1
+        ok[0] = True
+        return d
+    kv.update("spend", fn, dict(EMPTY, calls={}))
+    return est if ok[0] else None
 
 
 def settle(reserved, actual):
     """Swap the reserved estimate for the provider-reported cost when there is one."""
     if reserved is None or actual is None:
         return
-    with _lock:
-        d = _load()
+    from . import kv
+
+    def fn(d):
+        d = d or dict(EMPTY, calls={})
         d["spent_usd"] = round(max(0.0, d["spent_usd"] - reserved + float(actual)), 4)
-        _save(d)
+        return d
+    kv.update("spend", fn, dict(EMPTY, calls={}))
