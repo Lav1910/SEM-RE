@@ -21,7 +21,7 @@
     {% for r in rows %}{% set a = r.a %}
       <tr class="link-row" onclick="location='{{ url_for('links_detail', aid=a.id) }}'">
         <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.domain }}</small></td>
-        <td class="muted" style="white-space:nowrap">{{ a.client_created_at|ago }}</td>
+        <td class="muted" style="white-space:nowrap">{{ (a.client_created_at or (a.client_expires - 2592000))|ago }}</td>
         {% if see_all %}<td>{{ a.sender or '—' }}</td>{% endif %}
         <td class="r tnum"><b>{{ r.views }}</b></td>
         <td style="white-space:nowrap">{{ r.last|ago if r.last else '—' }}</td>

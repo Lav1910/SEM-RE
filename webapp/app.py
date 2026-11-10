@@ -1292,10 +1292,11 @@ def links_home():
     if not auth.can(g.user, "share"):
         abort(403)
     see_all = auth.can(g.user, "admin")
-    where, args = ("", ()) if see_all else ("AND a.client_by=?", (g.user["id"],))
+    where, args = ("", ()) if see_all else ("AND COALESCE(a.client_by, a.user_id)=?", (g.user["id"],))
     rows = []
     for a in db.q(f"""SELECT a.*, u.name AS sender FROM audits a LEFT JOIN users u ON u.id=a.client_by
-                      WHERE a.client_created_at IS NOT NULL {where} ORDER BY a.client_created_at DESC LIMIT 300""", args):
+                      WHERE (a.client_created_at IS NOT NULL OR a.client_token IS NOT NULL) {where}
+                      ORDER BY COALESCE(a.client_created_at, a.client_expires - 2592000) DESC LIMIT 300""", args):
         s = _link_summary(a["id"])
         status = "off" if not a["client_token"] else ("expired" if (a["client_expires"] or 0) < time.time() else "active")
         rows.append({"a": a, "views": len(s["visits"]), "last": s["visits"][0]["started_at"] if s["visits"] else None,
@@ -1321,7 +1322,7 @@ def links_detail(aid):
     if not auth.can(g.user, "share"):
         abort(403)
     a = get_audit(aid)
-    if not a["client_created_at"]:
+    if not a["client_created_at"] and not a["client_token"]:
         abort(404)
     s = _link_summary(aid)
     days = collections.OrderedDict()
@@ -1336,7 +1337,7 @@ def links_detail(aid):
     for v in s["visits"]:
         for x in v["actions"]:
             acts[(x["k"], x["d"])] += 1
-    sender = db.q("SELECT name FROM users WHERE id=?", (a["client_by"],), one=True) if a["client_by"] else None
+    sender = db.q("SELECT name FROM users WHERE id=?", (a["client_by"] or a["user_id"],), one=True)
     return render_template("link_detail.html", a=a, s=s, days=list(days.items()), acts=acts.most_common(20),
                            client=_client_info(a), sender=sender, max_day=max(days.values()) or 1,
                            max_sec=(s["sections"][0][1] if s["sections"] else 1) or 1)
