@@ -15,9 +15,12 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+if os.name == "nt" and not sys.flags.utf8_mode:  # Windows: run in UTF-8 mode so reports and data files save correctly
+    import subprocess
+    sys.exit(subprocess.call([sys.executable, "-X", "utf8"] + sys.argv))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from aeo import analyze, config, datawise, engines, locations, questions, render, scope, semrush, site  # noqa: E402
+from aeo import analyze, config, dates, datawise, engines, locations, questions, render, scope, semrush, site  # noqa: E402
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -195,7 +198,7 @@ def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progr
         for err in dw["mentions"]["errors"]:
             log(f"  DataWise warning: {err}")
     audit = {
-        "date": datetime.date.today().strftime("%B %-d, %Y"), "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "date": dates.long_date(), "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "input_url": url, "profile": profile, "market": market, "questions": qs, "answers": answers,
         "locations": pool_locs + [l for l in found if l not in pool_locs],
         "checks": checks, "semrush": sem, "datawise": dw, "analysis": analysis,

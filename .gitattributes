@@ -1,0 +1,2 @@
+# Keep Windows line endings for the start script
+*.bat text eol=crlf

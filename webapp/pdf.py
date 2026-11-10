@@ -4,8 +4,11 @@ import shutil
 import subprocess
 import tempfile
 
+_PF = [os.environ.get(k, "") for k in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
 CANDIDATES = [os.environ.get("HBM_CHROME", ""), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-              shutil.which("chromium") or "", shutil.which("chromium-browser") or "", shutil.which("google-chrome") or ""]
+              shutil.which("chromium") or "", shutil.which("chromium-browser") or "", shutil.which("google-chrome") or ""] + \
+    [os.path.join(b, *p) for b in _PF if b for p in (("Google", "Chrome", "Application", "chrome.exe"),
+                                                    ("Microsoft", "Edge", "Application", "msedge.exe"))]  # Windows: Chrome or Edge
 
 
 def chrome():

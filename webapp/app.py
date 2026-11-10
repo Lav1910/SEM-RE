@@ -22,6 +22,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from aeo import budget, config, engines, semrush, site  # noqa: E402
+from aeo import dates  # noqa: E402
 from aeo import scope as scopes  # noqa: E402
 from . import auth, db, jobs, mailer, markdown, pdf, status, views  # noqa: E402
 
@@ -166,12 +167,12 @@ def ago(ts):
     if s < 60: return "just now"
     if s < 3600: return f"{int(s // 60)} min ago"
     if s < 86400: return f"{int(s // 3600)} h ago"
-    return datetime.datetime.fromtimestamp(ts).strftime("%b %-d, %Y")
+    return dates.short_date(ts)
 
 
 app.jinja_env.filters["ago"] = ago
 app.jinja_env.filters["md"] = markdown.render
-app.jinja_env.filters["datefmt"] = lambda ts: datetime.datetime.fromtimestamp(ts).strftime("%b %-d, %Y · %-I:%M %p") if ts else "—"
+app.jinja_env.filters["datefmt"] = lambda ts: dates.date_time(ts) if ts else "—"
 app.jinja_env.globals["engine_labels"] = engines.ENGINE_LABELS
 
 
@@ -624,7 +625,7 @@ def strategy_export(aid, fmt):
     if fmt == "pdf":  # the HBM-branded proposal: plan + deliverables
         ctx = _strategy_ctx(a, A)
         from aeo import render as rnd
-        html = render_template("strategy_print.html", a=a, A=A, S=ctx, today=datetime.date.today().strftime("%B %-d, %Y"),
+        html = render_template("strategy_print.html", a=a, A=A, S=ctx, today=dates.long_date(),
                                css=open(os.path.join(ROOT, "tools", "report.css")).read(), logo=rnd._logo())
         hp, pp = os.path.join(a["out_dir"], "strategy.html"), os.path.join(a["out_dir"], "strategy.pdf")
         open(hp, "w").write(html)
@@ -637,7 +638,7 @@ def strategy_export(aid, fmt):
     if not rows:
         flash("Generate some content first; exports include every finished piece.", "bad")
         return redirect(url_for("audit_view", aid=aid, view="content"))
-    md = f"# AEO content for {A['profile']['name']}\n\nPrepared by Home Builder Marketers · {datetime.date.today():%B %-d, %Y}\n\n"
+    md = f"# AEO content for {A['profile']['name']}\n\nPrepared by Home Builder Marketers · {dates.long_date()}\n\n"
     for r in rows:
         md += f"\n\n---\n\n# {strat.GENERATORS.get(r['kind'], r['kind'])}: {r['label']}\n\n{r['content']}\n"
     if fmt == "md":
@@ -672,7 +673,7 @@ def audit_view(aid, view):
             hv = views.build(HA, platform)
             if not hv["measured_any"]:  # an audit run before any AI platform was connected isn't a real zero
                 continue
-            day = datetime.datetime.fromtimestamp(h["created_at"]).strftime("%b %-d")
+            day = dates.month_day(h["created_at"])
             if hist and hist[-1]["date"] == day:  # several runs on one day: keep the latest
                 hist.pop()
             hist.append({"date": day, "month": datetime.datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m"), "mentions": hv["mentions"],

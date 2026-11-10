@@ -6,6 +6,10 @@
 """
 import logging
 import os
+import sys
+if os.name == "nt" and not sys.flags.utf8_mode:  # Windows: run in UTF-8 mode so reports and data files save correctly
+    import subprocess
+    sys.exit(subprocess.call([sys.executable, "-X", "utf8"] + sys.argv))
 
 from waitress import serve
 

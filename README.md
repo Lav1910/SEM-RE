@@ -38,6 +38,19 @@ python3 setup_keys.py                         # type each API key yourself (hidd
 .venv/bin/python serve.py                     # http://127.0.0.1:8080
 ```
 
+**On a Windows PC:**
+
+1. Install **Python 3.12** from https://www.python.org/downloads/ and tick **"Add python.exe to PATH"** during setup.
+   Install **Git** from https://git-scm.com/download/win, or download the repo as a ZIP from GitHub.
+2. Get the code: `git clone https://github.com/Lav1910/SEM-RE.git`, or unzip the download.
+3. Double-click **`run-windows.bat`** in the folder. The first run sets everything up and asks for the API keys
+   (typed hidden). Then it opens http://127.0.0.1:8080.
+4. Sign in: type your email and click **Email me a sign-in code**. Locally, the code appears in the black window
+   (no email is sent), and you can set a password after. `ADMIN_EMAILS` (set in the .bat file) makes that address an admin.
+
+PDFs use Chrome or Edge, whichever is installed. Data is saved in the `appdata` folder next to the code. To bring
+over existing audits and users, copy `appdata` from the other computer while the app is stopped.
+
 ## 2. Put it online
 
 | Host | How | Cost |
