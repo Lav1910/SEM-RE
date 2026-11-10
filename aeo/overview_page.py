@@ -134,7 +134,7 @@ def section(A, ov, filter_label=None):
     metrics = [("#5B5FD9", "Mentions", V["mentions"] if V["measured_any"] else "—", "AI answers naming the builder"),
                ("#18C3A4", "Citations", V["citations"] if V["measured_any"] else "—", "answers linking to the site"),
                ("#B37FEB", "Cited pages", V["cited_pages"] if V["measured_any"] else "—", "site pages AI cites"),
-               ("#0FB2B5", "AI Overviews", semh[-1]["aio_cited"] if semh else "—", "Google AI Overviews citing the site · Semrush")]
+               ("#0FB2B5", "AI Overviews", semh[-1]["aio_cited"] if semh else "—", "Google AI Overviews citing the site")]
     mt = "".join(f'<div class="ov-m"><span><i style="background:{c}"></i>{lab}</span><b>{val}</b><small>{sub}</small></div>' for c, lab, val, sub in metrics)
     rows = []
     for d in V["dist"]:

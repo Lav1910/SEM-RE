@@ -41,14 +41,14 @@
     <div class="status-row" style="margin-top:16px">
       <div class="platforms">AI platforms connected:
         {% if can('admin') %}
-        {% for en, lab in engine_labels.items() %}{% set st = pstat[en] %}<span class="pill {{ {'good':'p-good','bad':'p-bad','warn':'p-warn'}.get(st.state, 'p-mute') }}" title="{{ st.label }}">{{ platform_logo(en, 14) }}{{ lab }}{% if st.state != 'good' %} · {{ st.label }}{% elif 'Semrush' in st.label %} · via Semrush{% endif %}</span>{% endfor %}
+        {% for en, lab in engine_labels.items() %}{% set st = pstat[en] %}<span class="pill {{ {'good':'p-good','bad':'p-bad','warn':'p-warn'}.get(st.state, 'p-mute') }}" title="{{ st.label }}">{{ platform_logo(en, 14) }}{{ lab }}{% if st.state != 'good' %} · {{ st.label }}{% endif %}</span>{% endfor %}
         {% else %}{# change 24: Sales see only the platforms that work, with no status labels #}
         {% for en, lab in engine_labels.items() if pstat[en].state in ('good', 'warn', 'mute') %}<span class="pill p-good">{{ platform_logo(en, 14) }}{{ lab }}</span>{% endfor %}
         {% endif %}
       </div>
       {% if can('see_costs') and budget.limit_usd is not none %}<span class="small muted">Spend ${{ '%.2f'|format(budget.spent_usd) }} of ${{ '%.2f'|format(budget.limit_usd) }} cap</span>{% endif %}
     </div>
-    {% if not live %}<p class="small muted" style="margin:10px 0 0" data-x="none">No AI platforms are connected yet, so reports will cover website checks{{ ' and Semrush data' if can('admin') }} only. An admin can add keys.</p>{% endif %}
+    {% if not live %}<p class="small muted" style="margin:10px 0 0" data-x="none">No AI platforms are connected yet, so reports will cover website checks and Google data only. An admin can add keys.</p>{% endif %}
   </section>
 
   <section class="card">
@@ -67,7 +67,7 @@
     <div class="hist-summary">
       <div><span>Audits{{ ' found' if hist.q }}</span><b>{{ hist.n }}</b></div>
       <div><span>Average run time {{ tip("How long finished audits took, from starting to the report being ready. Time waiting in the queue doesn't count.") }}</span><b>{{ hist.avg_secs|dur }}</b></div>
-      {% if can('see_costs') %}<div><span>Total cost {{ tip("What these audits cost in AI platform fees. Perplexity and DataForSEO charges are exact; ChatGPT and Gemini use their typical price per answer.") }}</span><b>${{ '%.2f'|format(hist.cost or 0) }}</b></div>{% endif %}
+      {% if can('see_costs') %}<div><span>Total cost {{ tip("What these audits cost in AI platform fees. Some platforms report their exact charge; the others use their typical price per answer.") }}</span><b>${{ '%.2f'|format(hist.cost or 0) }}</b></div>{% endif %}
     </div>
     {% if rows %}
     <div class="tw" style="margin-top:10px"><table class="hist-table">{# change 45: balanced columns #}

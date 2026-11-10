@@ -265,7 +265,7 @@ def build(A, platform="all", history=None, vs=None, area=None, clean=False):
             rows.append({"engine": e, "label": ENGINE_LABELS[e], "status": a["status"], "text": a.get("text") or "",
                          "mentioned": c["mentioned"] if c else None, "rank": c.get("rank") if c else None,
                          "competitors": [n for n in (c or {}).get("competitors", []) if "." not in n][:6], "citations": a["citations"][:8],
-                         "error": a.get("error"), "friendly": pstatus.friendly_error(a.get("error")) if a.get("error") else None,
+                         "error": a.get("error"), "friendly": pstatus.friendly_error(a.get("error"), plain=True) if a.get("error") else None,
                          "sources_only": a.get("source") == "semrush"})
         prompts.append({"q": q, "rows": rows})
 
@@ -305,16 +305,16 @@ def chart(A, hist):
     return {
         "months": [lab(m) for m in months],
         "main": [
-            {"name": "AI Overview citations", "note": "Google, from Semrush", "color": "#0FB2B5", "dash": True, "values": col(semm, "aio_cited")},
-            {"name": "Mentions", "note": "HBM audits", "color": "#5B5FD9", "values": col(by_audit, "mentions")},
-            {"name": "Citations", "note": "HBM audits", "color": "#18C3A4", "values": col(by_audit, "citations")},
-            {"name": "Cited Pages", "note": "HBM audits", "color": "#B37FEB", "values": col(by_audit, "pages")},
+            {"name": "AI Overview citations", "color": "#0FB2B5", "dash": True, "values": col(semm, "aio_cited")},
+            {"name": "Mentions", "color": "#5B5FD9", "values": col(by_audit, "mentions")},
+            {"name": "Citations", "color": "#18C3A4", "values": col(by_audit, "citations")},
+            {"name": "Cited Pages", "color": "#B37FEB", "values": col(by_audit, "pages")},
         ],
         "audience": [
-            {"name": "Monthly Audience", "note": "HBM audits", "color": "#5B5FD9", "values": col(by_audit, "audience")},
-            {"name": "Searches showing an AI Overview", "note": "Google, from Semrush", "color": "#0FB2B5", "dash": True, "values": col(semm, "aio_keywords")},
+            {"name": "Monthly Audience", "color": "#5B5FD9", "values": col(by_audit, "audience")},
+            {"name": "Searches showing an AI Overview", "color": "#0FB2B5", "dash": True, "values": col(semm, "aio_keywords")},
         ],
         "vis": [
-            {"name": "AI Visibility score", "note": "HBM audits", "color": "#0A686A", "values": col(by_audit, "score")},
+            {"name": "AI Visibility score", "color": "#0A686A", "values": col(by_audit, "score")},
         ],
     }
