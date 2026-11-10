@@ -77,3 +77,37 @@ def load_json(aid, name="audit.json"):
 
 def save_json(aid, name, obj):
     put(aid, name, json.dumps(obj, separators=(",", ":"), default=str))
+
+
+def sizes(aids):
+    """change 48: {(audit_id, name): bytes} for the files already saved, for the Inventory."""
+    out = {}
+    aids = list(aids)
+    if not aids:
+        return out
+    if USE_DB:
+        for i in range(0, len(aids), 200):
+            chunk = aids[i:i + 200]
+            for r in db.q(f"SELECT audit_id, name, LENGTH(content) AS n FROM audit_files WHERE audit_id IN ({','.join('?' * len(chunk))})", tuple(chunk)):
+                out[(r["audit_id"], r["name"])] = int(r["n"] or 0)
+        return out
+    for aid in aids:
+        d = _dir(aid)
+        if os.path.isdir(d):
+            for name in os.listdir(d):
+                p = os.path.join(d, name)
+                if os.path.isfile(p):
+                    out[(aid, name)] = os.path.getsize(p)
+    return out
+
+
+def total_bytes():
+    """change 48: storage used by every saved file (Inventory footer)."""
+    if USE_DB:
+        r = db.q("SELECT COALESCE(SUM(LENGTH(content)), 0) AS n FROM audit_files", one=True)
+        return int(r["n"] or 0)
+    base = os.path.join(db.DATA_DIR, "audits")
+    total = 0
+    for root, _, files in os.walk(base):
+        total += sum(os.path.getsize(os.path.join(root, f)) for f in files)
+    return total

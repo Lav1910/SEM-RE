@@ -38,7 +38,7 @@
 
   <section class="card">
     <h2 style="margin:0 0 10px">What they clicked {{ tip("Tabs, AI platforms and cities they switched to, competitors they compared, info icons they read and anything they copied.") }}</h2>
-    {% if acts %}<div class="ld-acts">{% for (k, d), n in acts %}<span class="ld-act"><b>{{ {'tab':'Opened','platform':'Switched to','area':'City tab','compare':'Compared','tip':'Read info','copy':'Copied','contact':'Clicked','section':'Viewed'}.get(k, k) }}</b> {{ d }}{% if n > 1 %} <em>×{{ n }}</em>{% endif %}</span>{% endfor %}</div>
+    {% if acts %}<div class="ld-acts">{% for (k, d), n in acts %}<span class="ld-act"><b>{{ {'tab':'Opened','platform':'Switched to','area':'City tab','compare':'Compared','tip':'Read info','copy':'Copied','contact':'Clicked','read':'Read','download':'Downloaded','section':'Viewed'}.get(k, k) }}</b> {{ d }}{% if n > 1 %} <em>×{{ n }}</em>{% endif %}</span>{% endfor %}</div>
     {% else %}<p class="muted" style="margin:0">No clicks recorded yet.</p>{% endif %}
   </section>
 

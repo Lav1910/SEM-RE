@@ -40,7 +40,7 @@ def overview_html(A, ov=None, filter_label=None):
     name, date = A["profile"]["name"], A["date"]
     logo = _logo()
     strip = (f'<div class="ov-strip">{f"<img class={chr(34)}logo{chr(34)} src={chr(34)}{logo}{chr(34)} alt={chr(34)}Home Builder Marketers{chr(34)}>" if logo else "<b>Home Builder Marketers</b>"}'
-             f'<span class="band-tag">AI Visibility Overview</span></div>')
+             f'<span class="band-tag">AEO Snapshot · AI Visibility Overview</span></div>')
     page = (f'<section class="page ov-page">{strip}{overview_page.section(A, ov, filter_label)}'
             f'<footer><span class="f-brand">Home Builder Marketers</span><span class="f-mid">HomeBuilderMarketers.com · {e(name)} · {e(date)}</span>'
             f'<span class="f-pg">AI Visibility Overview</span></footer></section>')
@@ -132,7 +132,7 @@ def render(A, ov=None):
     ov = _overview(A, ov)
     pages.append(f'''
 <section class="page ov-page">
- <div class="ov-strip">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else '<b>Home Builder Marketers</b>'}<span class="band-tag">AI Visibility Audit</span></div>
+ <div class="ov-strip">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else '<b>Home Builder Marketers</b>'}<span class="band-tag">AEO Snapshot</span></div>
  {overview_page.section(A, ov)}
  {footer(1, TOTAL)}
 </section>''')
@@ -291,7 +291,7 @@ def render(A, ov=None):
  {footer(8, TOTAL)}
 </section>''')
 
-    return _doc(f"{name} AI Visibility Audit", "".join(pages), overview_page.CSS)
+    return _doc(f"{name} · AEO Snapshot", "".join(pages), overview_page.CSS)
 
 
 def talking_points(A):

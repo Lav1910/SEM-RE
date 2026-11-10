@@ -6,27 +6,9 @@
     <h2 style="margin:4px 0 6px">Ready-to-publish content for {{ A.profile.name }}</h2>
     <p class="small muted" style="margin:0">Written from facts on the builder's site, Google profile and this audit, to help AI tools recommend them.</p>
   </div>
+  {% include "_download_word.html" %}
 </section>
-{% for gname in S.gens %}{% set ready = gname['items'].values()|selectattr('status', 'equalto', 'done')|list %}
-<section class="panel gen">
-  <div class="panel-h"><h2>{{ gname.label }}</h2><span class="small muted">{{ ready|length }} of {{ gname.targets|length }} ready</span></div>
-  <div class="gen-pieces">
-  {% for key, label in gname.targets %}{% set it = gname['items'].get(key) %}
-    <div class="piece">
-      <div class="piece-h"><b>{{ label }}</b>
-        {% if it and it.status == 'done' %}<span class="piece-state small muted">Ready</span>
-          {% if client_full %}<span class="piece-actions"><button class="link-btn" type="button" data-copy="pc-{{ gname.kind }}-{{ loop.index }}">Copy</button></span>{% endif %}
-        {% elif it and it.status in ('queued', 'running') %}<span class="piece-state small muted writing">Being written…</span>
-        {% else %}<span class="piece-state small muted">Available from Home Builder Marketers</span>{% endif %}</div>
-      {% if it and it.status == 'done' %}
-        {% if client_full %}<div class="piece-body md">{{ it.content|md }}</div><textarea id="pc-{{ gname.kind }}-{{ loop.index }}" hidden>{{ it.content }}</textarea>
-        {% else %}{% with lock_text = "This piece is written and ready. It's included when Home Builder Marketers publishes it for you." %}{% include "_client_lock.html" %}{% endwith %}{% endif %}
-      {% endif %}
-    </div>
-  {% endfor %}
-  </div>
-</section>
-{% endfor %}
+{% with internal = False %}{% include "_content_cards.html" %}{% endwith %}
 {% include "_client_cta.html" %}
 {% endblock %}
 {% block scripts %}{% include "_client_strategy_js.html" %}{% endblock %}

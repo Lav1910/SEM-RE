@@ -1,4 +1,6 @@
-# HBM AI Visibility Audits
+# AEO Snapshot
+
+*by Home Builder Marketers*: AI visibility (AEO) audits for the HBM sales team.
 
 A web app for the Home Builder Marketers sales team. A salesperson enters a US home builder's website and gets an
 AI visibility (AEO) audit:

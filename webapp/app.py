@@ -1,4 +1,4 @@
-"""HBM AI Visibility Audit: web app for the sales team.
+"""AEO Snapshot (by Home Builder Marketers): web app for the sales team.
 
 Salespeople sign in, paste a builder's website, watch the audit run, then open the report, copy a share link for
 the prospect, and grab Loom talking points. Admins manage users, see platform status and set the spending cap.
@@ -725,6 +725,49 @@ VIEWS = {"overview": "Visibility Overview", "competitors": "Competitor Research"
          "strategy": "Strategy Plan", "content": "Content Generator", "fixes": "Technical Fixes", "tracking": "Report tracking"}
 
 
+CONTENT_ICONS = {"faq": "?", "blog": "✎", "city_pages": "⌖", "cost_guide": "$", "llms_txt": "≡", "gbp_posts": "◆", "review_requests": "★"}
+
+
+def _faq_pairs(md):
+    """FAQ pieces are written as '### Question' + answer; split them for the accordion (change 47)."""
+    pairs, q, buf = [], None, []
+    for line in (md or "").splitlines():
+        if line.startswith("### "):
+            if q:
+                pairs.append((q, "\n".join(buf).strip()))
+            q, buf = line[4:].strip(), []
+        elif q is not None:
+            buf.append(line)
+    if q:
+        pairs.append((q, "\n".join(buf).strip()))
+    return pairs
+
+
+def _content_cards(S):
+    """change 47: the Content Generator pieces shaped for the compact layout (FAQ accordion + cards with preview)."""
+    out = []
+    for g_ in S["gens"]:
+        cards = []
+        for key, label in g_["targets"]:
+            it = g_["items"].get(key)
+            st = (it or {}).get("status") or "none"
+            text = (it or {}).get("content") or ""
+            plain = re.sub(r"[#*_`>\[\]|-]+", " ", text)
+            words = len(plain.split())
+            card = {"key": key, "label": label, "status": st, "text": text, "words": words, "mins": max(1, round(words / 200)),
+                    "preview": re.sub(r"\s+", " ", plain).strip()[:220], "error": (it or {}).get("error")}
+            if st == "done":
+                card["html"] = markdown.render(text, levels=True)
+                if g_["kind"] == "faq":
+                    card["faq"] = [(q, markdown.render(a_, levels=True)) for q, a_ in _faq_pairs(text)]
+            cards.append(card)
+        ready = sum(1 for c in cards if c["status"] == "done")
+        busy = sum(1 for c in cards if c["status"] in ("queued", "running"))
+        out.append({"kind": g_["kind"], "label": g_["label"], "icon": CONTENT_ICONS.get(g_["kind"], "•"), "cards": cards,
+                    "ready": ready, "busy": busy, "total": len(cards)})
+    return out
+
+
 def _strategy_ctx(a, A):
     from aeo import strategy as strat
     items = strat.plan(A)
@@ -745,7 +788,8 @@ def _strategy_ctx(a, A):
         f["stamp"] = stamp.get("fix_" + f["key"])
     counts = lambda xs: {k: sum(1 for x in xs if x["status"] == k) for k in ("todo", "doing", "done")}  # noqa: E731
     chat_ok = status.current().get("chatgpt", {}).get("state") == "good"
-    return {"items": items, "lanes": strat.LANES, "gens": gens, "fixes": fx, "chat_ok": chat_ok,
+    S_ = {"gens": gens}
+    return {"items": items, "lanes": strat.LANES, "gens": gens, "cards": _content_cards(S_), "fixes": fx, "chat_ok": chat_ok,
             "fix_counts": counts(fx), "item_counts": counts(items),
             "done_n": sum(1 for i in items if i["status"] == "done"), "schema": strat.schema_block(A)}
 
@@ -819,10 +863,10 @@ def strategy_export(aid, fmt):
         from aeo import render as rnd
         html = render_template("strategy_print.html", a=a, A=A, S=ctx, today=dates.long_date(),
                                css=open(os.path.join(ROOT, "tools", "report.css")).read(), logo=rnd._logo())
-        data = pdf.make_pdf(html)
+        data = _pdf_cached(aid, html, "plan.pdf")  # change 48: kept, so the Inventory shows it straight away
         if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
             return _print_page(html)
-        return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=True, download_name=f"{name}-AEO-Strategy.pdf")
+        return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=not request.args.get("inline"), download_name=f"{name}-AEO-Strategy.pdf")
     if not rows:
         flash("Generate some content first; exports include every finished piece.", "bad")
         return redirect(url_for("audit_view", aid=aid, view="content"))
@@ -931,7 +975,7 @@ def _pdf_response(aid, html, cache_name, download_name):
     data = _pdf_cached(aid, html, cache_name)
     if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
         return _print_page(html)
-    return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=True, download_name=download_name)
+    return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=not request.args.get("inline"), download_name=download_name)
 
 
 @app.route("/audits/<aid>/export-overview.pdf")
@@ -950,7 +994,7 @@ def export_overview(aid):
     area = request.args.get("area") or None
     html = _overview_pdf_html(a, A, platform, area)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
-    resp = _pdf_response(aid, html, "overview.pdf", f"{name}-AI-Visibility-Overview-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
+    resp = _pdf_response(aid, html, "overview.pdf", f"{name}-AEO-Snapshot-Overview-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
     from . import todo
     todo.mark_exported(g.user["id"], a, "overview")  # ticks this builder on the exporter's to-do list
     return resp
@@ -1003,7 +1047,7 @@ def export_pdf(aid):
     html = _report_html(a, A)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
     resp = _pdf_response(aid, html, "report.pdf",
-                         f"{name}-AI-Visibility-Audit-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
+                         f"{name}-AEO-Snapshot-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
     from . import todo
     todo.mark_exported(g.user["id"], a, "full")  # ticks this builder on the exporter's to-do list
     return resp
@@ -1084,6 +1128,8 @@ def rerun(aid):
 # ---------------- client link (change 31) ----------------
 CLIENT_VIEWS = ("overview", "competitors", "strategy", "content", "fixes")  # change 42: Strategy tabs too
 CLIENT_DAYS = int(os.environ.get("HBM_CLIENT_LINK_DAYS", "30"))
+CONTACT_EMAIL = os.environ.get("HBM_CONTACT_EMAIL", "info@homebuildermarketers.com").strip()  # change 47: "Talk to us"
+app.jinja_env.globals["contact_email"] = CONTACT_EMAIL
 
 
 def vurl(aid, view, **kw):
@@ -1192,8 +1238,8 @@ def _alert_owner(a):
     name = a["builder_name"] or a["domain"]
     first = not (a["client_views"] or 0)
     link = (PUBLIC_URL or request.host_url.rstrip("/")) + url_for("audit_view", aid=a["id"], view="tracking")
-    subject = f"{name} {'just opened' if first else 'is back on'} their AI visibility report"
-    text = (f"{name} {'opened their AI visibility report for the first time' if first else 'opened their AI visibility report again'} "
+    subject = f"{name} {'just opened' if first else 'is back on'} their AEO Snapshot"
+    text = (f"{name} {'opened their AEO Snapshot for the first time' if first else 'opened their AEO Snapshot again'} "
             f"({_device().lower()}). See what they looked at: {link}")
     try:
         mailer.send(u["email"], subject, text, f"<p>{escape(text)}</p><p><a href=\"{escape(link)}\">Open client activity</a></p>")
@@ -1286,6 +1332,159 @@ def client_ping(token):
     return ("", 204)
 
 
+# ---------------- Inventory: every file for every audit, in the cloud (change 48) ----------------
+FILE_TYPES = {"report": ("Full report", "PDF", "report.pdf"), "overview": ("Overview (1 page)", "PDF", "overview.pdf"),
+              "plan": ("Strategy plan", "PDF", "plan.pdf"), "word": ("All deliverables", "Word", None),
+              "loom": ("Loom talking points", "Text", "loom.txt"), "data": ("Audit data", "JSON", "audit.json")}
+STORAGE_LIMIT = int(os.environ.get("HBM_STORAGE_LIMIT_MB", "512")) * 1024 * 1024
+
+
+def _file_url(a, kind, inline=False):
+    return {"report": url_for("export_pdf", aid=a["id"], inline=1 if inline else None),
+            "overview": url_for("export_overview", aid=a["id"], inline=1 if inline else None),
+            "plan": url_for("strategy_export", aid=a["id"], fmt="pdf", inline=1 if inline else None),
+            "word": url_for("audit_docx", aid=a["id"]), "loom": url_for("audit_loom", aid=a["id"]),
+            "data": url_for("audit_data", aid=a["id"])}[kind]
+
+
+@app.route("/audits/<aid>/loom.txt")
+@login_required
+def audit_loom(aid):
+    get_audit(aid)
+    text = store.get_text(aid, "loom.txt") or ""
+    return send_file(io.BytesIO(text.encode("utf-8")), mimetype="text/plain", as_attachment=True, download_name=f"{aid}-loom-notes.txt")
+
+
+@app.route("/inventory")
+@login_required
+def inventory():
+    scope = request.args.get("scope", "team") if auth.can(g.user, "team_audits") else "mine"
+    q = request.args.get("q", "").strip().lower()[:100]
+    kind = request.args.get("type", "all")
+    when = request.args.get("when", "all")
+    folder = request.args.get("folder") or None
+    mode = request.args.get("mode", "folders")
+    since = {"today": time.time() - 86400, "week": time.time() - 7 * 86400, "month": time.time() - 30 * 86400}.get(when)
+    conds, args = ["a.status='done'"], []
+    if scope == "mine":
+        conds.append("a.user_id=?"); args.append(g.user["id"])
+    if since:
+        conds.append("a.created_at>?"); args.append(since)
+    audits = db.q(f"""SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id WHERE {' AND '.join(conds)}
+                      ORDER BY a.created_at DESC LIMIT 500""", tuple(args))
+    if q:
+        audits = [a for a in audits if q in (a["builder_name"] or "").lower() or q in (a["domain"] or "").lower()]
+    sizes = store.sizes([a["id"] for a in audits])
+    kinds = [k for k in FILE_TYPES if k != "data" or auth.can(g.user, "raw_data")]
+    if kind in FILE_TYPES:
+        kinds = [k for k in kinds if k == kind] or kinds
+    folders = collections.OrderedDict()
+    files = []
+    for a in audits:
+        fkey = a["domain"]
+        f = folders.setdefault(fkey, {"key": fkey, "name": a["builder_name"] or a["domain"], "market": a["market"], "audits": 0, "files": 0,
+                                      "last": a["created_at"]})
+        f["audits"] += 1
+        for k in kinds:
+            label, typ, stored = FILE_TYPES[k]
+            size = sizes.get((a["id"], stored)) if stored else None
+            if k == "data" and not size:
+                continue
+            files.append({"aid": a["id"], "kind": k, "label": label, "type": typ, "size": size, "builder": a["builder_name"] or a["domain"],
+                          "domain": a["domain"], "market": a["market"], "created_at": a["created_at"], "owner": a["owner"],
+                          "url": _file_url(a, k), "preview": _file_url(a, k, inline=True) if typ == "PDF" else None,
+                          "client": bool(a["client_token"] and (a["client_expires"] or 0) > time.time())})
+            f["files"] += 1
+    if folder:
+        files = [x for x in files if x["domain"] == folder]
+    used = store.total_bytes()
+    return render_template("inventory.html", files=files, folders=list(folders.values()), folder=folder, mode=mode, scope=scope, q=q,
+                           kind=kind, when=when, kinds=FILE_TYPES, used=used, limit=STORAGE_LIMIT,
+                           folder_name=folders[folder]["name"] if folder in folders else None)
+
+
+@app.route("/inventory/zip", methods=["POST"])
+@login_required
+def inventory_zip():
+    """Several files (or a whole folder) as one .zip. Up to 30 files at a time."""
+    import zipfile
+    picks = [p for p in request.form.getlist("f") if ":" in p][:30]
+    if not picks:
+        flash("Tick one or more files first.", "bad")
+        return redirect(request.referrer or url_for("inventory"))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in picks:
+            aid, k = p.split(":", 1)
+            a = db.q("SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id WHERE a.id=?", (aid,), one=True)
+            if not a or a["status"] != "done" or k not in FILE_TYPES:
+                continue
+            if a["user_id"] != g.user["id"] and not auth.can(g.user, "team_audits"):
+                continue
+            if k == "data" and not auth.can(g.user, "raw_data"):
+                continue
+            A = store.load_json(aid)
+            if A is None:
+                continue
+            base = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-") + "-" + datetime.date.fromtimestamp(a["created_at"]).isoformat()
+            try:
+                if k == "report":
+                    data, name = _pdf_cached(aid, _report_html(a, A), "report.pdf"), f"{base}-AEO-Snapshot.pdf"
+                elif k == "overview":
+                    data, name = _pdf_cached(aid, _overview_pdf_html(a, A), "overview.pdf"), f"{base}-Overview.pdf"
+                elif k == "plan":
+                    from aeo import render as rnd
+                    html = render_template("strategy_print.html", a=a, A=A, S=_strategy_ctx(a, A), today=dates.long_date(),
+                                           css=open(os.path.join(ROOT, "tools", "report.css")).read(), logo=rnd._logo())
+                    data, name = _pdf_cached(aid, html, "plan.pdf"), f"{base}-Strategy-Plan.pdf"
+                elif k == "word":
+                    from . import docx_export
+                    V = views.build(A, "all", None, None, None, clean=True)
+                    data, name = docx_export.build(a, A, _strategy_ctx(a, A), V, CONTACT_EMAIL), f"{base}-All-Deliverables.docx"
+                elif k == "loom":
+                    data, name = (store.get_text(aid, "loom.txt") or "").encode("utf-8"), f"{base}-Loom-notes.txt"
+                else:
+                    data, name = store.get_bytes(aid, "audit.json"), f"{base}-audit.json"
+            except Exception:
+                data = None
+            if data:
+                z.writestr(f"{re.sub(r'[^A-Za-z0-9]+', '-', a['builder_name'] or a['domain']).strip('-')}/{name}", data)
+    return send_file(io.BytesIO(buf.getvalue()), mimetype="application/zip", as_attachment=True,
+                     download_name=f"AEO-Snapshot-files-{datetime.date.today().isoformat()}.zip")
+
+
+# ---------------- Word download of every deliverable (change 47) ----------------
+def _docx_response(a, A):
+    from . import docx_export
+    V = views.build(A, "all", None, None, None, clean=True)
+    S = _strategy_ctx(a, A)
+    sender = db.q("SELECT name, email FROM users WHERE id=?", (a["client_by"] or a["user_id"],), one=True)
+    data = docx_export.build(a, A, S, V, CONTACT_EMAIL, dict(sender) if sender else None)
+    return send_file(io.BytesIO(data), as_attachment=True, download_name=docx_export.filename(a, A),
+                     mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+@app.route("/audits/<aid>/deliverables.docx")
+@login_required
+def audit_docx(aid):
+    a = get_audit(aid)
+    A = store.load_json(aid) if a["status"] == "done" else None
+    if A is None:
+        abort(404)
+    return _docx_response(a, A)
+
+
+@app.route("/c/<token>/deliverables.docx")
+def client_docx(token):
+    a = _client_audit(token)
+    A = store.load_json(a["id"]) if a else None
+    if A is None:
+        return render_template("client_expired.html"), 404
+    resp = _docx_response(a, A)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
 # ---------------- client link tracking (change 41) ----------------
 def _visit_rows(aid):
     out = []
@@ -1309,9 +1508,7 @@ def _link_summary(aid):
 @app.route("/links")
 @login_required
 def links_home():
-    """Kept for old bookmarks; tracking now lives in each audit's sidebar (change 44)."""
-    if not request.args.get("all"):
-        return redirect(url_for("dashboard"))
+    """Audits › Report tracking: every client link sent (change 48); each row opens that audit's tracking page."""
     if not auth.can(g.user, "share"):
         abort(403)
     see_all = auth.can(g.user, "admin")

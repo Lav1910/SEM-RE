@@ -6,6 +6,7 @@
     <h2 style="margin:4px 0 6px">{{ S.fixes|length }} fix{{ 'es' if S.fixes|length != 1 }} for {{ A.profile.domain }}</h2>
     <p class="small muted" style="margin:0">Things on the website that make it harder for AI tools to read and trust it.</p>
   </div>
+  {% include "_download_word.html" %}
 </section>
 {% for f in S.fixes %}
 <section class="panel fix task">

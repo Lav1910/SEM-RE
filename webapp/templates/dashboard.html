@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Audits{% endblock %}
+{% block sidebar %}{% include "_audits_side.html" %}{% endblock %}
 {% block body %}{% from "_analyze.html" import scope_field %}
 <div class="stack">
   <section class="card">
-    <h1>Run an AI visibility audit</h1>
+    <h1>Run an AEO Snapshot</h1>
     <p class="sub">Paste a home builder's website. We'll ask the AI platforms local buyer questions, check the site, and build a report you can share.</p>
     <form class="new-audit" method="post" action="{{ url_for('create_audit') }}">
       <input type="hidden" name="csrf" value="{{ session.csrf }}">
