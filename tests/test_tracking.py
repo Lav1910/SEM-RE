@@ -81,6 +81,16 @@ class Tracking(unittest.TestCase):
         self.assertNotIn(self.A["profile"]["name"], self.client("trrep2").get("/links").get_data(as_text=True))  # Sales see their own
         self.assertIn(self.A["profile"]["name"], self.client("trboss").get("/links").get_data(as_text=True))   # admins see everyone's
 
+    def test_every_main_page_loads_with_visits(self):
+        """The Client links badge and markers run on every page; they must work on Postgres too."""
+        l = self.link()
+        self.app.test_client().get(self.path(l))  # one client visit
+        for who in ("trboss", "trrep"):
+            c = self.client(who)
+            for url in ("/", "/?scope=team", "/links", f"/links/{self.aid}", "/todo", f"/audits/{self.aid}/overview", "/bulk", "/account"):
+                self.assertEqual(c.get(url).status_code, 200, (who, url))
+        self.assertEqual(self.client("trboss").get("/admin").status_code, 200)
+
     def test_strategy_tabs_preview_and_full(self):
         l = self.link()
         anon = self.app.test_client()
