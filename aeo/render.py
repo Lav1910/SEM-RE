@@ -92,6 +92,7 @@ def render(A, ov=None):
         ("AI visibility score", "—" if score is None else f'{score} <small>/ 100</small>', "Share of AI answers naming the builder, weighted by search demand"),
         ("Named in AI answers", f'{K["mentioned"]} <small>of {K["answers"]}</small>', f'{K["questions"]} local questions × {K["engines_measured"]} AI platforms'),
         ("Google Maps 3-pack", "—" if K["pack"] is None else f'{K["pack"]} <small>of {K["pack_of"]}</small>', "Local searches checked"),
+        ("Website readiness", "—", "Not checked: the website turns away automated visitors") if P.get("site_blocked") else
         ("Website readiness", f'{K["checks_passed"]} <small>of {K["checks_total"]}</small>', "AI-readiness checks passed"),
     ]
     support = [(X["per_engine"][en]["label"],
@@ -123,6 +124,9 @@ def render(A, ov=None):
           + "Being listed, reviewed and mentioned on these sites raises the chance of being recommended.")
     w4 = (f"<b>{K['checks_passed']} of {K['checks_total']}</b> checks passed. Each fix makes it easier for AI tools to understand who "
           f"{e(name)} is, where they build and why buyers trust them.")
+    if P.get("site_blocked"):  # change 26
+        w4 = (f"{e(P['domain'])} turns away automated visitors, so the website checks couldn't run in this audit. "
+              "Everything else in this report comes from the AI platforms and Google, which don't depend on reading the site.")
     from . import overview_page
     ov = _overview(A, ov)
     pages.append(f'''
@@ -236,6 +240,9 @@ def render(A, ov=None):
     icon = {"good": "✓", "warn": "!", "bad": "✕"}
     lab = {"good": "Pass", "warn": "Improve", "bad": "Fix"}
     chk = "".join(f'<div class="ck ck-{s}"><span class="ck-i">{icon[s]}</span><div><b>{e(t)}</b> <em>{lab[s]}</em><p>{e(d)}</p></div></div>' for s, t, d in A["checks"])
+    if P.get("site_blocked"):
+        chk = ('<div class="empty-state"><b>Website checks not run</b><p>The website turns away automated visitors, so its homepage, '
+               'markup and AI crawler settings couldn&rsquo;t be read for this audit.</p></div>')
     google_block = ""
     if K["pack"] is not None:
         google_block = (f'<div class="support" style="margin-top:18px"><div><span>Maps 3-pack</span><b>{K["pack"]} of {K["pack_of"]}</b><i>local searches</i></div>'
@@ -246,7 +253,7 @@ def render(A, ov=None):
 <section class="page">
  {ph("04", "Website readiness", "What the website gives AI tools to work with", ["site", "search"])}
  {wtm(w4)}
- <div class="sec-l">Website checks <span>{K["checks_passed"]} of {K["checks_total"]} passed · {e(P["domain"])} homepage, robots.txt, llms.txt and sitemap, {e(date)}</span></div>
+ <div class="sec-l">Website checks <span>{("not run · " + e(P["domain"])) if P.get("site_blocked") else (str(K["checks_passed"]) + " of " + str(K["checks_total"]) + " passed · " + e(P["domain"]) + " homepage, robots.txt, llms.txt and sitemap, " + e(date))}</span></div>
  <div class="checks">{chk}</div>
  {google_block}
  {footer(6, TOTAL)}
@@ -271,7 +278,7 @@ def render(A, ov=None):
   <div><h4>Questions asked</h4><p>{K["questions"]} questions a home buyer near {e(M["city"])} might ask, built from the services and areas on {e(P["domain"])}. Each was asked once per platform with the location set to {e(M["city"])}, {e(M["state_code"])}.</p></div>
   <div><h4>AI answer data</h4><p>Collected {e(date)} through each platform's official API: {e("; ".join(f"{ENGINE_LABELS[k]}: {v}" for k, v in models.items() if k in measured))}. API answers can differ slightly from the consumer apps, which personalize results.</p></div>
   <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from Semrush's latest US data.</p></div>
-  <div><h4>Website checks</h4><p>The homepage, robots.txt, llms.txt and sitemap were read on {e(date)}. Nothing on the site was changed.</p></div>
+  <div><h4>Website checks</h4><p>{"Not run: the website turns away automated visitors." if P.get("site_blocked") else "The homepage, robots.txt, llms.txt and sitemap were read on " + e(date) + ". Nothing on the site was changed."}</p></div>
  </div>
  <div class="close">
   <div class="close-l">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else ''}</div>

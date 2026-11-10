@@ -68,13 +68,22 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     profile["scope"] = sc
     if sc["type"] == "root":
         profile["domain"] = sc["domain"]
-    if not profile["homepage_status"] or profile["homepage_status"] >= 400:
-        raise AuditError(f"Could not load the homepage (HTTP {profile['homepage_status'] or 'no response'}). Check the URL.")
-    step("Reading the website", 12, event=f"Checked business markup, phone details and {profile['sitemap_count']:,} sitemap pages")
-    step("Reading the website", 14, event="Checked robots.txt and llms.txt for AI crawler access")
+    hs = profile["homepage_status"]
+    if not hs or hs in (404, 410):  # no such site or page: the address is wrong
+        raise AuditError(f"Could not load the homepage (HTTP {hs or 'no response'}). Check the URL.")
+    blocked = hs >= 400 and profile.get("word_count", 0) < 50  # change 26: the site turns away automated visitors
+    if blocked:
+        profile["site_blocked"] = hs
+        profile["name"] = site.name_from_domain(profile["domain"])
+        step("Reading the website", 12, event=f"{profile['domain']} turns away automated visitors, so the website checks are skipped; "
+                                              "the AI platform questions still run")
+    else:
+        step("Reading the website", 12, event=f"Checked business markup, phone details and {profile['sitemap_count']:,} sitemap pages")
+        step("Reading the website", 14, event="Checked robots.txt and llms.txt for AI crawler access")
     market = site.market_from(profile, city, state)
     if not market["city"] or not market["state"]:
-        raise AuditError("Couldn't find the builder's city and state on the website. Enter them and run again.")
+        raise AuditError("This website turns away automated visitors, so we couldn't read the builder's city and state. Enter them and run again."
+                         if blocked else "Couldn't find the builder's city and state on the website. Enter them and run again.")
     step("Reading the website", 16, event=f"Set the search location to {market['city']}, {market['state_code']}")
     log(f"  {profile['name']} · market {market['city']}, {market['state_code']} · areas {profile['areas_served'] or '—'}")
     qs = questions.build(profile, market, max_q)
@@ -144,7 +153,7 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         for err in dw["errors"]:
             log(f"  DataWise warning: {err}")
     step("Getting search demand and the Google profile", 28, event="Reviewed the Google Business Profile and local search data")
-    checks = site.checks(profile, market)
+    checks = [] if profile.get("site_blocked") else site.checks(profile, market)
 
     chosen = [en for en in engines.ENGINES if not only or en in only]
     live = [en for en in chosen if engines.is_configured(en)]

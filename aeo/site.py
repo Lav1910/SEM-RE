@@ -145,6 +145,27 @@ def rendered_dom(url, timeout=35):
         return None
 
 
+_NAME_WORDS = ("custom", "homes", "home", "builders", "builder", "building", "construction", "contracting", "design", "designs",
+               "development", "developments", "group", "remodeling", "renovations", "properties", "communities", "residential", "co")
+
+
+def name_from_domain(domain):
+    """A readable business name from a web address, for sites we can't read: tourmalinebuilders.com -> Tourmaline Builders."""
+    label = re.sub(r"^www\.", "", (domain or "").lower()).split(".")[0]
+    words = [w for w in re.split(r"[-_]+", label) if w]
+    out = []
+    for w in words:
+        parts, rest = [], w
+        while rest:
+            hit = next((k for k in _NAME_WORDS if rest.endswith(k) and len(rest) > len(k)), None)
+            if not hit:
+                break
+            parts.insert(0, hit)
+            rest = rest[: -len(hit)]
+        out += [rest] + parts if rest else parts
+    return " ".join(x.capitalize() for x in out) or domain
+
+
 def read_site(url, html_override=None, use_browser=True, start=None):
     """start: the page to read first (a subfolder or exact URL scope); defaults to the homepage."""
     if not url.startswith("http"):

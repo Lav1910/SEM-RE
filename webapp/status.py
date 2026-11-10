@@ -51,6 +51,8 @@ def current(last_audit=None):
             out[en] = {"state": "off", "label": "Not connected"}
             continue
         h = H.get(en)
+        if h and ((h.get("kp") and h["kp"] != health.key_print(en)) or (not h.get("kp") and not h["ok"])):
+            h = None  # change 27: the key changed since this result (or an old error from before keys were tracked)
         if not h or h["t"] < keys_t - 1:
             st = {"state": "mute", "label": "Not tested yet"}
             if en == "google_aio" and not config.key("DATAFORSEO_LOGIN"):
