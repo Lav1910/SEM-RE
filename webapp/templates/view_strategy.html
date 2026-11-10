@@ -22,17 +22,14 @@
   <button class="seg-item" data-tab="{{ k }}">{{ lab }} <b>{{ n }}</b></button>{% endif %}{% endfor %}
 </div>
 
+{% with counts = S.item_counts, total = S['items']|length, target = '.strat-card' %}{% include "_status_filter.html" %}{% endwith %}
 <div class="strat-list">
 {% for it in S['items'] %}
-  <article class="strat-card st-{{ it.status }}" data-lane="{{ it.lane }}">
+  <article class="strat-card task st-{{ it.status }}" data-lane="{{ it.lane }}" data-status="{{ it.status }}">
     <div class="sc-top">
       <span class="lane-chip lane-{{ it.lane }}">{{ it.lane_label }}</span>
       <span class="imp imp-{{ it.impact|lower }}">{{ it.impact }} impact</span><span class="eff">{{ it.effort }} effort</span>
-      <form class="sc-status" method="post" action="{{ url_for('strategy_item', aid=a.id) }}">
-        <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="item" value="{{ it.id }}">
-        <label class="ctl ctl-select ctl-sm"><span class="sr-only">Status</span><select name="status" data-autosave>
-          {% for v, lab in (('todo', 'To do'), ('doing', 'In progress'), ('done', 'Done')) %}<option value="{{ v }}" {{ 'selected' if it.status == v }}>{{ lab }}</option>{% endfor %}
-        </select></label></form>
+      <span class="st-badge" data-badge>{{ {'todo':'○ To do','doing':'◐ In progress','done':'✓ Done'}[it.status] }}</span>
     </div>
     <h3>{{ it.title }}</h3>
     <p class="sc-why">{{ it.why }}</p>
@@ -41,6 +38,10 @@
       {% if it.generator %}<a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=a.id, view='content') }}#gen-{{ it.generator }}">Generate {{ {'faq':'FAQ answers','blog':'blog drafts','city_pages':'city pages','cost_guide':'cost guide','llms_txt':'llms.txt','gbp_posts':'profile posts','review_requests':'review requests'}[it.generator] }}</a>{% endif %}
       {% if it.lane == 'technical' %}<a class="link" href="{{ url_for('audit_view', aid=a.id, view='fixes') }}">See the fix</a>{% endif %}
       {% if it.lane == 'sources' %}<a class="link" href="{{ url_for('audit_view', aid=a.id, view='overview') }}#ts" >See cited sources</a>{% endif %}
+    </div>
+    <div class="task-foot">
+      <span></span>
+      {% with item_id = it.id, cur = it.status, stamp = it.stamp %}{% include "_status_ctl.html" %}{% endwith %}
     </div>
   </article>
 {% endfor %}

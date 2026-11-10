@@ -534,9 +534,13 @@ VIEWS = {"overview": "Visibility Overview", "competitors": "Competitor Research"
 def _strategy_ctx(a, A):
     from aeo import strategy as strat
     items = strat.plan(A)
-    st = {r["item_id"]: r["status"] for r in db.q("SELECT item_id, status FROM strategy_status WHERE domain=?", (a["domain"],))}
+    rows = db.q("""SELECT s.item_id, s.status, s.updated_at, u.name AS who FROM strategy_status s
+                   LEFT JOIN users u ON u.id=s.user_id WHERE s.domain=?""", (a["domain"],))
+    st = {r["item_id"]: r["status"] for r in rows}
+    stamp = {r["item_id"]: {"who": (r["who"] or "").split(" ")[0], "t": r["updated_at"]} for r in rows}
     for it in items:
         it["status"] = st.get(it["id"], "todo")
+        it["stamp"] = stamp.get(it["id"])
     contents = collections.defaultdict(dict)
     for r in db.q("SELECT * FROM strategy_content WHERE audit_id=?", (a["id"],)):
         contents[r["kind"]][r["key"]] = dict(r)
@@ -544,8 +548,11 @@ def _strategy_ctx(a, A):
     fx = strat.fixes(A)
     for f in fx:
         f["status"] = st.get("fix_" + f["key"], "todo")
+        f["stamp"] = stamp.get("fix_" + f["key"])
+    counts = lambda xs: {k: sum(1 for x in xs if x["status"] == k) for k in ("todo", "doing", "done")}  # noqa: E731
     chat_ok = status.current().get("chatgpt", {}).get("state") == "good"
     return {"items": items, "lanes": strat.LANES, "gens": gens, "fixes": fx, "chat_ok": chat_ok,
+            "fix_counts": counts(fx), "item_counts": counts(items),
             "done_n": sum(1 for i in items if i["status"] == "done"), "schema": strat.schema_block(A)}
 
 
@@ -597,7 +604,7 @@ def strategy_item(aid):
     db.upsert("strategy_status", {"domain": a["domain"], "item_id": item, "status": st, "user_id": g.user["id"],
                                   "updated_at": time.time()}, ("domain", "item_id"))
     if request.headers.get("X-Requested-With") == "fetch":
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "status": st, "who": (g.user["name"] or "").split(" ")[0]})
     return redirect(request.referrer or url_for("audit_view", aid=aid, view="strategy"))
 
 
