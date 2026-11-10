@@ -38,17 +38,16 @@
       <div class="metric"><span><i class="dot" style="background:#18C3A4"></i>Citations {{ tip("How many AI answers linked to the builder's website as a source. Being cited is a strong trust signal for AI.") }}</span><b>{{ V.citations if V.measured_any else '—' }}</b></div>
       <div class="metric"><span><i class="dot" style="background:#B37FEB"></i>Cited Pages {{ tip("How many different pages on the builder's website AI used as a source. More pages cited means AI trusts more of the site.") }}</span><b>{{ V.cited_pages if V.measured_any else '—' }}</b></div>
       {% set semh = (A.semrush or {}).get('history') or [] %}
-      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>AI Overviews {{ tip("Google searches where Google's AI summary at the top of the results cites this website, in the latest month." ~ ('' if V.clean else ' Source: Semrush.')) }}</span><b>{{ semh[-1].aio_cited if semh else '—' }}</b></div>
+      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>AI Overviews {{ tip("Google searches where Google's AI summary at the top of the results cites this website, in the latest month.") }}</span><b>{{ semh[-1].aio_cited if semh else '—' }}</b></div>
     </div>
     <div class="metric-row" data-metrics="audience" hidden>
       <div class="metric"><span><i class="dot" style="background:#5B5FD9"></i>Monthly Audience {{ tip("How many people search each month for the questions where AI names this builder. It shows how much demand those recommendations reach.") }}</span><b>{{ '{:,}'.format(V.audience) if V.measured_any else '—' }}</b></div>
-      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>Searches showing an AI Overview {{ tip("Of the Google searches this website appears for, how many now show Google's AI summary at the top." ~ ('' if V.clean else ' Source: Semrush.')) }}</span><b>{{ '{:,}'.format(semh[-1].aio_keywords) if semh else '—' }}</b></div>
+      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>Searches showing an AI Overview {{ tip("Of the Google searches this website appears for, how many now show Google's AI summary at the top.") }}</span><b>{{ '{:,}'.format(semh[-1].aio_keywords) if semh else '—' }}</b></div>
     </div>
     <div class="metric-row" data-metrics="vis" hidden>
       <div class="metric"><span><i class="dot" style="background:#0A686A"></i>AI Visibility score {{ tip("The 0 to 100 AI Visibility score from each audit of this builder, so you can see the trend over time.") }}</span><b>{{ s if s is not none else '—' }}</b></div>
     </div>
     <div class="chart" id="trend-chart" aria-label="Trend chart"></div>
-    <p class="small muted chart-note" id="chart-note">Dashed line: Google AI Overview history from Semrush. Solid lines: HBM audits, one point per month; they grow each time this builder is audited again.</p>
     <script type="application/json" id="chart-data">{{ V.chart|tojson }}</script>
   </section>
 </div>
@@ -89,7 +88,7 @@
 {% set D = V.demand %}
 {% if D and D.has %}
 <section class="panel demand">
-  <div class="panel-h"><h2>Search demand {{ tip("How many people search Google each month for the buyer questions in this audit. People ask AI tools the same kinds of questions, so this shows how much demand is at stake." ~ ('' if V.clean else ' Volumes come from Semrush, DataWise or DataForSEO.')) }}</h2>
+  <div class="panel-h"><h2>Search demand {{ tip("How many people search Google each month for the buyer questions in this audit. People ask AI tools the same kinds of questions, so this shows how much demand is at stake.") }}</h2>
     <span class="small muted">Monthly searches for {{ D.questions }} local buyer question{{ 's' if D.questions != 1 }}{% if V.area %} in {{ V.area }}{% endif %}</span></div>
   <div class="dm-top">
     <div class="dm-big"><b>{{ '{:,}'.format(D.total) }}</b><span>people search for these questions <b>every month</b></span></div>

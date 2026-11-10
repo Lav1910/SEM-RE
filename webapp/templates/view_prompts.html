@@ -21,13 +21,13 @@
     <div class="p-body">
       {% for r in p.rows %}
       <div class="ans">
-        <div class="ans-h"><b>{{ platform_logo(r.engine) }}{{ r.label }}{% if r.sources_only %} <span class="muted small">· via Semrush</span>{% endif %}</b>
+        <div class="ans-h"><b>{{ platform_logo(r.engine) }}{{ r.label }}</b>
           {% if r.status == 'ok' %}<span class="pill {{ 'p-good' if r.mentioned else 'p-bad' }}">{{ ('Named' ~ (' #' ~ r.rank if r.rank else '')) if r.mentioned else 'Not named' }}</span>
           {% elif r.status == 'no_answer' %}<span class="pill p-mute">No AI answer</span>
           {% elif r.friendly %}<span class="pill p-warn">{{ r.friendly[0] }}</span>
           {% else %}<span class="pill p-mute">Not measured</span>{% endif %}</div>
         {% if r.status == 'ok' and r.sources_only %}
-          <p class="small muted">{% if V.clean %}Google's AI Overview cited these sites for this search. Being cited counts as being named.{% else %}Semrush records which sites Google's AI Overview cited, not the answer's wording. Being cited counts as being named.{% endif %}</p>
+          <p class="small muted">Google's AI Overview cited these sites for this search. Being cited counts as being named.</p>
           {% if r.citations %}<p class="small"><b>Cited:</b> {% for c in r.citations %}<a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.domain }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
         {% elif r.status == 'ok' %}
           <div class="ans-text md">{{ r.text|md }}</div>

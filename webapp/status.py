@@ -2,7 +2,20 @@
 from aeo import config, engines
 
 
-def friendly_error(err):
+# change 49: what the report and dashboard show; no provider names, tools or setup steps (Admin keeps the technical text)
+PLAIN = {"Needs verification": "This platform's account needs verifying before it can answer.",
+         "Needs credits": "This platform's account has run out of credit.",
+         "Key rejected": "This platform couldn't be reached.",
+         "Rate limited": "This platform was busy; some answers were skipped.",
+         "Timed out": "This platform didn't answer in time.",
+         "No data": "No AI answer was available for this search.",
+         "Error": "This platform didn't answer."}
+
+
+def friendly_error(err, plain=False):
+    if plain:
+        label = friendly_error(err)[0]
+        return label, PLAIN[label]
     e = (err or "").lower()
     if "40104" in e or "verify your account" in e:
         return "Needs verification", "The DataForSEO account must be verified at app.dataforseo.com before the API works."
@@ -25,17 +38,17 @@ def for_audit(A, engine):
         return {"state": "off", "label": "Not connected", "detail": "No key for this platform."}
     ok = [a for a in ans if a["status"] in ("ok", "no_answer")]
     errs = [a for a in ans if a["status"] == "error"]
-    via = " via Semrush" if any(a.get("source") == "semrush" for a in ans) else ""
+    via = ""  # change 49: no tool names on the report
     if not ok and errs:
-        label, detail = friendly_error(errs[0].get("error"))
+        label, detail = friendly_error(errs[0].get("error"), plain=True)
         return {"state": "bad", "label": label, "detail": detail}
     if errs:
-        label, detail = friendly_error(errs[0].get("error"))
+        label, detail = friendly_error(errs[0].get("error"), plain=True)
         return {"state": "warn", "label": f"Measured{via} · {len(errs)} skipped", "detail": detail}
     return {"state": "good", "label": "Measured" + via, "detail": ""}
 
 
-def current(last_audit=None):
+def current(last_audit=None, plain=False):
     """Live connection status for the dashboard/admin: saved keys plus the latest real call to each platform
     (from aeo.health). A key saved after the last call shows as "Not tested yet" rather than a green tick."""
     import os
@@ -66,5 +79,7 @@ def current(last_audit=None):
         else:
             label, detail = friendly_error(h.get("error"))
             st = {"state": "bad", "label": label, "detail": detail}
+        if plain:  # change 49: the dashboard pills say only how the platform is doing, never which tool it goes through
+            st = {"state": st["state"], "label": {"good": "Connected", "warn": "Connected", "mute": "Not tested yet", "off": "Not connected"}.get(st["state"], st["label"])}
         out[en] = st
     return out

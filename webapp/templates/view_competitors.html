@@ -23,13 +23,13 @@
       <table class="t"><thead><tr><th>Builder</th><th class="r">3-pack spots</th></tr></thead><tbody>
         {% for b in V.pack|sort(attribute='pack', reverse=True) %}<tr><td>{{ b.name }}</td><td class="r tnum">{{ b.pack }}</td></tr>{% endfor %}
       </tbody></table>
-    {% elif V.area %}<div class="empty">No Google Maps results were returned for {{ V.area }}'s searches. Semrush only tracks larger searches; DataForSEO (once verified) checks every city.</div>
-    {% else %}<div class="empty">Maps 3-pack results appear once Google results (Semrush or DataForSEO) are connected.</div>{% endif %}
+    {% elif V.area %}<div class="empty">No Google Maps results were returned for {{ V.area }}'s searches.</div>
+    {% else %}<div class="empty">Maps 3-pack results weren't available for this audit.</div>{% endif %}
   </section>
 </div>
 {% set M = (V.datawise or {}).get('mentions') %}
 <section class="panel">
-  <div class="panel-h"><h2>AI mentions database {{ tip("How often AI tools have mentioned these builders across all the questions people ask them, not just the ones in this audit.") }}</h2><span class="small muted">DataForSEO LLM Mentions via DataWise · all prompts it has recorded, not just this audit's questions</span></div>
+  <div class="panel-h"><h2>AI mentions database {{ tip("How often AI tools have mentioned these builders across all the questions people ask them, not just the ones in this audit.") }}</h2></div>
   {% if M and (M.google or M.chatgpt) %}
   <div class="tw"><table class="t"><thead><tr><th>Domain</th><th class="r">Google AI mentions</th><th class="r">Google AI search volume</th><th class="r">ChatGPT mentions</th><th class="r">ChatGPT AI search volume</th><th>Top sources in Google AI</th></tr></thead><tbody>
     {% for d in (M.google.keys()|list + M.chatgpt.keys()|list)|unique %}
@@ -42,8 +42,8 @@
   </tbody></table></div>
   {% set gsum = M.google.values()|map(attribute='mentions')|sum %}{% set csum = M.chatgpt.values()|map(attribute='mentions')|sum %}
   {% if gsum == 0 and csum == 0 %}<p class="small" style="margin-top:10px"><b>None of these builders has recorded mentions in this database yet.</b> It covers popular prompts nationally, so smaller local builders often don't appear; this audit's own local questions above are the better measure for them.</p>{% endif %}
-  <p class="small muted">Mentions are AI answers in DataForSEO's database that cite or name the domain; AI search volume is the estimated monthly searches behind those prompts. Useful as a second, independent view next to this audit's own questions.</p>
-  {% else %}<div class="empty">Connect DataWise to compare AI mentions across a much larger set of real prompts.</div>{% endif %}
+  <p class="small muted">Mentions are AI answers that cite or name the website; AI search volume is the estimated monthly searches behind those prompts. Useful as a second, independent view next to this audit's own questions.</p>
+  {% else %}<div class="empty">AI mentions data wasn't available for this audit.</div>{% endif %}
 </section>
 <section class="panel">
   <div class="panel-h"><h2>Where competitors win {{ tip("Questions where AI named other builders and left this one out, with who it named instead.") }}</h2><span class="small muted">Questions where AI named other builders and not {{ A.profile.name }}</span></div>

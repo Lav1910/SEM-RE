@@ -181,7 +181,7 @@ def render(A, ov=None):
   <colgroup><col style="width:34%"><col style="width:9%">{"".join(f'<col style="width:{round(57 / max(1, len(ENG)), 1)}%">' for _ in ENG)}</colgroup>
   <thead><tr><th>Question</th><th class="r">Monthly searches</th>{"".join(f"<th>{ENGINE_LABELS[en]}</th>" for en in ENG)}</tr></thead>
   <tbody>{"".join(rows)}</tbody></table></div>
- <p class="note">“Named #2” means the builder was the second business named in that answer. Monthly searches are Semrush US estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
+ <p class="note">“Named #2” means the builder was the second business named in that answer. Monthly searches are US estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
  {footer(3, TOTAL)}
 </section>''')
 
@@ -221,7 +221,7 @@ def render(A, ov=None):
     if kw:
         kw_rows = "".join(f'<tr><td>{e(k["keyword"])}<span class="srcs">{e(k["url"].replace("https://", ""))}</span></td><td class="r">{fmt(k["volume"])}</td></tr>' for k in kw[:8])
         kw_block = (f'<div class="sec-l" style="margin-top:22px">Searches where Google\'s AI Overview already cites {e(P["domain"])} '
-                    f'<span>top {min(8, len(kw))} of {fmt(D.get("aio_cited"))} by search volume · Semrush</span></div>'
+                    f'<span>top {min(8, len(kw))} of {fmt(D.get("aio_cited"))} by search volume</span></div>'
                     f'<table class="tbl"><thead><tr><th>Search</th><th class="r">Monthly searches</th></tr></thead><tbody>{kw_rows}</tbody></table>')
     sources_html = empty if K["answers"] == 0 else (
         '<div class="two"><div><div class="sec-l">Cited sources by type <span>' + str(sum(s["count"] for s in srcs)) + ' citations</span></div>'
@@ -248,8 +248,8 @@ def render(A, ov=None):
     if K["pack"] is not None:
         google_block = (f'<div class="support" style="margin-top:18px"><div><span>Maps 3-pack</span><b>{K["pack"]} of {K["pack_of"]}</b><i>local searches</i></div>'
                         f'<div><span>Top 3 on Google</span><b>{K["top3"]} of {K["pack_of"]}</b><i>same searches</i></div>'
-                        f'<div><span>Searches showing an AI Overview</span><b>{fmt(D.get("aio_keywords"))}</b><i>of {fmt(D.get("organic_keywords"))} the site ranks for · Semrush</i></div>'
-                        f'<div><span>Est. monthly Google visits</span><b>{fmt(D.get("organic_traffic"))}</b><i>Semrush estimate</i></div></div>')
+                        f'<div><span>Searches showing an AI Overview</span><b>{fmt(D.get("aio_keywords"))}</b><i>of {fmt(D.get("organic_keywords"))} the site ranks for</i></div>'
+                        f'<div><span>Est. monthly Google visits</span><b>{fmt(D.get("organic_traffic"))}</b><i>estimate</i></div></div>')
     pages.append(f'''
 <section class="page">
  {ph("04", "Website readiness", "What the website gives AI tools to work with", ["site", "search"])}
@@ -271,21 +271,20 @@ def render(A, ov=None):
 </section>''')
 
     # ---------------- 06 notes ----------------
-    models = A.get("models", {})
     pages.append(f'''
 <section class="page">
  {ph("06", "Report notes and sources", "Where every number came from and how to read it", ["ai", "search", "site"])}
  <div class="notes">
   <div><h4>Questions asked</h4><p>{K["questions"]} questions a home buyer near {e(M["city"])} might ask, built from the services and areas on {e(P["domain"])}. Each was asked once per platform with the location set to {e(M["city"])}, {e(M["state_code"])}.</p></div>
-  <div><h4>AI answer data</h4><p>Collected {e(date)} through each platform's official API: {e("; ".join(f"{ENGINE_LABELS[k]}: {v}" for k, v in models.items() if k in measured))}. API answers can differ slightly from the consumer apps, which personalize results.</p></div>
-  <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from Semrush's latest US data.</p></div>
+  <div><h4>AI answer data</h4><p>Collected {e(date)} from {e(", ".join(ENGINE_LABELS[k] for k in measured))}. Answers can differ slightly from the consumer apps, which personalize results.</p></div>
+  <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from the latest US Google search data.</p></div>
   <div><h4>Website checks</h4><p>{"Not run: the website turns away automated visitors." if P.get("site_blocked") else "The homepage, robots.txt, llms.txt and sitemap were read on " + e(date) + ". Nothing on the site was changed."}</p></div>
  </div>
  <div class="close">
   <div class="close-l">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else ''}</div>
   <div class="close-r"><div class="close-k">Prepared by</div><div class="close-n">Home Builder Marketers</div><div class="close-u">HomeBuilderMarketers.com</div><div class="close-d">Report date {e(date)}</div></div>
  </div>
- <p class="close-src">Sources · {e(" · ".join(ENGINE_LABELS[en] for en in measured) or "Website checks")} · Google search results · Semrush · Website checks</p>
+ <p class="close-src">Sources · {e(" · ".join(ENGINE_LABELS[en] for en in measured) or "Website checks")} · Google search results · Website checks</p>
  <div class="next-hbm"><b>Next step with HBM</b> A 20-minute walkthrough of these findings and the first three fixes, with a plan to get {e(name)} named in more AI answers.</div>
  <p class="note">Figures come directly from each source and are frozen as of the report date. “—” means a figure was not available for this audit; it is never shown as zero.</p>
  {footer(8, TOTAL)}
