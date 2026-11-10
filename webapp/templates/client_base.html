@@ -14,6 +14,10 @@
         <span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.4 5.3 3.4 8.5s-1 6.1-3.4 8.5c-2.4-2.4-3.4-5.3-3.4-8.5s1-6.1 3.4-8.5z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{{ a.domain }}</span>
         <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.4" fill="currentColor"/></svg>{{ A.market.city }}, {{ A.market.state_code }}</span>
         <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 10h16M9 3v4M15 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>{{ a.created_at|datefmt }}</span>
+        {# change 33: when this link stops working #}
+        {% set left = (a.client_expires or 0) - now_ts %}
+        <span class="client-expiry{{ ' soon' if left < 86400 }}" data-expires="{{ a.client_expires|int }}" title="This link stops working on {{ a.client_expires|datefmt }}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-left>{% if left >= 86400 %}{% set d = (left / 86400)|round(0, 'ceil')|int %}Link expires in {{ d }} day{{ 's' if d != 1 }} · {{ exp_date }}{% else %}{% set h = (left // 3600)|int %}{% set m = ((left % 3600) // 60)|int %}Expires in {{ h ~ 'h ' if h }}{{ m }}m{% endif %}</span></span>
       </div>
     </div>
   </div>
@@ -43,6 +47,21 @@
 </div>
 {% endif %}
 {% block view %}{% endblock %}
+<script>
+(function () {  // change 33: on the last day the expiry chip counts down live
+  var chip = document.querySelector('.client-expiry'); if (!chip) return;
+  var end = +chip.dataset.expires * 1000, out = chip.querySelector('[data-left]');
+  function tick() {
+    var left = Math.max(0, end - Date.now()) / 1000;
+    if (left >= 86400) return;
+    chip.classList.add('soon');
+    if (left <= 0) { out.textContent = 'This link has expired'; return; }
+    var h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60);
+    out.textContent = 'Expires in ' + (h ? h + 'h ' : '') + (h || m ? m + 'm' : 'under a minute');
+  }
+  tick(); setInterval(tick, 30000);
+})();
+</script>
 <footer class="client-foot small muted">Prepared by Home Builder Marketers · AI answers collected {{ a.created_at|datefmt }}. Answers from AI platforms change over time.</footer>
 </div>
 {% endblock %}

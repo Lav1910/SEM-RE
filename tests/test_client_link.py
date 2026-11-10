@@ -91,6 +91,18 @@ class ClientLink(unittest.TestCase):
         self.assertEqual(self.app.test_client().get(third["url"].split("localhost", 1)[-1]).status_code, 404)
         self.assertEqual(self.app.test_client().get("/c/not-a-real-token-at-all-xx/overview").status_code, 404)
 
+    def test_expiry_clock(self):
+        """Change 33: the client sees when the link stops working; the last day counts down in amber."""
+        link = self.make_link()
+        path = link["url"].split("localhost", 1)[-1]
+        html = self.app.test_client().get(path).get_data(as_text=True)
+        self.assertIn("Link expires in 30 days", html)
+        self.assertNotIn("client-expiry soon", html)
+        self.db.x("UPDATE audits SET client_expires=? WHERE id=?", (time.time() + 2 * 3600 + 60, self.aid))
+        html = self.app.test_client().get(path).get_data(as_text=True)
+        self.assertIn("client-expiry soon", html)
+        self.assertIn("Expires in 2h 0m", html)
+
     def test_link_ticks_the_todo_list(self):
         self.db.x("DELETE FROM todos WHERE user_id=?", (self.ids["clrep"],))
         self.db.x("INSERT INTO todos (user_id, domain, url, status, created_at) VALUES (?,?,?, 'todo', ?)",

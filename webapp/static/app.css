@@ -815,7 +815,7 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .client-eyebrow { font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--teal); }
 .client-who h1 { margin:0; font-size:26px; line-height:1.15; font-weight:600; color:var(--ink); }
 .client-chips { display:flex; gap:8px; flex-wrap:wrap; }
-.client-chips span { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; background:#F2F8F8; border:1px solid var(--line);
+.client-chips > span { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; background:#F2F8F8; border:1px solid var(--line);
   font-size:12.5px; color:var(--ink2); }
 .client-chips svg { width:14px; height:14px; color:var(--teal); flex:none; }
 .client-hero-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 18px; border-top:1px solid var(--line); background:#FAFCFC; }
@@ -824,6 +824,20 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .client-tabs a { padding:8px 16px; border-radius:9px; text-decoration:none; color:var(--ink2); font-weight:500; font-size:14px; transition:background .15s, color .15s; }
 .client-tabs a:hover { color:var(--ink); }
 .client-tabs a.on { background:#fff; color:var(--teal); box-shadow:0 1px 2px rgba(12,51,53,.12); font-weight:600; }
+/* change 32: emerald brand area on the client page (the tab strip below stays light) */
+.client-hero::before { background:linear-gradient(90deg, #3FD6D8 0%, #7FE3C4 100%); z-index:1; }
+.client-hero-top { background:radial-gradient(120% 160% at 100% 0%, rgba(63,214,216,.20) 0%, transparent 52%),
+  linear-gradient(120deg, #0A2C2E 0%, #0C3D3F 48%, #0E5557 100%); color:#fff; }
+.client-hero-top .client-logo { filter:brightness(0) invert(1); }
+.client-hero-top .client-div { background:rgba(255,255,255,.18); }
+.client-hero-top .client-eyebrow { color:#8FE7DE; }
+.client-hero-top .client-who h1 { color:#fff; }
+.client-hero-top .client-chips > span { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.16); color:rgba(255,255,255,.92); }
+.client-hero-top .client-chips svg { color:#8FE7DE; }
+/* change 33: link expiry chip; amber on the last day */
+.client-hero-top .client-chips > .client-expiry.soon { background:rgba(242,181,71,.16); border-color:rgba(242,181,71,.45); color:#FFE3A8; }
+.client-hero-top .client-chips > .client-expiry.soon svg { color:#F2B547; }
+.client-expiry > span { display:inline; padding:0; border:0; background:none; }
 @media (max-width: 640px) {
   .client-page { padding:14px 14px 36px; }
   .client-hero-top { gap:14px; padding:20px 18px 16px; }
