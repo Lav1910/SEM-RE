@@ -59,7 +59,10 @@ over existing audits and users, copy `appdata` from the other computer while the
 | **Railway** | New project → Deploy from GitHub → add a Volume mounted at `/data` → add the variables from `.env.example`. | ~$5–10/mo |
 | **Any Linux VPS** (IONOS, Fasthosts, DigitalOcean) | Install Docker, point a DNS record at the server, fill in `.env` (plus `DOMAIN=`), run `docker compose up -d`. Caddy gets HTTPS automatically (`deploy/Caddyfile`). | ~$5–12/mo |
 
-These hosts won't work as-is: Vercel, Cloudflare Workers/Pages and shared web hosting. They have no lasting disk and
+**Vercel:** use the `vercel-port` branch and follow [VERCEL.md](VERCEL.md). It adds a Postgres database, resumable
+audit steps and a serverless PDF function.
+
+These hosts won't work as-is on `main`: Vercel (use `vercel-port`), Cloudflare Workers/Pages and shared web hosting. They have no lasting disk and
 no long-running worker, and they can't run Chrome for PDFs.
 
 **A custom address:** point `audit.homebuildermarketers.com` (CNAME) at the host and set `PUBLIC_URL` to it. If the

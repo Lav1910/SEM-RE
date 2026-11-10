@@ -1,0 +1,10 @@
+.venv
+appdata
+audits
+reports
+data/semrush
+data/site
+data/sample_audit.json
+tests
+.claude
+*.sqlite3*

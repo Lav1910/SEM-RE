@@ -44,11 +44,7 @@ def _typed_location(label):
             "kind": "city", "main": False, "sources": ["entered"]}
 
 
-def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progress=None, out_dir=None, scope_kind="root",
-        locations_chosen=None, max_locations=None):
-    """Run one audit. progress(stage, percent, event=..., engines=...) is called as it goes; returns the output folder.
-    Events describe what the audit is doing (never results), for the live screen salespeople watch."""
-    t0 = time.time()
+def _stepper(progress):
     _p = progress or (lambda stage, pct, **kw: None)
 
     def step(stage, pct, event=None, engines_state=None):
@@ -56,7 +52,15 @@ def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progr
             _p(stage, pct, event=event, engines=engines_state)
         except TypeError:  # an older two-argument callback
             _p(stage, pct)
+    return step
 
+
+def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progress=None, scope_kind="root",
+            locations_chosen=None, max_locations=None):
+    """Step 1 of an audit (about 30-90 s): read the site, find the market and service cities, build the questions,
+    pull search demand and the Google profile, run the site checks. Returns a JSON-safe state for the next steps."""
+    t0 = time.time()
+    step = _stepper(progress)
     step("Reading the website", 5, event=f"Opening {url} in a real browser")
     log(f"Reading {url} ...")
     sc = scope.make(url, scope_kind)
@@ -145,17 +149,33 @@ def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progr
     chosen = [en for en in engines.ENGINES if not only or en in only]
     live = [en for en in chosen if engines.is_configured(en)]
     log(f"Asking {len(qs)} questions on {len(live)} platforms: {', '.join(engines.ENGINE_LABELS[x] for x in live) or 'none configured'}")
-    jobs = [(en, q) for q in qs for en in chosen]
-    done = [0]
-    import threading
-    lock = threading.Lock()
     est = {en: {"done": 0, "total": len(qs), "state": "running" if en in live else "off"} for en in chosen}
+    step("Asking AI platforms", 30, event="Asking each AI platform the same local questions, with the location set to "
+         + (f"{main_label} and each service city" if measured else main_label), engines_state={k: dict(v) for k, v in est.items()})
+    return {"url": url, "t0": t0, "profile": profile, "market": market, "questions": qs, "sem": sem, "dw": dw, "checks": checks,
+            "chosen": chosen, "est": est, "answers": {}, "pool_locs": pool_locs,
+            "found": [l for l in found if l not in pool_locs]}
+
+
+def ask_batch(S, progress=None, deadline=None):
+    """Step 2: ask the AI platforms the questions not answered yet, in parallel. Stops starting new work at `deadline`
+    (epoch seconds) so a serverless request can save and continue in the next one. Returns True when all are answered."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    step = _stepper(progress)
+    qmap = {q["id"]: q for q in S["questions"]}
+    todo = [(en, q["id"]) for q in S["questions"] for en in S["chosen"] if f"{en}|{q['id']}" not in S["answers"]]
+    total = len(S["questions"]) * len(S["chosen"])
+    lock = threading.Lock()
+    est = S["est"]
+    workers = config.SETTINGS["WORKERS"]
 
     def ask(j):
-        en, q = j
-        r = engines.ask(en, q, q.get("loc") or market)
+        en, qid = j
+        q = qmap[qid]
+        r = engines.ask(en, q, q.get("loc") or S["market"])
         with lock:
-            done[0] += 1
+            S["answers"][f"{en}|{qid}"] = r
             st = est[en]
             st["done"] += 1
             label = engines.ENGINE_LABELS[en]
@@ -172,13 +192,25 @@ def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progr
                 ev = f"Checked Google AI Overviews for “{q['keyword']}”"
             else:
                 ev = f"Asked {label}: {q['prompt']}"
+            n = len(S["answers"])
             snapshot = {k: dict(v) for k, v in est.items()}
-        step(f"Asking AI platforms ({done[0]} of {len(jobs)})", 30 + int(60 * done[0] / max(1, len(jobs))), event=ev, engines_state=snapshot)
+        step(f"Asking AI platforms ({n} of {total})", 30 + int(60 * n / max(1, total)), event=ev, engines_state=snapshot)
         return r
-    step("Asking AI platforms", 30, event="Asking each AI platform the same local questions, with the location set to "
-         + (f"{main_label} and each service city" if measured else main_label), engines_state={k: dict(v) for k, v in est.items()})
-    with ThreadPoolExecutor(max_workers=config.SETTINGS["WORKERS"]) as pool:
-        answers = list(pool.map(ask, jobs))
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for i in range(0, len(todo), workers):  # one wave at a time, so a deadline can stop cleanly between waves
+            if deadline and time.time() > deadline:
+                break
+            list(pool.map(ask, todo[i:i + workers]))
+    return len(S["answers"]) >= total
+
+
+def finish(S, progress=None):
+    """Step 3: analyse the answers, check the AI mentions database, build the report. Returns (audit, report_html, loom_text)."""
+    step = _stepper(progress)
+    profile, market, qs, checks, sem, dw = S["profile"], S["market"], S["questions"], S["checks"], S["sem"], S["dw"]
+    answers = [S["answers"][f"{en}|{q['id']}"] for q in qs for en in S["chosen"] if f"{en}|{q['id']}" in S["answers"]]
+    url, t0, pool_locs, found = S["url"], S["t0"], S["pool_locs"], S["pool_locs"] + S["found"]
     step("Analysing answers", 91, event="Identifying the builders each answer recommends")
     step("Analysing answers", 92, event="Mapping the sources AI platforms rely on")
     capped = sum(1 for a in answers if a["status"] == "budget_reached")
@@ -209,11 +241,7 @@ def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progr
         "seconds": round(time.time() - t0, 1),
     }
     step("Building the report", 97, event="Writing the report, PDF layout and Loom talking points")
-    out_dir = out_dir or os.path.join(ROOT, "audits", profile["domain"], datetime.date.today().isoformat())
-    os.makedirs(out_dir, exist_ok=True)
-    json.dump(audit, open(os.path.join(out_dir, "audit.json"), "w"), indent=1)
-    open(os.path.join(out_dir, "report.html"), "w").write(render.render(audit))
-    open(os.path.join(out_dir, "loom.txt"), "w").write(render.talking_points(audit))
+    report_html, loom = render.render(audit), render.talking_points(audit)
     k = analysis["kpis"]
     log(f"Done in {audit['seconds']}s. Score {k['score'] if k['score'] is not None else '—'} · named in {k['mentioned']} of {k['answers']} answers · "
         f"{k['checks_passed']}/{k['checks_total']} checks · Semrush units {(sem or {}).get('units', 0)}")
@@ -221,7 +249,22 @@ def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progr
     b = budget.status()
     if b.get("limit_usd") is not None:
         log(f"Test budget: ${b['spent_usd']:.2f} of ${b['limit_usd']:.2f} used")
-    step("Done", 100, event="Report ready")
+    return audit, report_html, loom
+
+
+def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progress=None, out_dir=None, scope_kind="root",
+        locations_chosen=None, max_locations=None):
+    """Run one whole audit in this process (command line, or a server with background workers).
+    progress(stage, percent, event=..., engines=...) is called as it goes; returns the output folder."""
+    S = prepare(url, city, state, max_q, only, use_semrush, progress, scope_kind, locations_chosen, max_locations)
+    ask_batch(S, progress)
+    audit, report_html, loom = finish(S, progress)
+    out_dir = out_dir or os.path.join(ROOT, "audits", audit["profile"]["domain"], datetime.date.today().isoformat())
+    os.makedirs(out_dir, exist_ok=True)
+    json.dump(audit, open(os.path.join(out_dir, "audit.json"), "w"), indent=1)
+    open(os.path.join(out_dir, "report.html"), "w").write(report_html)
+    open(os.path.join(out_dir, "loom.txt"), "w").write(loom)
+    _stepper(progress)("Done", 100, event="Report ready")
     print(out_dir)
     return out_dir
 

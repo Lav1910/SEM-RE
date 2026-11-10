@@ -116,7 +116,8 @@ class WebApp(unittest.TestCase):
         self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
 
     def test_email_code_flow(self):
-        from webapp import auth as A
+        self.db.x("UPDATE users SET password_hash='!' WHERE email='rep@homebuildermarketers.com'")  # no password yet
+        self.db.x("DELETE FROM security_log WHERE email='rep@homebuildermarketers.com'")
         c = self.app.test_client()
         with c.session_transaction() as s:
             s["csrf"] = "t"
@@ -155,6 +156,7 @@ class WebApp(unittest.TestCase):
             self.assertFalse(m.called)
 
     def test_sign_in_link_single_use(self):
+        self.db.x("DELETE FROM security_log WHERE email='boss@homebuildermarketers.com'")  # earlier runs count toward the limit
         c = self.app.test_client()
         with c.session_transaction() as s:
             s["csrf"] = "t"

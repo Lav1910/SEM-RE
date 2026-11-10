@@ -34,3 +34,41 @@ def html_to_pdf(html_path, pdf_path, timeout=120):
         if os.path.exists(tmp):
             os.remove(tmp)
     return pdf_path
+
+
+def make_pdf(html, timeout=90):
+    """PDF bytes for an HTML page, or None when this host has no PDF engine (the caller then shows a print page).
+    Order: PDF_SERVICE_URL (on Vercel, the Node function at /api/pdf) -> local Chrome/Chromium/Edge."""
+    import urllib.request
+    svc = os.environ.get("PDF_SERVICE_URL")
+    if not svc and os.environ.get("VERCEL"):
+        base = os.environ.get("PUBLIC_URL") or (("https://" + os.environ["VERCEL_PROJECT_PRODUCTION_URL"])
+                                               if os.environ.get("VERCEL_PROJECT_PRODUCTION_URL") else "")
+        svc = (base.rstrip("/") + "/api/pdf") if base else None
+    if svc:
+        secret = os.environ.get("CRON_SECRET") or os.environ.get("SECRET_KEY") or ""
+        req = urllib.request.Request(svc, data=html.encode("utf-8"), method="POST",
+                                     headers={"Content-Type": "text/html; charset=utf-8", "Authorization": "Bearer " + secret})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = r.read()
+            if data[:4] == b"%PDF":
+                return data
+        except Exception:
+            pass
+    try:
+        chrome()
+    except RuntimeError:
+        return None
+    d = tempfile.mkdtemp(prefix="hbm-html-")
+    try:
+        hp, pp = os.path.join(d, "page.html"), os.path.join(d, "page.pdf")
+        with open(hp, "w", encoding="utf-8") as f:
+            f.write(html)
+        html_to_pdf(hp, pp)
+        with open(pp, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
