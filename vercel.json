@@ -6,8 +6,21 @@
       "memory": 1024,
       "excludeFiles": "{tests/**,data/semrush/**,data/site/**,reports/**,audits/**,appdata/**,deploy/**,node_modules/**}"
     },
-    "api/pdf.js": { "maxDuration": 60, "memory": 1769 }
+    "api/pdf.js": {
+      "maxDuration": 60,
+      "memory": 1769
+    }
   },
-  "rewrites": [{ "source": "/((?!api/pdf).*)", "destination": "/api/index" }],
-  "crons": [{ "path": "/api/jobs/tick", "schedule": "* * * * *" }]
+  "rewrites": [
+    {
+      "source": "/((?!api/pdf).*)",
+      "destination": "/api/index"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/jobs/tick",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }

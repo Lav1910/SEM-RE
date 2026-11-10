@@ -42,9 +42,10 @@ This branch also still runs there: with no `DATABASE_URL` it falls back to SQLit
 
 ## Plan
 
-- **Vercel Pro (~$20/month) is recommended.** It allows longer functions and the every-minute cron in `vercel.json`.
-- **On Hobby (free):** change the cron in `vercel.json` to once a day (`"0 6 * * *"`) or remove it. Audits still run:
-  the app starts ticks itself and the progress screen keeps them going. Hobby is meant for non-commercial use.
+- **Works on Hobby (free) and Pro.** The safety-net cron in `vercel.json` runs once a day, which Hobby allows. Audits
+  don't depend on it: the app starts ticks itself and the progress screen keeps them going.
+- **On Pro (~$20/month, recommended for a team):** you can change the cron to every minute (`"* * * * *"`) for a
+  faster safety net. Hobby is meant for personal, non-commercial use.
 - **Neon Postgres:** the free tier is enough to start. Audits are about 0.3–1 MB each in the database.
 
 ## Checks done before handing over
