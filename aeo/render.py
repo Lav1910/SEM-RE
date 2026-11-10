@@ -73,7 +73,8 @@ def render(A, ov=None):
     pages = []
     q_by = {q["id"]: q for q in A["questions"]}
     measured = [en for en in ENGINES if X["per_engine"][en]["measured"]]
-    ENG = measured  # change 24: the report only shows platforms with real results, never "not measured" or errors
+    ENG = measured  # the question grid only shows platforms with real results (change 24)
+    zero = {"measured": True, "score": 0, "mentioned": 0, "answers": 0}  # change 28: a platform that couldn't run reads 0
 
     def footer(n, total):
         return (f'<footer><span class="f-brand">Home Builder Marketers</span>'
@@ -96,8 +97,8 @@ def render(A, ov=None):
         ("Website readiness", f'{K["checks_passed"]} <small>of {K["checks_total"]}</small>', "AI-readiness checks passed"),
     ]
     support = [(X["per_engine"][en]["label"],
-                "—" if not X["per_engine"][en]["measured"] else f'{X["per_engine"][en]["mentioned"]} of {X["per_engine"][en]["answers"]}',
-                "answers naming the builder" if X["per_engine"][en]["measured"] else "Not measured") for en in ENG]
+                f'{X["per_engine"][en]["mentioned"]} of {X["per_engine"][en]["answers"]}' if en in measured else "0",
+                "answers naming the builder") for en in ENGINES]
     support_html = "".join(f'<div><span>{l}</span><b>{v}</b><i>{s}</i></div>' for l, v, s in support)
     lb = X["leaderboard"]
     leader = next((b for b in lb if not b.get("prospect")), None)
@@ -168,8 +169,8 @@ def render(A, ov=None):
         rows.append(f'<tr><td><b>{e(q["prompt"])}</b><span class="srcs">Google search: {e(q["keyword"])}</span></td><td class="r">{fmt(q.get("volume"))}</td>{tds}</tr>')
     eng_cards = "".join(
         f'<div class="pl {"pl-good" if v["measured"] else "pl-mute"}"><b>{v["label"]}</b><span>{"—" if v["score"] is None else v["score"]}</span>'
-        f'<i>{"Named in " + str(v["mentioned"]) + " of " + str(v["answers"]) + " answers" if v["measured"] else "Not measured"}</i></div>'
-        for v in (X["per_engine"][en] for en in ENG))
+        f'<i>{("Named in " + str(v["mentioned"]) + (" of " + str(v["answers"]) if v["answers"] else "") + " answers") if v["measured"] else "Not measured"}</i></div>'
+        for v in (X["per_engine"][en] if en in measured else dict(X["per_engine"][en], **zero) for en in ENGINES))
     pages.append(f'''
 <section class="page">
  {ph("01", "What AI tells local home buyers", "Each local question asked on every AI platform, and whether the builder was named", ["ai"])}

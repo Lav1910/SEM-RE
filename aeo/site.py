@@ -231,7 +231,10 @@ def read_site(url, html_override=None, use_browser=True, start=None):
     robots_code, _, robots, _ = f_robots.result()
     llms_code, llms_type, llms, _ = f_llms.result()
     has_llms = llms_code == 200 and "html" not in llms_type.lower() and not llms.lstrip().lower().startswith("<!doctype")
-    urls = f_sitemap.result()
+    try:  # change 29: a huge or slow sitemap can't hold the audit up; whatever loaded is enough for the checks
+        urls = f_sitemap.result(timeout=12)
+    except Exception:
+        urls = []
     pool.shutdown(wait=False)
 
     profile = {
@@ -250,6 +253,47 @@ def read_site(url, html_override=None, use_browser=True, start=None):
         "location_links": loc_links[:80], "area_phrases": area_phrases,
     }
     return profile
+
+
+def lookup_market(name, domain):
+    """Change 30: when the website doesn't say (or won't let us read it), ask an AI platform with live web search
+    where the builder is based. Returns (city, state, how) or (None, None, None). Tries Gemini (Google Search), then
+    ChatGPT (web search)."""
+    import json as _json
+    from . import budget, config, engines
+    prompt = (f"Where is the home builder \"{name}\" (website {domain}) based? Use their Google Business Profile, website or "
+              "business listings. Reply with JSON only, no other words: {\"city\": \"...\", \"state\": \"two-letter US state code\"}. "
+              "If you can't tell with confidence, reply {\"city\": null, \"state\": null}.")
+    tries = []
+    if engines.is_configured("gemini"):
+        tries.append(("gemini", "a Google search", lambda: engines.parse_gemini(engines._post(
+            "https://generativelanguage.googleapis.com/v1beta/interactions",
+            {"model": config.SETTINGS["GEMINI_MODEL"], "input": prompt, "tools": [{"type": "google_search"}]},
+            {"x-goog-api-key": config.key("GEMINI_API_KEY"), "Api-Revision": config.SETTINGS["GEMINI_API_REVISION"]}))[0]))
+    if engines.is_configured("chatgpt"):
+        tries.append(("chatgpt", "a web search", lambda: engines.parse_openai(engines._post(
+            "https://api.openai.com/v1/responses",
+            {"model": config.SETTINGS["OPENAI_MODEL"], "input": prompt, "tools": [{"type": "web_search"}]},
+            {"Authorization": "Bearer " + config.key("OPENAI_API_KEY")}))[0]))
+    for engine, how, call in tries:
+        reserved = budget.reserve(engine)
+        if reserved is None:
+            continue
+        try:
+            text = call()
+            budget.settle(reserved, None)
+        except Exception:
+            budget.settle(reserved, 0.0)
+            continue
+        m = re.search(r"\{.*?\}", text or "", re.S)
+        try:
+            d = _json.loads(m.group(0)) if m else {}
+        except ValueError:
+            d = {}
+        city, st = (d.get("city") or "").strip(), (d.get("state") or "").strip().upper()
+        if city and st in STATE_NAMES:
+            return city, st, how
+    return None, None, None
 
 
 def market_from(profile, city=None, state=None):

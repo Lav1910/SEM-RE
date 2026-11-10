@@ -10,8 +10,11 @@
       <p class="small muted" style="margin:0">{{ a.url }} · started by {{ a.owner }} {{ a.created_at|ago }}</p></div>
     <form method="post" action="{{ url_for('rerun', aid=a.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary" type="submit">Run again</button></form>
   </div>
-  <div class="flash bad" style="margin:18px 0 0">{{ a.error }}</div>
-  {% if 'city and state' in (a.error or '') %}
+  {% set need_market = 'city and state' in (a.error or '') %}
+  {% if need_market and not can('admin') %}{# change 30: Sales get a plain question, not an error #}
+  <div class="flash ask" style="margin:18px 0 0">We couldn't confirm where this builder is based. Enter their city and state to continue.</div>
+  {% else %}<div class="flash bad" style="margin:18px 0 0">{{ a.error }}</div>{% endif %}
+  {% if need_market %}
   <form class="retry-market" method="post" action="{{ url_for('create_audit') }}">
     <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="url" value="{{ a.url }}"><input type="hidden" name="scope" value="{{ a.scope or 'root' }}"><input type="hidden" name="confirm_duplicate" value="1">
     <label><span class="label">City</span><input id="retry-city" type="text" name="city" required></label>
@@ -33,6 +36,7 @@
       <div class="run-meta">
         <div><span class="label">Elapsed</span><b id="elapsed">0:00</b></div>
         <div><span class="label">Progress</span><b id="pct">{{ a.progress or 0 }}%</b></div>
+        <div title="AI answers naming this builder so far. The finished report has the exact figures."><span class="label">Named so far</span><b id="named">—</b></div>
       </div>
     </div>
     <div class="bar run-bar"><i id="bar" style="width:{{ a.progress or 0 }}%"></i></div>
@@ -113,6 +117,9 @@
       ph.className = 'phase' + (d.status === 'queued' ? '' : (p >= to ? ' done' : (p >= from ? ' now' : '')));
     });
     var eng = d.engines || {};
+    var nN = 0, nA = 0;  // change 29: live "named so far" while answers arrive
+    Object.keys(eng).forEach(function (k) { nN += eng[k].named || 0; nA += eng[k].answered || 0; });
+    document.getElementById('named').textContent = nA ? nN + ' of ' + nA : '—';
     document.querySelectorAll('.eng-row').forEach(function (row) {
       var e = eng[row.dataset.engine], st = e ? e.state : (p >= 30 ? 'running' : 'waiting');
       if (e && e.state === 'running' && e.done === 0) st = 'running';
@@ -120,7 +127,8 @@
       badge.textContent = lab[0]; badge.className = 'eng-state st-note ' + lab[1];
       var pct = e && e.total ? Math.round(100 * e.done / e.total) : 0;
       row.querySelector('.mini-bar i').style.width = (st === 'off' ? 0 : pct) + '%';
-      row.querySelector('.eng-count').textContent = e && st !== 'off' ? e.done + ' of ' + e.total + ' questions' : '';
+      row.querySelector('.eng-count').textContent = e && st !== 'off' ? e.done + ' of ' + e.total + ' questions'
+        + (e.answered ? ' · named in ' + (e.named || 0) + ' of ' + e.answered : '') : '';
       row.classList.toggle('muted-row', st === 'off' || st === 'needs_credits');
       if (CLEAN) row.hidden = !e && p >= 30 || st === 'off' || st === 'needs_credits';
     });

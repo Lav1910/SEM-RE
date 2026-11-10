@@ -22,9 +22,13 @@ def _fake_fetch(code):
 
 class BlockedSite(unittest.TestCase):
     def setUp(self):
-        from aeo import datawise, kv, locations, site
+        from aeo import datawise, engines, kv, locations, site
         self.patches = [
+            mock.patch.object(engines, "ask", side_effect=lambda en, q, m: {"engine": en, "question_id": q["id"], "status": "ok",
+                                                                            "text": "", "citations": []}),  # no real AI calls
             mock.patch.object(site, "rea_available", return_value=False),
+            mock.patch.object(site, "infer_market_llm", return_value=None),  # no real AI calls in tests
+            mock.patch.object(site, "lookup_market", return_value=(None, None, None)),  # change 30 is tested on its own
             mock.patch.object(site, "sitemap_urls", return_value=[]),
             mock.patch.object(datawise, "available", return_value=False),
             mock.patch.object(locations, "find", side_effect=lambda p, m: [{"label": f"{m['city']}, {m['state_code']}", "main": True}]),

@@ -20,12 +20,14 @@ KEY_NAMES = {
 # Model / configuration defaults, taken from each provider's docs (November 2026).
 # Override with environment variables if a provider renames a model.
 SETTINGS = {
-    "OPENAI_MODEL": os.environ.get("HBM_OPENAI_MODEL", "gpt-6-astra"),
+    "OPENAI_MODEL": os.environ.get("HBM_OPENAI_MODEL", "gpt-6-sol"),  # change 29: about 30% faster than gpt-6-astra in timing tests
     "GEMINI_MODEL": os.environ.get("HBM_GEMINI_MODEL", "gemini-3.8-flash"),
     "GEMINI_API_REVISION": os.environ.get("HBM_GEMINI_API_REVISION", "2026-05-20"),
     "PERPLEXITY_EFFORT": os.environ.get("HBM_PERPLEXITY_EFFORT", "low"),
     "HTTP_TIMEOUT": int(os.environ.get("HBM_HTTP_TIMEOUT", "120")),
     "WORKERS": int(os.environ.get("HBM_WORKERS", "8")),
+    "DATA_WAIT": int(os.environ.get("HBM_DATA_WAIT", "30")),  # change 29: seconds to wait for Semrush / DataWise search data
+    "PER_PLATFORM": int(os.environ.get("HBM_PER_PLATFORM", "25")),  # change 29: questions asked at once on each platform
     "MAX_LOCATIONS": int(os.environ.get("HBM_MAX_LOCATIONS", "5")),  # main market + up to 4 more cities per audit
 }
 

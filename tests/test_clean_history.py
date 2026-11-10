@@ -42,12 +42,14 @@ class CleanViews(unittest.TestCase):
                 a.update(status="error", error="HTTP 401: invalid api key", text="", citations=[])
         cls.A = A
 
-    def test_sales_view_hides_failed_platforms(self):
+    def test_sales_view_shows_failed_platforms_as_zero(self):
         from webapp import views
         full, clean = views.build(copy.deepcopy(self.A)), views.build(copy.deepcopy(self.A), clean=True)
-        self.assertIn("chatgpt", [d["engine"] for d in full["dist"]])
-        self.assertNotIn("chatgpt", [d["engine"] for d in clean["dist"]])
-        self.assertNotIn("chatgpt", clean["platforms"])
+        self.assertEqual(full["dist"][[d["engine"] for d in full["dist"]].index("chatgpt")]["status"]["label"], "Key rejected")
+        row = next(d for d in clean["dist"] if d["engine"] == "chatgpt")  # change 28: listed as 0%, no label
+        self.assertEqual((row["mentions"], row["visibility"], row["status"]["label"]), (0, 0, ""))
+        self.assertEqual(len(clean["dist"]), 5)
+        self.assertNotIn("chatgpt", clean["platforms"])  # but not offered in the platform filter
         self.assertTrue(all(r["status"] in ("ok", "no_answer") for p in clean["prompts"] for r in p["rows"]))
         self.assertEqual(full["score"], clean["score"])  # the score never counted failed answers
 

@@ -115,7 +115,9 @@ def build(A, platform="all", history=None, vs=None, area=None, clean=False):
     # ---- distribution by LLM ----
     dist = []
     for e in ENGINES:
-        if clean and e not in measured_set:
+        if clean and e not in measured_set:  # change 28: a platform that couldn't run shows as 0%, with no label
+            dist.append({"engine": e, "label": ENGINE_LABELS[e], "measured": True, "zero": True, "visibility": 0,
+                         "status": {"state": "good", "label": "", "detail": ""}, "mentions": 0, "pages": 0, "answers": 0})
             continue
         eo = [a for a in A["answers"] if a["engine"] == e and a["status"] == "ok" and a["question_id"] in qs
               and qs[a["question_id"]].get("kind") != "brand"]
@@ -258,7 +260,7 @@ def build(A, platform="all", history=None, vs=None, area=None, clean=False):
         "competitors": competitors, "pack": pack, "prompts": prompts, "trend": trend,
         "recommendations": X["recommendations"], "checks": A["checks"], "kpis": kpis,
         "locations": A.get("locations") or [],
-        "measured_any": any(d["measured"] for d in dist),
+        "measured_any": any(d["measured"] and not d.get("zero") for d in dist),
     }
 
 
