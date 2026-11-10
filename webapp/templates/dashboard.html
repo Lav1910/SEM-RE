@@ -32,36 +32,70 @@
     </form>
     <div class="status-row" style="margin-top:16px">
       <div class="platforms">AI platforms connected:
+        {% if can('admin') %}
         {% for en, lab in engine_labels.items() %}{% set st = pstat[en] %}<span class="pill {{ {'good':'p-good','bad':'p-bad','warn':'p-warn'}.get(st.state, 'p-mute') }}" title="{{ st.label }}">{{ platform_logo(en, 14) }}{{ lab }}{% if st.state != 'good' %} · {{ st.label }}{% elif 'Semrush' in st.label %} · via Semrush{% endif %}</span>{% endfor %}
+        {% else %}{# change 24: Sales see only the platforms that work, with no status labels #}
+        {% for en, lab in engine_labels.items() if pstat[en].state in ('good', 'warn', 'mute') %}<span class="pill p-good">{{ platform_logo(en, 14) }}{{ lab }}</span>{% endfor %}
+        {% endif %}
       </div>
       {% if can('see_costs') and budget.limit_usd is not none %}<span class="small muted">Spend ${{ '%.2f'|format(budget.spent_usd) }} of ${{ '%.2f'|format(budget.limit_usd) }} cap</span>{% endif %}
     </div>
-    {% if not live %}<p class="small muted" style="margin:10px 0 0" data-x="none">No AI platforms are connected yet, so reports will cover website checks and Semrush data only. An admin can add keys.</p>{% endif %}
+    {% if not live %}<p class="small muted" style="margin:10px 0 0" data-x="none">No AI platforms are connected yet, so reports will cover website checks{{ ' and Semrush data' if can('admin') }} only. An admin can add keys.</p>{% endif %}
   </section>
 
   <section class="card">
     <div class="status-row"><h2 style="margin:0">Audits</h2>
-      {% if can('team_audits') %}<div class="tabs" style="margin:0"><a href="?scope=mine" class="{{ 'on' if scope != 'team' }}">Mine</a><a href="?scope=team" class="{{ 'on' if scope == 'team' }}">Whole team</a></div>{% endif %}
+      {% if can('team_audits') %}<div class="tabs" style="margin:0"><a href="{{ url_for('dashboard', scope='mine', q=hist.q or None) }}" class="{{ 'on' if scope != 'team' }}">Mine</a><a href="{{ url_for('dashboard', scope='team', q=hist.q or None) }}" class="{{ 'on' if scope == 'team' }}">Whole team</a></div>{% endif %}
+    </div>
+    {# change 25: search, a summary of what's listed, and 25 per page #}
+    <form class="hist-tools" method="get" action="{{ url_for('dashboard') }}" role="search">
+      <input type="hidden" name="scope" value="{{ scope }}">
+      <label class="hist-search"><span class="sr-only">Search audits</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="hist_q" type="search" name="q" value="{{ hist.q }}" placeholder="Search by builder, website{{ ' or person' if scope == 'team' }}" autocomplete="off"></label>
+      <button class="btn btn-ghost btn-small" type="submit">Search</button>
+      {% if hist.q %}<a class="link-btn small" href="{{ url_for('dashboard', scope=scope) }}">Clear</a>{% endif %}
+    </form>
+    <div class="hist-summary">
+      <div><span>Audits{{ ' found' if hist.q }}</span><b>{{ hist.n }}</b></div>
+      <div><span>Average run time</span><b>{{ hist.avg_secs|dur }}</b></div>
+      {% if can('see_costs') %}<div><span>Total cost</span><b>${{ '%.2f'|format(hist.cost or 0) }}</b></div>{% endif %}
     </div>
     {% if rows %}
     <div class="tw" style="margin-top:10px"><table>
-      <thead><tr><th>Builder</th><th>Status</th><th class="r">Score</th><th class="r">Named in AI</th><th class="r">Maps 3-pack</th><th class="r">Site checks</th>{% if scope == 'team' %}<th>By</th>{% endif %}<th>Run</th><th></th></tr></thead>
+      <thead><tr><th>Builder</th><th>Status</th><th class="r">Score</th><th class="r">Named in AI</th><th class="r">Maps 3-pack</th><th class="r">Site checks</th>{% if scope == 'team' %}<th>By</th>{% endif %}<th>Run</th><th class="r">Run time</th>{% if can('see_costs') %}<th class="r" title="Perplexity and DataForSEO charges are exact; ChatGPT and Gemini use their typical price per answer. Includes generated Strategy content.">Cost</th>{% endif %}<th></th></tr></thead>
       <tbody>
       {% for a in rows %}
         <tr>
           <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.market or a.url }}</small></td>
-          <td>{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad" title="{{ a.error }}">Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
+          <td>{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad"{% if can('admin') %} title="{{ a.error }}"{% endif %}>Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
               {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif a.test_mode %}<span class="pill p-mute">Test</span>{% endif %}</td>
           <td class="r">{% if a.score is not none %}<span class="score-badge {{ 'sb-low' if a.score < 35 else ('sb-mid' if a.score < 70 else 'sb-great') }}">{{ a.score }}</span>{% else %}—{% endif %}</td>
           <td class="r">{% if a.answers %}{{ a.mentioned }} of {{ a.answers }}{% else %}—{% endif %}</td>
           <td class="r">{% if a.pack_of %}{{ a.pack }} of {{ a.pack_of }}{% else %}—{% endif %}</td>
           <td class="r">{% if a.checks_total %}{{ a.checks_passed }} of {{ a.checks_total }}{% else %}—{% endif %}</td>
           {% if scope == 'team' %}<td>{{ a.owner }}</td>{% endif %}
-          <td class="muted">{{ a.created_at|ago }}</td>
+          <td class="muted" style="white-space:nowrap">{{ a.created_at|ago }}</td>
+          <td class="r tnum">{{ a.run_secs|dur if a.status == 'done' else '—' }}</td>
+          {% if can('see_costs') %}<td class="r tnum">{{ ('$%.2f'|format(a.total_cost)) if a.total_cost is not none else '—' }}</td>{% endif %}
           <td class="r"><a class="btn btn-ghost btn-small" href="{{ url_for('audit_page', aid=a.id) }}">Open</a></td>
         </tr>
       {% endfor %}
       </tbody></table></div>
+    {% if hist.pages > 1 %}
+    <nav class="pager" aria-label="Audit pages">
+      <span class="small muted">{{ hist.first }}–{{ hist.last }} of {{ hist.n }}</span>
+      <div class="pager-links">
+        {% if hist.page > 1 %}<a class="btn btn-ghost btn-small" href="{{ url_for('dashboard', scope=scope, q=hist.q or None, page=hist.page - 1) }}">← Previous</a>{% endif %}
+        {% for p in range(1, hist.pages + 1) %}{% if p == 1 or p == hist.pages or (p - hist.page)|abs <= 2 %}
+          <a class="pg {{ 'on' if p == hist.page }}" href="{{ url_for('dashboard', scope=scope, q=hist.q or None, page=p) }}" {{ 'aria-current=page' if p == hist.page }}>{{ p }}</a>
+        {% elif (p - hist.page)|abs == 3 %}<span class="pg-gap">…</span>{% endif %}{% endfor %}
+        {% if hist.page < hist.pages %}<a class="btn btn-ghost btn-small" href="{{ url_for('dashboard', scope=scope, q=hist.q or None, page=hist.page + 1) }}">Next →</a>{% endif %}
+      </div>
+    </nav>
+    {% endif %}
+    {% elif hist.q %}
+      <p class="muted" style="margin:12px 0 0">No audits match “{{ hist.q }}”. <a href="{{ url_for('dashboard', scope=scope) }}">Clear the search</a>.</p>
     {% else %}
       <p class="muted" style="margin:12px 0 0">No audits yet. Paste a builder's website above to run the first one.</p>
     {% endif %}

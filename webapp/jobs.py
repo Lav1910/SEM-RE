@@ -22,6 +22,7 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import audit as engine  # noqa: E402
+from aeo import budget  # noqa: E402
 from . import db, store  # noqa: E402
 
 log = logging.getLogger("hbm.jobs")
@@ -105,9 +106,10 @@ def step_audit(row, deadline):
                     summ = None
                 db.x("""UPDATE audits SET status='done', stage='Done', progress=100, finished_at=?, out_dir=?, domain=?,
                         builder_name=?, market=?, score=?, mentioned=?, answers=?, pack=?, pack_of=?, checks_passed=?, checks_total=?,
-                        engines_measured=?, summary=?, phase=NULL, lease_until=NULL WHERE id=?""",
+                        engines_measured=?, summary=?, cost_usd=?, phase=NULL, lease_until=NULL WHERE id=?""",
                      (time.time(), out_dir, p["domain"], p["name"], f"{m['city']}, {m['state_code']}", k["score"], k["mentioned"],
-                      k["answers"], k["pack"], k["pack_of"], k["checks_passed"], k["checks_total"], k["engines_measured"], summ, aid))
+                      k["answers"], k["pack"], k["pack_of"], k["checks_passed"], k["checks_total"], k["engines_measured"], summ,
+                      budget.audit_cost(A), aid))
                 progress("Done", 100, event="Report ready")
                 return True
             if time.time() > deadline - 20:

@@ -100,7 +100,8 @@ CREATE TABLE IF NOT EXISTS feedback (
 # columns added after the first release, for SQLite files created by older versions
 LATER_COLUMNS = {
     "audits": [("activity", "TEXT"), ("engines", "TEXT"), ("scope", "TEXT"), ("locations", "TEXT"), ("phase", "TEXT"),
-               ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("batch_id", "TEXT"), ("summary", "TEXT")],
+               ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("batch_id", "TEXT"), ("summary", "TEXT"),
+               ("cost_usd", "REAL")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
               ("last_login", "REAL"), ("avatar_at", "REAL")],
     "strategy_content": [("lease_until", "REAL")],

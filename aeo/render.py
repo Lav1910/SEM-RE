@@ -73,7 +73,7 @@ def render(A, ov=None):
     pages = []
     q_by = {q["id"]: q for q in A["questions"]}
     measured = [en for en in ENGINES if X["per_engine"][en]["measured"]]
-    not_measured = [ENGINE_LABELS[en] for en in ENGINES if en not in measured]
+    ENG = measured  # change 24: the report only shows platforms with real results, never "not measured" or errors
 
     def footer(n, total):
         return (f'<footer><span class="f-brand">Home Builder Marketers</span>'
@@ -96,7 +96,7 @@ def render(A, ov=None):
     ]
     support = [(X["per_engine"][en]["label"],
                 "—" if not X["per_engine"][en]["measured"] else f'{X["per_engine"][en]["mentioned"]} of {X["per_engine"][en]["answers"]}',
-                "answers naming the builder" if X["per_engine"][en]["measured"] else "Not measured") for en in ENGINES]
+                "answers naming the builder" if X["per_engine"][en]["measured"] else "Not measured") for en in ENG]
     support_html = "".join(f'<div><span>{l}</span><b>{v}</b><i>{s}</i></div>' for l, v, s in support)
     lb = X["leaderboard"]
     leader = next((b for b in lb if not b.get("prospect")), None)
@@ -112,8 +112,6 @@ def render(A, ov=None):
     gaps = [e(r["title"]) for r in X["recommendations"][:3]]
     if gaps:
         summ.append("The biggest opportunities: <b>" + "</b>; <b>".join(gaps) + "</b>.")
-    if not_measured:
-        summ.append(f'Not measured in this audit: {", ".join(not_measured)} (shown as “—”).')
     # plain-English takeaways for each page
     missed = K["answers"] - K["mentioned"]
     w1 = ("Each row is a question local buyers ask an AI tool. <b>Green</b> means the AI named " + e(name) + "; <b>red</b> means it recommended other builders. "
@@ -162,12 +160,12 @@ def render(A, ov=None):
         return '<span class="st st-bad">Not named</span>'
     rows = []
     for q in A["questions"]:
-        tds = "".join(f"<td>{cell_html(cell_by.get((q['id'], en)))}</td>" for en in ENGINES)
+        tds = "".join(f"<td>{cell_html(cell_by.get((q['id'], en)))}</td>" for en in ENG)
         rows.append(f'<tr><td><b>{e(q["prompt"])}</b><span class="srcs">Google search: {e(q["keyword"])}</span></td><td class="r">{fmt(q.get("volume"))}</td>{tds}</tr>')
     eng_cards = "".join(
         f'<div class="pl {"pl-good" if v["measured"] else "pl-mute"}"><b>{v["label"]}</b><span>{"—" if v["score"] is None else v["score"]}</span>'
         f'<i>{"Named in " + str(v["mentioned"]) + " of " + str(v["answers"]) + " answers" if v["measured"] else "Not measured"}</i></div>'
-        for v in (X["per_engine"][en] for en in ENGINES))
+        for v in (X["per_engine"][en] for en in ENG))
     pages.append(f'''
 <section class="page">
  {ph("01", "What AI tells local home buyers", "Each local question asked on every AI platform, and whether the builder was named", ["ai"])}
@@ -175,8 +173,8 @@ def render(A, ov=None):
  <div class="sec-l">Visibility score by platform <span>0–100, weighted by search demand</span></div>
  <div class="plats">{eng_cards}</div>
  <div class="tbl-wrap" style="margin-top:18px"><table class="tbl matrix">
-  <colgroup><col style="width:34%"><col style="width:9%">{"".join('<col style="width:11.4%">' for _ in ENGINES)}</colgroup>
-  <thead><tr><th>Question</th><th class="r">Monthly searches</th>{"".join(f"<th>{ENGINE_LABELS[en]}</th>" for en in ENGINES)}</tr></thead>
+  <colgroup><col style="width:34%"><col style="width:9%">{"".join(f'<col style="width:{round(57 / max(1, len(ENG)), 1)}%">' for _ in ENG)}</colgroup>
+  <thead><tr><th>Question</th><th class="r">Monthly searches</th>{"".join(f"<th>{ENGINE_LABELS[en]}</th>" for en in ENG)}</tr></thead>
   <tbody>{"".join(rows)}</tbody></table></div>
  <p class="note">“Named #2” means the builder was the second business named in that answer. Monthly searches are Semrush US estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
  {footer(3, TOTAL)}

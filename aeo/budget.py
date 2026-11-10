@@ -17,6 +17,19 @@ TYPICAL = {"chatgpt": 0.035, "gemini": 0.035, "perplexity": 0.015, "google_aio":
 _lock = threading.Lock()
 
 
+def audit_cost(A):
+    """Dollar cost of one audit's AI answers (change 25). Perplexity and DataForSEO report their exact charge on each
+    answer; ChatGPT and Gemini don't, so those use the typical per-answer price. Failed or skipped calls cost nothing,
+    and Semrush lookups use Semrush units, not dollars."""
+    total = 0.0
+    for a in A.get("answers", []):
+        if a.get("status") not in ("ok", "no_answer") or a.get("source") == "semrush":
+            continue
+        c = a.get("cost_usd")
+        total += float(c) if c else TYPICAL.get(a.get("engine"), 0)
+    return round(total, 4)
+
+
 def per_question(live_engines):
     """Typical dollars to ask one question on every connected platform."""
     return sum(TYPICAL.get(e, 0) for e in live_engines)

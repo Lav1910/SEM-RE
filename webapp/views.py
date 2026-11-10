@@ -71,9 +71,16 @@ def gauge_geometry(score, cx=120, cy=118, r=90):
             "segs": [seg(0, .35), seg(.35, .70), seg(.70, 1)], "mx": mx, "my": my}
 
 
-def build(A, platform="all", history=None, vs=None, area=None):
+def measured_engines(A):
+    """Platforms that gave at least one real result (an answer, or Google showing no AI answer) in this audit."""
+    return [e for e in ENGINES if any(a["engine"] == e and a["status"] in ("ok", "no_answer") for a in A.get("answers", []))]
+
+
+def build(A, platform="all", history=None, vs=None, area=None, clean=False):
     """vs: competitor names to compare against (Semrush "Add competitor"); default = the 3 most-named builders.
-    area: limit every figure to one market area's questions (Semrush's country tabs, for a local builder)."""
+    area: limit every figure to one market area's questions (Semrush's country tabs, for a local builder).
+    clean (change 24): Sales screens and prospect-facing exports. Platforms with no real results are left out and
+    no error or connection labels appear; every figure already comes from real answers only."""
     P, X, M = A["profile"], A["analysis"], A["market"]
     me = P["domain"]
     sc = scopes.for_audit(A)
@@ -82,7 +89,8 @@ def build(A, platform="all", history=None, vs=None, area=None):
     if area:
         allq = [q for q in allq if area_label(q, M) == area] or allq
     qs = {q["id"]: q for q in allq}
-    engines = [e for e in ENGINES if platform in ("all", e)]
+    measured_set = measured_engines(A)
+    engines = [e for e in ENGINES if platform in ("all", e) and (not clean or e in measured_set)]
     ans = [a for a in A["answers"] if a["engine"] in engines and a["question_id"] in qs]
     cells = {(c["question_id"], c["engine"]): c for c in X["cells"]}
     ok_all = [a for a in ans if a["status"] == "ok"]
@@ -107,6 +115,8 @@ def build(A, platform="all", history=None, vs=None, area=None):
     # ---- distribution by LLM ----
     dist = []
     for e in ENGINES:
+        if clean and e not in measured_set:
+            continue
         eo = [a for a in A["answers"] if a["engine"] == e and a["status"] == "ok" and a["question_id"] in qs
               and qs[a["question_id"]].get("kind") != "brand"]
         measured = any(a["engine"] == e and a["status"] in ("ok", "no_answer") for a in A["answers"])
@@ -224,7 +234,7 @@ def build(A, platform="all", history=None, vs=None, area=None):
         for e in engines:
             a = next((x for x in A["answers"] if x["question_id"] == q["id"] and x["engine"] == e), None)
             c = cells.get((q["id"], e))
-            if not a:
+            if not a or (clean and a["status"] not in ("ok", "no_answer")):
                 continue
             rows.append({"engine": e, "label": ENGINE_LABELS[e], "status": a["status"], "text": a.get("text") or "",
                          "mentioned": c["mentioned"] if c else None, "rank": c.get("rank") if c else None,
@@ -238,7 +248,7 @@ def build(A, platform="all", history=None, vs=None, area=None):
         trend.append(h)
 
     return {
-        "platform": platform, "score": score, "band": label, "caption": caption,
+        "platform": platform, "clean": clean, "platforms": measured_set if clean else list(ENGINES), "score": score, "band": label, "caption": caption,
         "mentions": mentions, "citations": citations, "cited_pages": len(my_pages), "answers": len(ok),
         "dist": dist, "by_area": by_area, "topics": topics, "opportunities": opportunities,
         "cited_sources": src_rows("cited"), "source_opportunities": src_rows("opp"), "pages": pages,
