@@ -103,7 +103,7 @@ CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 
 @app.after_request
 def headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
-    resp.headers["Referrer-Policy"] = "same-origin"
+    resp.headers.setdefault("Referrer-Policy", "same-origin")  # a client link sets no-referrer itself
     resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if SECURE:
@@ -115,9 +115,31 @@ def headers(resp):
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Content-Security-Policy"] = CSP
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
-    if g.get("user") and resp.mimetype == "text/html":
+    if (g.get("user") or request.path.startswith("/c/")) and resp.mimetype == "text/html":
         resp.headers["Cache-Control"] = "no-store"
+    elif request.path.startswith("/static/") and request.args.get("v") and resp.status_code == 200:
+        # change 34: versioned files (?v=) never change, so browsers and Vercel's network can keep them
+        resp.headers["Cache-Control"] = "public, max-age=31536000, s-maxage=31536000, immutable"
     return resp
+
+
+_static_v = {}
+
+
+@app.url_defaults
+def _static_version(endpoint, values):
+    """change 34: add ?v=<content hash> to every static file link, so a new deploy is picked up but files cache forever."""
+    if endpoint == "static" and "filename" in values and "v" not in values:
+        fn = values["filename"]
+        if fn not in _static_v:
+            import hashlib
+            try:
+                with open(os.path.join(app.static_folder, fn), "rb") as f:
+                    _static_v[fn] = hashlib.sha1(f.read()).hexdigest()[:10]
+            except OSError:
+                _static_v[fn] = ""
+        if _static_v[fn]:
+            values["v"] = _static_v[fn]
 
 
 def login_required(f):
@@ -547,7 +569,7 @@ def dashboard():
     last = db.q("SELECT id FROM audits WHERE status='done' ORDER BY created_at DESC LIMIT 1", one=True)
     LA = store.load_json(last["id"]) if last else None
     from aeo.engines import STATE_CODES
-    return render_template("dashboard.html", rows=rows, scope=scope, hist=hist, live=live, budget=b if auth.can(g.user, "see_costs") else {}, pstat=status.current(LA),
+    return render_template("dashboard.html", rows=rows, scope=scope, hist=hist, live=live, depths=depth_estimates(), budget=b if auth.can(g.user, "see_costs") else {}, pstat=status.current(LA),
                            states=sorted(STATE_CODES.values()))
 
 
@@ -581,15 +603,32 @@ def create_audit():
     locs = [l.strip()[:60] for l in request.form.getlist("loc") if l.strip()][:20]
     if request.form.get("loc_all"):
         locs = []  # "All locations": let the audit pick by search demand, up to the cap
-    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, city, state, test_mode, status, stage, progress, share_token, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
+    depth = request.form.get("depth") if request.form.get("depth") in jobs.DEPTHS else ("quick" if request.form.get("test_mode") else "standard")
+    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, city, state, test_mode, depth, status, stage, progress, share_token, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
          (aid, g.user["id"], url, domain, kind, json.dumps(locs) if locs else None, request.form.get("city", "").strip() or None, request.form.get("state", "").strip() or None,
-          1 if request.form.get("test_mode") else 0, secrets.token_urlsafe(18), time.time()))
+          1 if depth == "quick" else 0, depth, secrets.token_urlsafe(18), time.time()))
     jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=aid))
 
 
 REOPEN_DAYS = int(os.environ.get("HBM_REOPEN_DAYS", "7"))
+
+# change 36: audit types shown on the run form, the audit page and the Audits list
+DEPTH_INFO = {"quick": {"label": "Quick", "what": "~6 questions · main city", "q": 6, "secs": 45},
+              "standard": {"label": "Standard", "what": "~12 questions · main city + busiest extra city", "q": 12, "secs": 60},
+              "full": {"label": "Full", "what": "everything · all cities up to 5", "q": 20, "secs": 75}}
+
+
+def depth_estimates():
+    from aeo import budget
+    live = [e for e in engines.ENGINES if engines.is_configured(e) and status.current().get(e, {}).get("state") != "bad"]
+    per_q = budget.per_question(live)
+    return {k: dict(v, cost=round(per_q * v["q"], 2)) for k, v in DEPTH_INFO.items()}
+
+
+app.jinja_env.globals["depth_of"] = lambda a: jobs.depth_of(a)
+app.jinja_env.globals["DEPTH_INFO"] = DEPTH_INFO
 
 
 @app.route("/audits/<aid>")
@@ -790,23 +829,54 @@ def strategy_export(aid, fmt):
 VIEWS_STRATEGY = ("strategy", "content", "fixes")
 
 
+_point_cache = {}  # change 34: a finished audit never changes, so its trend point per platform is worked out once
+
+
+def _hist_point(h, A, platform):
+    key = (h["id"], platform)
+    if key not in _point_cache:
+        HA = A if A is not None else store.load_json(h["id"])
+        pt = None
+        if HA:
+            hv = views.build(HA, platform)
+            if hv["measured_any"]:  # an audit run before any AI platform was connected isn't a real zero
+                pt = {"mentions": hv["mentions"], "citations": hv["citations"], "pages": hv["cited_pages"], "score": hv["score"] or 0,
+                      "audience": hv["audience"]}
+        if len(_point_cache) > 4000:
+            _point_cache.clear()
+        _point_cache[key] = pt
+    return _point_cache[key]
+
+
 def _history(a, A, platform="all"):
     """Earlier audits of the same builder, one point per day: the trend line (Semrush: Main Metrics over time)."""
     hist = []
-    for h in db.q("SELECT * FROM audits WHERE domain=? AND status='done' AND created_at<=? ORDER BY created_at",
+    for h in db.q("SELECT id, created_at FROM audits WHERE domain=? AND status='done' AND created_at<=? ORDER BY created_at",
                   (a["domain"], a["created_at"])):
-        HA = A if h["id"] == a["id"] else store.load_json(h["id"])
-        if HA:
-            hv = views.build(HA, platform)
-            if not hv["measured_any"]:  # an audit run before any AI platform was connected isn't a real zero
-                continue
-            day = dates.month_day(h["created_at"])
-            if hist and hist[-1]["date"] == day:  # several runs on one day: keep the latest
-                hist.pop()
-            hist.append({"date": day, "month": datetime.datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m"), "mentions": hv["mentions"],
-                         "citations": hv["citations"], "pages": hv["cited_pages"], "score": hv["score"] or 0,
-                         "audience": hv["audience"], "id": h["id"]})
+        pt = _hist_point(h, A if h["id"] == a["id"] else None, platform)
+        if not pt:
+            continue
+        day = dates.month_day(h["created_at"])
+        if hist and hist[-1]["date"] == day:  # several runs on one day: keep the latest
+            hist.pop()
+        hist.append(dict(pt, date=day, month=datetime.datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m"), id=h["id"]))
     return hist
+
+
+_area_cache = {}
+
+
+def _area_scores(a, A, platform, clean):
+    """Score per city tab, remembered per finished audit (change 34)."""
+    areas = views.areas_for(A)
+    if len(areas) < 2:
+        return {}
+    key = (a["id"], platform, clean)
+    if key not in _area_cache:
+        if len(_area_cache) > 2000:
+            _area_cache.clear()
+        _area_cache[key] = {ar: views.build(A, platform, None, None, ar, clean=clean)["score"] for ar in areas}
+    return _area_cache[key]
 
 
 def _report_html(a, A):
@@ -816,16 +886,40 @@ def _report_html(a, A):
     return render.render(A, {"V": views.build(A, "all", hist, clean=True), "chart": views.chart(A, hist)})  # prospect-facing: always clean
 
 
-def _pdf_response(aid, html, cache_name, download_name):
+def _overview_pdf_html(a, A, platform="all", area=None):
+    from aeo import render
+    hist = _history(a, A, platform)
+    ov = {"V": views.build(A, platform, hist, None, area, clean=True), "chart": views.chart(A, hist)}  # prospect-facing: always clean
+    label = " · ".join(x for x in (area, engines.ENGINE_LABELS.get(platform) + " only" if platform != "all" else None) if x) or None
+    return render.overview_html(A, ov, label)
+
+
+def _pdf_cached(aid, html, cache_name):
     import hashlib
     key = hashlib.sha256(html.encode("utf-8")).hexdigest()
     data = store.get_bytes(aid, cache_name) if store.get_text(aid, cache_name + ".key") == key else None
     if data is None:
         data = pdf.make_pdf(html)
-        if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
-            return _print_page(html)
-        store.put(aid, cache_name, data)
-        store.put(aid, cache_name + ".key", key)
+        if data is not None:
+            store.put(aid, cache_name, data)
+            store.put(aid, cache_name + ".key", key)
+    return data
+
+
+def prewarm_pdfs(aid):
+    """change 34: build the Full and Overview PDFs right after an audit finishes, so Export downloads at once."""
+    a = db.q("SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id WHERE a.id=?", (aid,), one=True)
+    A = store.load_json(aid) if a else None
+    if A is None:
+        return
+    _pdf_cached(aid, _report_html(a, A), "report.pdf")
+    _pdf_cached(aid, _overview_pdf_html(a, A), "overview.pdf")
+
+
+def _pdf_response(aid, html, cache_name, download_name):
+    data = _pdf_cached(aid, html, cache_name)
+    if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
+        return _print_page(html)
     return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=True, download_name=download_name)
 
 
@@ -843,10 +937,7 @@ def export_overview(aid):
     platform = request.args.get("platform", "all")
     platform = platform if platform in engines.ENGINES else "all"
     area = request.args.get("area") or None
-    hist = _history(a, A, platform)
-    ov = {"V": views.build(A, platform, hist, None, area, clean=True), "chart": views.chart(A, hist)}  # prospect-facing: always clean
-    label = " · ".join(x for x in (area, engines.ENGINE_LABELS.get(platform) + " only" if platform != "all" else None) if x) or None
-    html = render.overview_html(A, ov, label)
+    html = _overview_pdf_html(a, A, platform, area)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
     resp = _pdf_response(aid, html, "overview.pdf", f"{name}-AI-Visibility-Overview-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
     from . import todo
@@ -879,7 +970,7 @@ def audit_view(aid, view):
     if view in VIEWS_STRATEGY:
         V["S"] = _strategy_ctx(a, A)
     V["score_all"] = V["score"] if not area else views.build(A, platform)["score"]
-    V["area_scores"] = {ar: views.build(A, platform, None, None, ar)["score"] for ar in (V["areas"] if len(V["areas"]) > 1 else [])}
+    V["area_scores"] = _area_scores(a, A, platform, clean) if len(V["areas"]) > 1 else {}
     others = db.q("SELECT id, created_at FROM audits WHERE domain=? AND status='done' ORDER BY created_at DESC LIMIT 12", (a["domain"],))
     loom = store.get_text(aid, "loom.txt") or ""
     share = url_for("shared_report", token=a["share_token"], _external=True) if a["share_token"] else None
@@ -968,9 +1059,11 @@ def audit_data(aid):
 def rerun(aid):
     a = get_audit(aid)
     nid = uuid.uuid4().hex[:12]
-    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, city, state, test_mode, status, stage, progress, share_token, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
-         (nid, g.user["id"], a["url"], a["domain"], a["scope"] or "root", a["locations"], a["city"], a["state"], a["test_mode"], secrets.token_urlsafe(18), time.time()))
+    depth = request.form.get("depth") if request.form.get("depth") in jobs.DEPTHS else jobs.depth_of(a)  # change 36: run again as any type
+    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, city, state, test_mode, depth, status, stage, progress, share_token, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
+         (nid, g.user["id"], a["url"], a["domain"], a["scope"] or "root", a["locations"], a["city"], a["state"], 1 if depth == "quick" else 0, depth,
+          secrets.token_urlsafe(18), time.time()))
     jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=nid))
 
@@ -1054,7 +1147,7 @@ def client_view(token, view="overview"):
     V = views.build(A, platform, hist, vs, area, clean=True)
     V["chart"] = views.chart(A, hist)
     V["score_all"] = V["score"] if not area else views.build(A, platform, clean=True)["score"]
-    V["area_scores"] = {ar: views.build(A, platform, None, None, ar, clean=True)["score"] for ar in (V["areas"] if len(V["areas"]) > 1 else [])}
+    V["area_scores"] = _area_scores(a, A, platform, True) if len(V["areas"]) > 1 else {}
     exp = datetime.date.fromtimestamp(a["client_expires"])
     resp = app.make_response(render_template(f"view_{view}.html", base_tpl="client_base.html", a=a, A=A, V=V, view=view,
                                              views_nav=VIEWS, platform=platform, others=[], loom="", share=None,

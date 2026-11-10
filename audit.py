@@ -56,11 +56,41 @@ def _stepper(progress):
 
 
 def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progress=None, scope_kind="root",
-            locations_chosen=None, max_locations=None):
+            locations_chosen=None, max_locations=None, skip_brand=False, prior=None, hedge=True):
     """Step 1 of an audit (about 30-90 s): read the site, find the market and service cities, build the questions,
     pull search demand and the Google profile, run the site checks. Returns a JSON-safe state for the next steps."""
     t0 = time.time()
     step = _stepper(progress)
+    import threading
+    chosen = [en for en in engines.ENGINES if not only or en in only]
+    live = [en for en in chosen if engines.is_configured(en)]
+    shared_lock = threading.Lock()  # the early batches write to the same answers and counters
+
+    def build_qs(prof, mkt):
+        out = questions.build(prof, mkt, max_q)
+        return [q for q in out if q.get("kind") != "brand"] if skip_brand else out  # change 35: Bulk skips brand questions
+
+    def start_early(qs_, mkt, prof):
+        """change 29: start asking the main local questions now; nothing new starts after 150 s (one serverless run)."""
+        label = f"{mkt['city']}, {mkt['state_code']}"
+        eq = [q for q in qs_ if not q["id"].startswith("area_")]  # area questions may be swapped for per-city sets
+        for q in eq:
+            if q.get("kind") != "brand":
+                q["area"] = label
+        est_ = {en: {"done": 0, "total": len(eq), "state": "running" if en in live else "off"} for en in chosen}
+        early_ = {"questions": eq, "chosen": chosen, "est": est_, "answers": {}, "market": mkt, "profile": prof, "hedge": hedge}
+        th = threading.Thread(target=ask_batch, args=(early_, progress), daemon=True,
+                              kwargs={"pct_range": (18, 50), "lock": shared_lock, "deadline": t0 + 150})
+        th.start()
+        return {"qs": qs_, "early_qs": eq, "early": early_, "est": est_, "thread": th, "market": mkt}
+
+    # change 34: a builder audited before already has a known market and questions, so the AI questions start at once
+    head = None
+    pm = (prior or {}).get("market") or {}
+    if pm.get("city") and pm.get("state_code") and (not city or city.strip().lower() == pm["city"].lower()):
+        head = start_early(build_qs(prior["profile"], pm), pm, prior["profile"])
+        step("Asking AI platforms", 4, event=f"Known builder: asking {len(live)} AI platforms right away for {pm['city']}, {pm['state_code']}",
+             engines_state={k: dict(v) for k, v in head["est"].items()})
     step("Reading the website", 5, event=f"Opening {url} in a real browser")
     log(f"Reading {url} ...")
     sc = scope.make(url, scope_kind)
@@ -81,6 +111,8 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         step("Reading the website", 12, event=f"Checked business markup, phone details and {profile['sitemap_count']:,} sitemap pages")
         step("Reading the website", 14, event="Checked robots.txt and llms.txt for AI crawler access")
     market = site.market_from(profile, city, state)
+    if (not market["city"] or not market["state"]) and head:  # the market from this builder's last audit
+        market = site.market_from(profile, head["market"]["city"], head["market"]["state_code"])
     if not market["city"] or not market["state"]:  # change 30: look it up instead of stopping
         lc, ls, how = site.lookup_market(profile["name"] or site.name_from_domain(profile["domain"]), profile["domain"])
         if lc:
@@ -92,24 +124,16 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
                          if blocked else "Couldn't find the builder's city and state on the website. Enter them and run again.")
     step("Reading the website", 16, event=f"Set the search location to {market['city']}, {market['state_code']}")
     log(f"  {profile['name']} · market {market['city']}, {market['state_code']} · areas {profile['areas_served'] or '—'}")
-    qs = questions.build(profile, market, max_q)
     main_label = f"{market['city']}, {market['state_code']}"
-    # change 29: start asking the AI platforms now, while locations, search demand and the Google profile load
-    import threading
-    chosen = [en for en in engines.ENGINES if not only or en in only]
-    live = [en for en in chosen if engines.is_configured(en)]
-    early_qs = [q for q in qs if not q["id"].startswith("area_")]  # area questions may be swapped for per-city sets
-    for q in early_qs:
-        if q.get("kind") != "brand":
-            q["area"] = main_label
-    est = {en: {"done": 0, "total": len(early_qs), "state": "running" if en in live else "off"} for en in chosen}
-    early = {"questions": early_qs, "chosen": chosen, "est": est, "answers": {}, "market": market, "profile": profile}
-    shared_lock = threading.Lock()  # both early batches write to the same answers and counters
-    # nothing new starts after 150 s, so this step always fits in one serverless run; the next step asks whatever is left
-    step("Asking AI platforms", 17, event=f"Asking {len(live)} AI platform{'s' if len(live) != 1 else ''} the main local questions "
-                                          "while the rest of the local data loads", engines_state={k: dict(v) for k, v in est.items()})
-    t_early = threading.Thread(target=ask_batch, args=(early, progress), kwargs={"pct_range": (18, 50), "lock": shared_lock, "deadline": t0 + 150}, daemon=True)
-    t_early.start()
+    if head and head["market"]["city"].lower() == market["city"].lower() and head["market"]["state_code"] == market["state_code"]:
+        run = head  # the head start was right: keep those questions and answers
+    else:
+        if head:  # the builder moved market since last time: start over with the new one
+            head["thread"].join()
+        run = start_early(build_qs(profile, market), market, profile)
+        step("Asking AI platforms", 17, event=f"Asking {len(live)} AI platform{'s' if len(live) != 1 else ''} the main local questions "
+                                              "while the rest of the local data loads", engines_state={k: dict(v) for k, v in run["est"].items()})
+    qs, early_qs, early, est, t_early = run["qs"], run["early_qs"], run["early"], run["est"], run["thread"]
     # ---- service locations: each city is measured on its own, searched from that city ----
     step("Finding service locations", 17, event="Finding the cities and neighbourhoods this builder serves")
     found = locations.find(profile, market)
@@ -184,7 +208,7 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
             st["total"] = len(qs)
             if st["state"] == "done" and st["done"] < st["total"]:
                 st["state"] = "running"
-    rest = {"questions": rest_qs, "chosen": chosen, "est": est, "answers": early["answers"], "market": market, "profile": profile}
+    rest = {"questions": rest_qs, "chosen": chosen, "est": est, "answers": early["answers"], "market": market, "profile": profile, "hedge": hedge}
     t_rest = threading.Thread(target=ask_batch, args=(rest, progress), daemon=True,
                               kwargs={"pct_range": (30, 90), "lock": shared_lock, "total": len(qs) * len(chosen), "deadline": t0 + 150})
     t_rest.start()
@@ -208,8 +232,37 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     t_early.join()  # the answers were coming in alongside everything above
     t_rest.join()
     return {"url": url, "t0": t0, "profile": profile, "market": market, "questions": qs, "sem": sem, "dw": dw, "checks": checks,
-            "chosen": chosen, "est": est, "answers": early["answers"], "pool_locs": pool_locs,
+            "chosen": chosen, "est": est, "answers": early["answers"], "pool_locs": pool_locs, "hedge": hedge,
             "found": [l for l in found if l not in pool_locs]}
+
+
+HEDGED = ("chatgpt", "gemini", "perplexity")  # the platforms whose answers sometimes straggle
+
+
+def _hedged(en, q, loc):
+    """change 34: if an answer hasn't come back after HEDGE_AFTER seconds, ask the same question again and use
+    whichever reply arrives first, so one slow answer can't hold up the whole audit. Off for Bulk (cost)."""
+    from concurrent.futures import FIRST_COMPLETED, wait
+    after = config.SETTINGS["HEDGE_AFTER"]
+    if after <= 0:
+        return engines.ask(en, q, loc)
+    pool = ThreadPoolExecutor(max_workers=2)
+    first = pool.submit(engines.ask, en, q, loc)
+    try:
+        done, _ = wait([first], timeout=after)
+        if done:
+            return first.result()
+        second = pool.submit(engines.ask, en, q, loc)
+        pending = {first, second}
+        while pending:
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for f in done:
+                r = f.result()
+                if r.get("status") in ("ok", "no_answer") or not pending:
+                    return r
+        return first.result()
+    finally:
+        pool.shutdown(wait=False)
 
 
 def ask_batch(S, progress=None, deadline=None, pct_range=(30, 90), lock=None, total=None):
@@ -233,10 +286,13 @@ def ask_batch(S, progress=None, deadline=None, pct_range=(30, 90), lock=None, to
         return bool((name_l and len(name_l) > 3 and name_l in t) or (dom_label and len(dom_label) > 3 and dom_label in t.replace(" ", ""))
                     or any(dom_label and dom_label in (c.get("domain") or "") for c in r.get("citations") or []))
 
+    hedge = S.get("hedge", True)
+
     def ask(j):
         en, qid = j
         q = qmap[qid]
-        r = engines.ask(en, q, q.get("loc") or S["market"])
+        loc = q.get("loc") or S["market"]
+        r = _hedged(en, q, loc) if hedge and en in HEDGED else engines.ask(en, q, loc)
         with lock:
             S["answers"][f"{en}|{qid}"] = r
             st = est[en]

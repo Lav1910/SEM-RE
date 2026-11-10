@@ -29,7 +29,7 @@ log = logging.getLogger("hbm.jobs")
 SERVERLESS = bool(os.environ.get("VERCEL")) or os.environ.get("HBM_SERVERLESS") == "1"
 WORKERS = int(os.environ.get("AUDIT_WORKERS", "3"))
 TICK = float(os.environ.get("JOB_TICK_SECONDS", "240" if SERVERLESS else "900"))
-BULK_PARALLEL = int(os.environ.get("BULK_PARALLEL", "3"))  # bulk audits running at once (AI platform rate limits)
+BULK_PARALLEL = int(os.environ.get("BULK_PARALLEL", "6"))  # bulk audits running at once (change 34: was 3; AI platform rate limits)
 MAX_ATTEMPTS = 4  # a phase that keeps getting cut off (crash, timeout) fails the audit instead of looping forever
 _started = False
 
@@ -61,6 +61,41 @@ def _progress_writer(aid, row):
     return progress
 
 
+# change 36: audit types. (questions on the main market, cities measured including the main one)
+DEPTHS = {"quick": (6, 2), "standard": (9, 2), "full": (14, None)}
+
+
+def depth_of(row):
+    d = (row["depth"] if "depth" in row.keys() else None) or ("quick" if row["test_mode"] else "full")
+    return d if d in DEPTHS else "full"
+
+
+def _prior(row):
+    """change 34: this builder's last finished audit (same site and scope, last 180 days), for a head start."""
+    if (row["scope"] or "root") != "root" or row["city"]:
+        return None
+    p = db.q("""SELECT id FROM audits WHERE domain=? AND status='done' AND id<>? AND created_at>? AND COALESCE(scope,'root')='root'
+                ORDER BY created_at DESC LIMIT 1""", (row["domain"], row["id"], time.time() - 180 * 86400), one=True)
+    if not p:
+        return None
+    try:
+        A = store.load_json(p["id"])
+        return {"market": A["market"], "profile": A["profile"]} if A and A.get("market") and A.get("profile") else None
+    except Exception:
+        return None
+
+
+def _prewarm_pdfs(aid):
+    try:
+        from . import app as appmod
+        if os.environ.get("HBM_PREWARM_PDFS", "1") == "0" or appmod.app.config.get("TESTING"):
+            return
+        with appmod.app.test_request_context():
+            appmod.prewarm_pdfs(aid)
+    except Exception as e:  # never let this affect the audit itself
+        log.warning("PDF pre-build skipped for %s: %s", aid, e)
+
+
 def _fail(aid, msg):
     db.x("UPDATE audits SET status='failed', error=?, finished_at=?, lease_until=NULL, phase=NULL WHERE id=?", (msg, time.time(), aid))
     store.delete(aid, "state.json")
@@ -79,9 +114,12 @@ def step_audit(row, deadline):
             if phase == "prepare":
                 if row["status"] == "queued":
                     db.x("UPDATE audits SET status='running', started_at=?, stage='Starting', progress=1 WHERE id=?", (time.time(), aid))
-                S = engine.prepare(row["url"], row["city"] or None, row["state"] or None, 6 if row["test_mode"] else 14,
+                depth = depth_of(row)
+                max_q, max_locs = DEPTHS[depth]
+                S = engine.prepare(row["url"], row["city"] or None, row["state"] or None, max_q, max_locations=max_locs,
                                    progress=progress, scope_kind=row["scope"] or "root",
-                                   locations_chosen=json.loads(row["locations"]) if row["locations"] else None)
+                                   locations_chosen=json.loads(row["locations"]) if row["locations"] else None,
+                                   skip_brand=bool(row["batch_id"]), hedge=not row["batch_id"], prior=_prior(row))
                 store.save_json(aid, "state.json", S)
                 phase = "ask"
                 db.x("UPDATE audits SET phase='ask', attempts=0 WHERE id=?", (aid,))
@@ -118,6 +156,8 @@ def step_audit(row, deadline):
                       k["answers"], k["pack"], k["pack_of"], k["checks_passed"], k["checks_total"], k["engines_measured"], summ,
                       budget.audit_cost(A), aid))
                 progress("Done", 100, event="Report ready")
+                if time.time() < deadline - 60:  # change 34: make the PDFs now, so Export is instant
+                    _prewarm_pdfs(aid)
                 return True
             if time.time() > deadline - 20:
                 db.x("UPDATE audits SET lease_until=NULL WHERE id=?", (aid,))

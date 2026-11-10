@@ -40,7 +40,12 @@
       </div></div>
     <button class="link-btn" type="button" data-feedback>
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Send feedback</button>
-    <form method="post" action="{{ url_for('rerun', aid=a.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn" type="submit">Run again</button></form>
+    <details class="rerun">{# change 36: run again as any audit type #}
+      <summary class="link-btn">Run again<span class="exp-caret" aria-hidden="true"></span></summary>
+      <form class="rerun-menu" method="post" action="{{ url_for('rerun', aid=a.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+        {% for k in ('quick', 'standard', 'full') %}<button type="submit" name="depth" value="{{ k }}"><b>Run again as {{ DEPTH_INFO[k].label }}</b><span>{{ DEPTH_INFO[k].what }}</span></button>{% endfor %}
+      </form>
+    </details>
     <details class="exp">
       <summary class="btn btn-ghost btn-small"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Export to PDF<span class="exp-caret" aria-hidden="true"></span></summary>
       <div class="exp-menu">
@@ -113,7 +118,7 @@
     <select id="audit-date" onchange="if(this.value!=='{{ a.id }}'){location='{{ url_for('audit_view', aid='AID', view=view) }}'.replace('AID', this.value)}">
       {% for o in others %}<option value="{{ o.id }}" {{ 'selected' if o.id == a.id }}>{{ o.created_at|datefmt }}</option>{% endfor %}
     </select></label>
-  {% if a.test_mode %}<span class="pill p-mute">Quick test · 6 questions</span>{% endif %}
+  <span class="pill p-mute" title="{{ DEPTH_INFO[depth_of(a)].what }}">{{ DEPTH_INFO[depth_of(a)].label }} audit</span>
 </div>
 {% if request.args.get('reopened') %}{# change 29: a recent audit opened instantly, with the option to run a new one #}
 <div class="reopen-note">
