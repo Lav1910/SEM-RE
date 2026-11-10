@@ -4,8 +4,13 @@
 <div class="ov-mid">
   <section class="panel">
     <div class="panel-h"><h2>AI readiness</h2></div>
+    {% if A.profile.site_blocked %}
+    <p class="big-stat">— <small>not checked</small></p>
+    <p class="small muted">{{ A.profile.domain }} turns away automated visitors, so its homepage and markup couldn't be read in this audit. The AI platform results don't depend on it.</p>
+    {% else %}
     <p class="big-stat">{{ passed }} <small>of {{ V.checks|length }} checks passed</small></p>
     <p class="small muted">Read from {{ A.profile.domain }}{% if A.profile.rendered_with_browser %} in a real Chrome browser (REA){% endif %}, plus robots.txt, llms.txt and {{ '{:,}'.format(A.profile.sitemap_count) }} sitemap pages.</p>
+    {% endif %}
   </section>
   <section class="panel">
     <div class="panel-h"><h2>Google footprint</h2><span class="small muted">Semrush</span></div>
@@ -35,6 +40,7 @@
 {% endif %}
 <section class="panel">
   <div class="panel-h"><h2>Website checks</h2></div>
+  {% if A.profile.site_blocked %}<div class="empty">Not run: this website turns away automated visitors.</div>{% endif %}
   {% for st, title, detail in V.checks %}
   <div class="ck ck-{{ st }}"><span class="ck-i">{{ '✓' if st == 'good' else ('!' if st == 'warn' else '✕') }}</span>
     <div><b>{{ title }}</b> <em>{{ {'good':'Pass','warn':'Improve','bad':'Fix'}[st] }}</em><p>{{ detail }}</p></div></div>

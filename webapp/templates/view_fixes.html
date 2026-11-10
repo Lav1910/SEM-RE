@@ -26,7 +26,7 @@
   </div>
 </section>
 {% else %}
-<div class="empty">Every site check passed. Nothing to fix.</div>
+<div class="empty">{% if A.profile.site_blocked %}The website turns away automated visitors, so there are no site checks to fix from this audit.{% else %}Every site check passed. Nothing to fix.{% endif %}</div>
 {% endfor %}
 {% endblock %}
 {% block scripts %}{% include "_tabs_js.html" %}{% include "_strategy_js.html" %}{% endblock %}
