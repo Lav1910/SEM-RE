@@ -761,7 +761,10 @@ def export_overview(aid):
     label = " · ".join(x for x in (area, engines.ENGINE_LABELS.get(platform) + " only" if platform != "all" else None) if x) or None
     html = render.overview_html(A, ov, label)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
-    return _pdf_response(aid, html, "overview.pdf", f"{name}-AI-Visibility-Overview-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
+    resp = _pdf_response(aid, html, "overview.pdf", f"{name}-AI-Visibility-Overview-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
+    from . import todo
+    todo.mark_exported(g.user["id"], a, "overview")  # ticks this builder on the exporter's to-do list
+    return resp
 
 
 @app.route("/audits/<aid>/<view>")
@@ -805,8 +808,11 @@ def export_pdf(aid):
         abort(404)
     html = _report_html(a, A)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
-    return _pdf_response(aid, html, "report.pdf",
+    resp = _pdf_response(aid, html, "report.pdf",
                          f"{name}-AI-Visibility-Audit-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
+    from . import todo
+    todo.mark_exported(g.user["id"], a, "full")  # ticks this builder on the exporter's to-do list
+    return resp
 
 
 @app.route("/api/audits/<aid>")
@@ -1006,4 +1012,4 @@ def create_app():
     return app
 
 
-from . import bulk  # noqa: E402,F401  (Bulk Analysis routes)
+from . import bulk, todo  # noqa: E402,F401  (Bulk Analysis and To-do routes)
