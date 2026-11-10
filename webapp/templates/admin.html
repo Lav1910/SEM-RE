@@ -25,6 +25,18 @@
     </section>
   </div>
 
+  <section class="card" id="ai-connections">{# change 50 #}
+    <div class="status-row"><h2 style="margin:0">AI connections (MCP)</h2>
+      <span class="small muted">{{ ai.connections }} active connection{{ 's' if ai.connections != 1 }} · {{ ai.agent_audits }} agent audit{{ 's' if ai.agent_audits != 1 }} and {{ ai.calls }} agent action{{ 's' if ai.calls != 1 }} in the last 24 hours</span></div>
+    <form method="post" action="{{ url_for('admin_ai') }}" class="ai-admin">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label class="chk"><input type="checkbox" name="enabled" value="1" {{ 'checked' if ai.enabled }}> Let the team connect AI agents (Claude, ChatGPT, Grok, Cursor…)</label>
+      <label><span class="label">Agent-started audits per person per day (0 for no limit)</span><input type="number" name="daily" min="0" max="1000" step="1" value="{{ ai.daily }}"></label>
+      <button class="btn btn-ghost btn-small" type="submit">Save</button>
+    </form>
+    <p class="small muted" style="margin:10px 0 0">Agents act as the person who connected them, with the same role. Their audits count toward the spending cap. Turning this off stops every connection straight away; each person manages theirs in Settings › AI connections.</p>
+  </section>
+
   <section class="card">
     <div class="status-row"><h2 style="margin:0">Last 24 hours</h2>
       <span class="small muted">{{ stats.total or 0 }} audits · {{ stats.done or 0 }} ready · {{ stats.failed or 0 }} failed · {{ stats.active or 0 }} running or queued · {{ workers }} run at a time</span></div>
