@@ -1055,8 +1055,10 @@ def client_view(token, view="overview"):
     V["chart"] = views.chart(A, hist)
     V["score_all"] = V["score"] if not area else views.build(A, platform, clean=True)["score"]
     V["area_scores"] = {ar: views.build(A, platform, None, None, ar, clean=True)["score"] for ar in (V["areas"] if len(V["areas"]) > 1 else [])}
+    exp = datetime.date.fromtimestamp(a["client_expires"])
     resp = app.make_response(render_template(f"view_{view}.html", base_tpl="client_base.html", a=a, A=A, V=V, view=view,
-                                             views_nav=VIEWS, platform=platform, others=[], loom="", share=None))
+                                             views_nav=VIEWS, platform=platform, others=[], loom="", share=None,
+                                             now_ts=time.time(), exp_date=f"{exp:%b} {exp.day}"))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     resp.headers["Referrer-Policy"] = "no-referrer"
     return resp
