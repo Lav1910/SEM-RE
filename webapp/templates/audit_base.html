@@ -46,6 +46,18 @@
       <div class="exp-menu">
         <a href="{{ url_for('export_pdf', aid=a.id) }}"><b>Full report</b><span>Every section, HBM-branded · 8 pages</span></a>
         <a href="{{ url_for('export_overview', aid=a.id, platform=platform if platform != 'all' else None, area=V.area if V and V.area else None) }}"><b>Overview only</b><span>1 page{% if V and (V.area or platform != 'all') %} · this filtered view{% else %} · gauge, graph, platforms, what's next{% endif %}</span></a>
+        {% if can('share') %}{# change 31: an interactive link for the client #}
+        <div class="exp-client" data-url="{{ url_for('client_link', aid=a.id) }}" data-csrf="{{ session.csrf }}">
+          <button type="button" class="exp-client-btn" data-act="create"><b>Client link</b><span>Interactive overview and competitors · for the client</span></button>
+          <div class="exp-client-info" {% if not client %}hidden{% endif %}>
+            <input class="exp-client-url" type="text" readonly value="{{ client.url if client else '' }}" aria-label="Client link">
+            <span class="small muted" data-stats>{% if client %}{{ ('Opened ' ~ client.views ~ ' time' ~ ('s' if client.views != 1 else '') ~ ' · last ' ~ (client.last|ago)) if client.views else 'Not opened yet' }} · expires {{ client.expires|datefmt }}{% endif %}</span>
+            <div class="exp-client-acts"><button type="button" class="link-btn small" data-act="copy">Copy</button>
+              <button type="button" class="link-btn small" data-act="new">New link</button>
+              <button type="button" class="link-btn small" data-act="off">Turn off</button></div>
+          </div>
+        </div>
+        {% endif %}
       </div>
     </details>
   </div>
@@ -113,4 +125,34 @@
 {% endif %}
 {% block view %}{% endblock %}
 {% include "_feedback.html" %}
+<script>
+(function () {  // change 31: create, copy, renew or turn off the client link without leaving the page
+  var box = document.querySelector('.exp-client'); if (!box) return;
+  var info = box.querySelector('.exp-client-info'), input = box.querySelector('.exp-client-url'), stats = box.querySelector('[data-stats]');
+  function copy() {
+    if (!input.value) return;
+    input.select();
+    var done = function () { stats.dataset.prev = stats.dataset.prev || stats.textContent; stats.textContent = 'Copied. Paste it into your email.'; };
+    if (navigator.clipboard) navigator.clipboard.writeText(input.value).then(done, function () { document.execCommand('copy'); done(); });
+    else { document.execCommand('copy'); done(); }
+  }
+  box.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-act]'); if (!b) return;
+    var act = b.dataset.act;
+    if (act === 'copy') { copy(); return; }
+    if (act === 'off' && !confirm('Turn off this client link? Anyone with it will see "link expired".')) return;
+    var fd = new FormData(); fd.append('csrf', box.dataset.csrf); fd.append('action', act);
+    fetch(box.dataset.url, {method: 'POST', body: fd, headers: {'Accept': 'application/json'}, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var l = d.link;
+        if (!l) { info.hidden = true; input.value = ''; return; }
+        info.hidden = false; input.value = l.url;
+        stats.textContent = (l.views ? 'Opened ' + l.views + ' time' + (l.views === 1 ? '' : 's') + ' · last ' + l.last_label : 'Not opened yet') + ' · expires ' + l.expires_label;
+        copy();
+      })
+      .catch(function () { stats.textContent = 'Something went wrong. Try again.'; info.hidden = false; });
+  });
+})();
+</script>
 {% endblock %}

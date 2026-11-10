@@ -55,7 +55,7 @@
             {% else %}<span class="todo-check {{ 'on' if st == 'done' }}">✓</span>{% endif %}</td>
           <td><b class="todo-name">{{ r.name or (r.audit.builder_name if r.audit and r.audit.builder_name else r.domain) }}</b>
             <small>{{ r.domain }}{% if r.notes %} · {{ r.notes }}{% endif %}</small></td>
-          <td>{% if st == 'done' %}<span class="pill p-good">✓ Done</span><small>{{ {'full':'Full report PDF','overview':'Overview PDF','manual':'Ticked by hand'}.get(r.done_via, 'Done') }} · {{ r.done_at|ago }}</small>
+          <td>{% if st == 'done' %}<span class="pill p-good">✓ Done</span><small>{{ {'full':'Full report PDF','overview':'Overview PDF','client':'Client link','manual':'Ticked by hand'}.get(r.done_via, 'Done') }} · {{ r.done_at|ago }}</small>
               {% elif st == 'audited' %}<span class="pill p-warn">◐ Audited</span><small>Export a PDF to tick it off{% if r.audit.score is not none %} · score {{ r.audit.score }}{% endif %}</small>
               {% elif r.running %}<span class="pill p-info">Running</span><small>Audit in progress</small>
               {% else %}<span class="pill p-mute">○ To do</span>{% endif %}</td>

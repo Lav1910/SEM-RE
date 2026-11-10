@@ -1,4 +1,4 @@
-{% extends "audit_base.html" %}
+{% extends base_tpl|default("audit_base.html") %}
 {% block view %}
 {% set s = V.score %}{% set G = V.gauge %}
 {% set prev = V.trend[-2].score if V.trend|length > 1 else none %}
@@ -93,17 +93,17 @@
     <button class="next2-arrow prev" type="button" aria-label="Previous" hidden>‹</button>
     <div class="next2-track">
       {% for r in V.recommendations %}{% set t = r.title|lower %}
-      {% if 'maps' in t %}{% set icon, link, href = 'pin', 'See who holds the Maps 3-pack', url_for('audit_view', aid=a.id, view='competitors') %}
-      {% elif 'named in' in t %}{% set icon, link, href = 'chat', 'Find competitor gaps', url_for('audit_view', aid=a.id, view='competitors') %}
+      {% if 'maps' in t %}{% set icon, link, href = 'pin', 'See who holds the Maps 3-pack', vurl(a.id, 'competitors') %}
+      {% elif 'named in' in t %}{% set icon, link, href = 'chat', 'Find competitor gaps', vurl(a.id, 'competitors') %}
       {% elif 'sources' in t %}{% set icon, link, href = 'link', 'Uncover source opportunities', '#ts' %}
-      {% elif 'lift' in t %}{% set icon, link, href = 'shield', "See what's missing on the site", url_for('audit_view', aid=a.id, view='site') %}
-      {% elif 'review' in t %}{% set icon, link, href = 'star', 'Check the Google profile', url_for('audit_view', aid=a.id, view='site') %}
+      {% elif 'lift' in t %}{% set icon, link, href = 'shield', "See what's missing on the site", vurl(a.id, 'site') %}
+      {% elif 'review' in t %}{% set icon, link, href = 'star', 'Check the Google profile', vurl(a.id, 'site') %}
       {% elif 'page' in t %}{% set icon, link, href = 'map', 'Uncover topic opportunities', '#ts' %}
-      {% else %}{% set icon, link, href = 'shield', "Check the website's AI health", url_for('audit_view', aid=a.id, view='site') %}{% endif %}
+      {% else %}{% set icon, link, href = 'shield', "Check the website's AI health", vurl(a.id, 'site') %}{% endif %}
       <article class="next2-card">
         <h3><span class="nx-ico nx-{{ icon }}" aria-hidden="true"></span>{{ r.title }}</h3>
         <p>{{ r.why }}</p>
-        <a href="{{ href }}" {% if href == '#ts' %}data-open-tab="{{ 'srcopps' if icon == 'link' else 'opps' }}"{% endif %}>{{ link }}</a>
+        {% if href %}<a href="{{ href }}" {% if href == '#ts' %}data-open-tab="{{ 'srcopps' if icon == 'link' else 'opps' }}"{% endif %}>{{ link }}</a>{% endif %}
       </article>
       {% endfor %}
     </div>

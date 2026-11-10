@@ -884,7 +884,7 @@ def audit_view(aid, view):
     loom = store.get_text(aid, "loom.txt") or ""
     share = url_for("shared_report", token=a["share_token"], _external=True) if a["share_token"] else None
     return render_template(f"view_{view}.html", a=a, A=A, V=V, view=view, views_nav=VIEWS, platform=platform,
-                           others=others, loom=loom, share=share)
+                           others=others, loom=loom, share=share, client=_client_info(a))
 
 
 @app.route("/audits/<aid>/export.pdf")
@@ -973,6 +973,93 @@ def rerun(aid):
          (nid, g.user["id"], a["url"], a["domain"], a["scope"] or "root", a["locations"], a["city"], a["state"], a["test_mode"], secrets.token_urlsafe(18), time.time()))
     jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=nid))
+
+
+# ---------------- client link (change 31) ----------------
+CLIENT_VIEWS = ("overview", "competitors")
+CLIENT_DAYS = int(os.environ.get("HBM_CLIENT_LINK_DAYS", "30"))
+
+
+def vurl(aid, view, **kw):
+    """Link to an audit screen; on a client link, only the two client screens exist (others return None)."""
+    tok = g.get("client_token")
+    if tok:
+        return url_for("client_view", token=tok, view=view, **kw) if view in CLIENT_VIEWS else None
+    return url_for("audit_view", aid=aid, view=view, **kw)
+
+
+app.jinja_env.globals["vurl"] = vurl
+
+
+def _client_info(a):
+    if not a["client_token"] or (a["client_expires"] or 0) < time.time():
+        return None
+    return {"url": url_for("client_view", token=a["client_token"], view="overview", _external=True),
+            "views": a["client_views"] or 0, "last": a["client_last_view"], "expires": a["client_expires"]}
+
+
+@app.route("/audits/<aid>/client-link", methods=["POST"])
+@login_required
+def client_link(aid):
+    """Create (or reuse), renew or turn off the client's interactive link for a finished audit."""
+    if not auth.can(g.user, "share"):
+        abort(403)
+    a = get_audit(aid)
+    if a["status"] != "done":
+        abort(404)
+    act = request.form.get("action", "create")
+    if act == "off":
+        db.x("UPDATE audits SET client_token=NULL, client_expires=NULL WHERE id=?", (aid,))
+        security_event("client_link_off", g.user["email"], aid)
+        info = None
+    else:
+        if act == "new" or not _client_info(a):
+            db.x("UPDATE audits SET client_token=?, client_expires=?, client_views=0, client_last_view=NULL WHERE id=?",
+                 (secrets.token_urlsafe(24), time.time() + CLIENT_DAYS * 86400, aid))
+            security_event("client_link_created", g.user["email"], aid)
+        from . import todo
+        todo.mark_exported(g.user["id"], a, "client")  # sending the link counts like exporting a PDF
+        info = _client_info(get_audit(aid))
+    if request.headers.get("Accept", "").startswith("application/json"):
+        return jsonify({"link": info and dict(info, expires_label=f'{datetime.date.fromtimestamp(info["expires"]):%b} {datetime.date.fromtimestamp(info["expires"]).day}',
+                                              last_label=ago(info["last"]) if info["last"] else None)})
+    flash(("Client link ready: " + info["url"]) if info else "Client link turned off.", "good")
+    return redirect(url_for("audit_view", aid=aid, view="overview"))
+
+
+@app.route("/c/<token>")
+@app.route("/c/<token>/<view>")
+def client_view(token, view="overview"):
+    """The client's interactive page: Visibility Overview and Competitor Research only, no sign-in, read-only."""
+    if view not in CLIENT_VIEWS:
+        abort(404)
+    a = db.q("SELECT * FROM audits WHERE client_token=? AND status='done'", (token,), one=True) if len(token) >= 20 else None
+    if not a or (a["client_expires"] or 0) < time.time():
+        return render_template("client_expired.html"), 404
+    A = store.load_json(a["id"])
+    if A is None:
+        abort(404)
+    seen = session.get("cv", {})
+    if time.time() - seen.get(token, 0) > 1800:  # count a visit, not every click
+        db.x("UPDATE audits SET client_views=COALESCE(client_views, 0)+1, client_last_view=? WHERE id=?", (time.time(), a["id"]))
+        seen[token] = time.time()
+        session["cv"] = {k: v for k, v in seen.items() if time.time() - v < 86400}
+    g.user, g.client_token = None, token  # a teammate opening it sees exactly what the client sees
+    platform = request.args.get("platform", "all")
+    if platform != "all" and platform not in views.measured_engines(A):
+        platform = "all"
+    area = request.args.get("area") or None
+    vs = [v for v in request.args.getlist("vs") if v][:6]
+    hist = _history(a, A, platform)
+    V = views.build(A, platform, hist, vs, area, clean=True)
+    V["chart"] = views.chart(A, hist)
+    V["score_all"] = V["score"] if not area else views.build(A, platform, clean=True)["score"]
+    V["area_scores"] = {ar: views.build(A, platform, None, None, ar, clean=True)["score"] for ar in (V["areas"] if len(V["areas"]) > 1 else [])}
+    resp = app.make_response(render_template(f"view_{view}.html", base_tpl="client_base.html", a=a, A=A, V=V, view=view,
+                                             views_nav=VIEWS, platform=platform, others=[], loom="", share=None))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
 
 
 @app.route("/audits/<aid>/share", methods=["POST"])

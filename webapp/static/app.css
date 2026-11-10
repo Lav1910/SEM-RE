@@ -794,3 +794,19 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 /* change 29: instant re-open note */
 .reopen-note { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:#F2F8F8; border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin:0 0 14px; font-size:14px; }
 .reopen-note form { margin:0; }
+
+/* ===== change 31: client link ===== */
+.exp-client { border-top:1px solid var(--line); margin-top:4px; padding-top:4px; }
+.exp-client-btn { display:grid; gap:2px; width:100%; text-align:left; background:none; border:0; padding:10px 12px; border-radius:10px; cursor:pointer; font:inherit; color:inherit; }
+.exp-client-btn:hover { background:#F2F8F8; }
+.exp-client-btn b { font-weight:600; font-size:14px; } .exp-client-btn span { font-size:12.5px; color:var(--muted); }
+.exp-client-info { display:grid; gap:6px; padding:4px 12px 10px; }
+.exp-client-url { width:100%; font:12.5px var(--font); padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#F6FAFA; color:var(--ink); }
+.exp-client-acts { display:flex; gap:12px; }
+.client-top { display:flex; align-items:center; gap:18px; padding:4px 0 16px; border-bottom:1px solid var(--line); margin-bottom:14px; flex-wrap:wrap; }
+.client-logo { height:44px; width:auto; }
+.client-who { display:grid; gap:2px; } .client-who b { font-size:22px; font-weight:600; }
+.client-tabs { display:flex; gap:6px; margin:0 0 14px; flex-wrap:wrap; }
+.client-tabs a { padding:9px 16px; border-radius:999px; border:1px solid var(--line); text-decoration:none; color:var(--ink2); font-weight:500; font-size:14px; background:#fff; }
+.client-tabs a.on { background:var(--teal); border-color:var(--teal); color:#fff; }
+.client-foot { margin:26px 0 8px; text-align:center; }
