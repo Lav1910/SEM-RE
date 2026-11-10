@@ -39,17 +39,27 @@
     <div class="todo-bar">
       <div class="seg">{% for k, lab in (('today', 'Today'), ('week', 'This week'), ('all', 'All')) %}<a class="seg-item {{ 'on' if when == k }}" href="{{ url_for('todo_home', when=k, show=show, user=owner.id if not mine else None) }}">{{ lab }}</a>{% endfor %}</div>
       <div class="seg">{% for k, lab in (('all', 'All'), ('todo', 'Still to do'), ('done', 'Done')) %}<a class="seg-item {{ 'on' if show == k }}" href="{{ url_for('todo_home', when=when, show=k, user=owner.id if not mine else None) }}">{{ lab }}</a>{% endfor %}</div>
+      {% if mine and rows %}<button class="btn btn-ghost btn-small todo-select-btn" type="button" data-select-mode aria-pressed="false">Select</button>{% endif %}{# change 43 #}
       <div class="todo-bar-r">
         <div class="bar todo-progress"><i style="width:{{ pct }}%"></i></div>
         {% if mine and counts.done %}<form method="post" action="{{ url_for('todo_clear') }}" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn" type="submit">Clear completed</button></form>{% endif %}
       </div>
     </div>
     {% if rows %}
+    <form id="todo-bulk" method="post" action="{{ url_for('todo_bulk') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <div class="todo-actbar" hidden><b data-sel-count>0 selected</b>
+      <button class="btn btn-ghost btn-small" name="action" value="done">Mark done</button>
+      <button class="btn btn-ghost btn-small" name="action" value="todo">Mark to do</button>
+      <button class="btn btn-ghost btn-small" name="action" value="quick" title="A Quick audit for each selected builder (about $0.55 each)">Run Quick audits</button>
+      <button class="btn btn-ghost btn-small todo-danger" name="action" value="remove" data-confirm-remove>Remove</button>
+      <button class="link-btn small" type="button" data-sel-clear>Clear selection</button></div>
+    </form>
     <div class="tw"><table class="todo-table">
-      <thead><tr><th style="width:58px"></th><th>Prospect</th><th>Status</th><th>Added</th><th class="r">Actions</th></tr></thead>
+      <thead><tr><th class="sel-col"><input type="checkbox" class="sel-all" aria-label="Select all showing"></th><th style="width:58px"></th><th>Prospect</th><th>Status</th><th>Added</th><th class="r">Actions</th></tr></thead>
       <tbody>
       {% for r in rows %}{% set st = r.status_view %}
         <tr class="todo-row t-{{ st }}">
+          <td class="sel-col">{% if mine %}<input type="checkbox" class="sel-row" name="ids" value="{{ r.id }}" form="todo-bulk" aria-label="Select {{ r.name or r.domain }}">{% endif %}</td>
           <td>{% if mine %}<form method="post" action="{{ url_for('todo_toggle', tid=r.id) }}" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}">
             <button class="todo-check {{ 'on' if st == 'done' }}" type="submit" aria-label="{{ 'Mark as not done' if st == 'done' else 'Mark as done' }}" title="{{ 'Mark as not done' if st == 'done' else 'Tick off by hand' }}">✓</button></form>
             {% else %}<span class="todo-check {{ 'on' if st == 'done' }}">✓</span>{% endif %}</td>
@@ -59,7 +69,9 @@
               {% elif st == 'audited' %}<span class="pill p-warn">◐ Audited</span><small>Export a PDF to tick it off{% if r.audit.score is not none %} · score {{ r.audit.score }}{% endif %}</small>
               {% elif r.running %}<span class="pill p-info">Running</span><small>Audit in progress</small>
               {% else %}<span class="pill p-mute">○ To do</span>{% endif %}</td>
-          <td class="small muted">{{ r.created_at|ago }}</td>
+          {# change 41: the prospect opened the client link #}
+          {% set cv = (r.audit.client_views if r.audit else 0) or 0 %}
+          <td class="small muted">{{ r.created_at|ago }}{% if cv %}<a class="pill p-info todo-opened" href="{{ url_for('links_detail', aid=r.audit.id) }}" title="Last opened {{ r.audit.client_last_view|ago }}">Client opened · {{ cv }}×</a>{% endif %}</td>
           <td class="r"><div class="todo-acts">
             {% if r.audit %}<a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=r.audit.id, view='overview') }}">Open audit</a>{% endif %}
             {% if mine and st != 'done' and not r.running %}
@@ -80,6 +92,34 @@
 {% endblock %}
 {% block scripts %}
 <script>
+(function () {  // change 43: select all (what's showing) or pick rows, then act on them together
+  var btn = document.querySelector('[data-select-mode]'), table = document.querySelector('.todo-table'), bar = document.querySelector('.todo-actbar');
+  if (!btn || !table) return;
+  var all = table.querySelector('.sel-all'), boxes = function () { return Array.prototype.slice.call(table.querySelectorAll('.sel-row')); }, last = null;
+  function upd() {
+    var n = boxes().filter(function (b) { return b.checked; }).length;
+    bar.hidden = !n; bar.querySelector('[data-sel-count]').textContent = n + ' selected';
+    all.checked = n && n === boxes().length; all.indeterminate = n > 0 && n < boxes().length;
+    boxes().forEach(function (b) { b.closest('tr').classList.toggle('sel-on', b.checked); });
+  }
+  function mode(on) { table.classList.toggle('selecting', on); btn.setAttribute('aria-pressed', on); btn.textContent = on ? 'Done selecting' : 'Select';
+    if (!on) { boxes().forEach(function (b) { b.checked = false; }); upd(); } }
+  btn.addEventListener('click', function () { mode(!table.classList.contains('selecting')); });
+  all.addEventListener('change', function () { boxes().forEach(function (b) { b.checked = all.checked; }); upd(); });
+  table.addEventListener('click', function (e) {
+    var b = e.target.closest('.sel-row'); if (!b) return;
+    if (e.shiftKey && last && last !== b) {  // shift-click: select the whole range
+      var bs = boxes(), i = bs.indexOf(last), j = bs.indexOf(b);
+      bs.slice(Math.min(i, j), Math.max(i, j) + 1).forEach(function (x) { x.checked = b.checked; });
+    }
+    last = b; upd();
+  });
+  bar.querySelector('[data-sel-clear]').addEventListener('click', function () { boxes().forEach(function (b) { b.checked = false; }); upd(); });
+  var rm = bar.querySelector('[data-confirm-remove]');
+  rm.addEventListener('click', function (e) { var n = boxes().filter(function (b) { return b.checked; }).length;
+    if (!confirm('Remove ' + n + ' prospect' + (n === 1 ? '' : 's') + ' from your list?')) e.preventDefault(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && table.classList.contains('selecting')) mode(false); });
+})();
 (function () { var i = document.getElementById('csv'), l = document.querySelector('[data-file-label]'); if (!i) return;
   i.addEventListener('change', function () { l.textContent = i.files[0] ? '✓ ' + i.files[0].name : 'Upload a CSV instead'; }); })();
 </script>

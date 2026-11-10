@@ -1,0 +1,17 @@
+<script>
+(function () {  // change 42: lane tabs and copy buttons on the client's Strategy tabs (read-only)
+  document.querySelectorAll('[data-tabs="lane"] [data-tab]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-tabs="lane"] [data-tab]').forEach(function (x) { x.classList.toggle('on', x === b); });
+      document.querySelectorAll('.strat-card').forEach(function (c) { c.hidden = !(b.dataset.tab === 'all' || c.dataset.lane === b.dataset.tab); });
+    });
+  });
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var el = document.getElementById(b.dataset.copy); if (!el) return;
+      var t = el.value || el.textContent, ok = function () { var o = b.textContent; b.textContent = '✓ Copied'; setTimeout(function () { b.textContent = o; }, 1800); };
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(ok); else { el.hidden = false; el.select(); document.execCommand('copy'); el.hidden = true; ok(); }
+    });
+  });
+})();
+</script>

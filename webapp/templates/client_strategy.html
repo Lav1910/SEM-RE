@@ -1,0 +1,28 @@
+{% extends "client_base.html" %}
+{% block view %}{% set S = V.S %}
+<section class="panel strat-head">
+  <div>
+    <div class="eyebrow-sm">AI visibility plan for {{ A.profile.name }}</div>
+    <h2 style="margin:4px 0 6px">{{ S['items']|length }} steps to get recommended by AI more often</h2>
+    <p class="small muted" style="margin:0">Ranked by expected gain, from this audit's AI answers and website checks.</p>
+  </div>
+</section>
+<div class="lane-tabs" data-tabs="lane">
+  <button class="seg-item on" data-tab="all">All <b>{{ S['items']|length }}</b></button>
+  {% for k, lab in S.lanes.items() %}{% set n = S['items']|selectattr('lane', 'equalto', k)|list|length %}{% if n %}
+  <button class="seg-item" data-tab="{{ k }}">{{ lab }} <b>{{ n }}</b></button>{% endif %}{% endfor %}
+</div>
+<div class="strat-list">
+{% for it in S['items'] %}
+  <article class="strat-card task" data-lane="{{ it.lane }}">
+    <div class="sc-top"><span class="lane-chip lane-{{ it.lane }}">{{ it.lane_label }}</span>
+      <span class="imp imp-{{ it.impact|lower }}">{{ it.impact }} impact</span><span class="eff">{{ it.effort }} effort</span></div>
+    <h3>{{ it.title }}</h3>
+    <p class="sc-why">{{ it.why }}</p>
+    {% if it.how %}{% if client_full %}<p class="sc-how"><b>What to do:</b> {{ it.how }}</p>
+    {% else %}{% include "_client_lock.html" %}{% endif %}{% endif %}
+  </article>
+{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}{% include "_client_strategy_js.html" %}{% endblock %}

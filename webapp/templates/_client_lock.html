@@ -1,0 +1,10 @@
+{# change 42: on a Preview link, the how-to is locked behind a button to the HBM contact #}
+<div class="locked">
+  {# placeholder only: the real how-to, content and code are never sent to a Preview link (not even hidden) #}
+  <div class="locked-fake" aria-hidden="true">Step-by-step instructions written for this builder, with the exact wording to publish, where it goes on the website, and the ready-made code to paste in. Each step is ordered so the quickest wins come first, then the larger projects that build long-term visibility in AI answers.</div>
+  <div class="locked-cta">
+    <span class="locked-ico" aria-hidden="true">🔒</span>
+    <span>{{ lock_text or "The full how-to is included when Home Builder Marketers does this for you." }}</span>
+    {% if contact %}<a class="btn btn-primary btn-small" data-contact href="mailto:{{ contact.email }}?subject={{ ('AI visibility plan for ' ~ (A.profile.name or a.domain))|urlencode }}&body={{ ('Hi ' ~ (contact.name or '').split(' ')[0] ~ ', I looked at the AI visibility report for ' ~ (A.profile.name or a.domain) ~ ' and would like help getting this done.')|urlencode }}">Get this done with HBM</a>{% endif %}
+  </div>
+</div>

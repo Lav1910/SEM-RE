@@ -25,8 +25,11 @@
     <nav class="client-tabs" aria-label="Report sections">
       <a class="{{ 'on' if view == 'overview' }}" href="{{ vurl(a.id, 'overview', platform=platform if platform != 'all' else None, area=V.area or None) }}">Visibility Overview</a>
       <a class="{{ 'on' if view == 'competitors' }}" href="{{ vurl(a.id, 'competitors', platform=platform if platform != 'all' else None, area=V.area or None) }}">Competitor Research</a>
+      <a class="{{ 'on' if view == 'strategy' }}" href="{{ vurl(a.id, 'strategy') }}">Strategy Plan</a>
+      <a class="{{ 'on' if view == 'content' }}" href="{{ vurl(a.id, 'content') }}">Content</a>
+      <a class="{{ 'on' if view == 'fixes' }}" href="{{ vurl(a.id, 'fixes') }}">Technical Fixes</a>
     </nav>
-    <form method="get" class="ctl-form">
+    {% if view in ('overview', 'competitors') %}<form method="get" class="ctl-form">
       {% for v in request.args.getlist('vs') %}<input type="hidden" name="vs" value="{{ v }}">{% endfor %}
       {% if V.area %}<input type="hidden" name="area" value="{{ V.area }}">{% endif %}
       <label class="ctl ctl-select"><span class="sr-only">AI platform</span>
@@ -34,10 +37,10 @@
           <option value="all" {{ 'selected' if platform == 'all' }}>All AI platforms</option>
           {% for en in V.platforms %}<option value="{{ en }}" {{ 'selected' if platform == en }}>{{ engine_labels[en] }}</option>{% endfor %}
         </select></label>
-    </form>
+    </form>{% endif %}
   </div>
 </header>
-{% if V.areas and V.areas|length > 1 %}
+{% if V.areas and V.areas|length > 1 and view in ('overview', 'competitors') %}
 <div class="area-bar">
 <nav class="area-tabs" aria-label="Market areas">
   <a class="{{ 'on' if not V.area }}" href="{{ vurl(a.id, view, platform=platform if platform != 'all' else None, vs=request.args.getlist('vs') or None) }}">All areas{% if V.score_all is not none and V.area_scores %} <span class="at-score {{ 'lo' if V.score_all < 35 else ('hi' if V.score_all >= 70 else '') }}">{{ V.score_all }}</span>{% endif %}</a>
@@ -62,6 +65,51 @@
   tick(); setInterval(tick, 30000);
 })();
 </script>
+{% if track %}
+<script>
+(function () {  // change 41: which parts of the report the client spends time on, and what they click. No personal data.
+  var url = {{ url_for('client_ping', token=a.client_token)|tojson }}, csrf = {{ session.csrf|tojson }};
+  var secs = {}, acts = [], ratios = new Map(), seenTips = {};
+  function nameOf(el) {
+    var h = el.querySelector('h2, h3'); if (!h) return null;
+    var c = h.cloneNode(true); c.querySelectorAll('.info, .muted, .small').forEach(function (x) { x.remove(); });
+    return c.textContent.replace(/\s+/g, ' ').trim().slice(0, 60) || null;
+  }
+  var parts = Array.prototype.slice.call(document.querySelectorAll('main section.panel, main section.card, main .panel, main .ov-box'));
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) { es.forEach(function (e) { ratios.set(e.target, e.intersectionRatio * e.boundingClientRect.height); }); },
+                                      {threshold: [0, .25, .5, .75, 1]});
+    parts.forEach(function (p) { if (nameOf(p)) io.observe(p); });
+  }
+  setInterval(function () {  // one second to whichever section fills most of the screen, only while the page is in front
+    if (document.visibilityState !== 'visible') return;
+    var best = null, bv = 0; ratios.forEach(function (v, el) { if (v > bv) { bv = v; best = el; } });
+    var n = best ? nameOf(best) : 'Top of report'; if (n) secs[n] = (secs[n] || 0) + 1;
+  }, 1000);
+  function act(k, d) { acts.push({k: k, d: (d || '').trim().slice(0, 80)}); }
+  function flush() {
+    if (!Object.keys(secs).length && !acts.length) return;
+    var fd = new FormData(); fd.append('csrf', csrf); fd.append('d', JSON.stringify({s: secs, a: acts}));
+    secs = {}; acts = [];
+    if (navigator.sendBeacon) navigator.sendBeacon(url, fd); else fetch(url, {method: 'POST', body: fd, keepalive: true, credentials: 'same-origin'});
+  }
+  setInterval(flush, 20000);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
+  window.addEventListener('pagehide', flush);
+  var plat = document.getElementById('platform');
+  if (plat) plat.addEventListener('change', function () { act('platform', plat.options[plat.selectedIndex].text); flush(); });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('a, button, .info'); if (!t) return;
+    if (t.closest('.client-tabs')) act('tab', t.textContent);
+    else if (t.closest('.area-tabs')) act('area', t.textContent.replace(/\d+\s*$/, ''));
+    else if (t.classList.contains('info')) { var h = t.closest('.metric, h2, h3, th, span'); var k = h ? h.textContent.replace(/\bi\b/g, '').trim() : ''; if (!seenTips[k]) { seenTips[k] = 1; act('tip', k); } }
+    else if (/copy/i.test(t.textContent)) { var box = t.closest('.piece, .fix, .task, section'); var hh = box && box.querySelector('h3, h2, b'); act('copy', hh ? hh.textContent : ''); }
+    else if (t.dataset.contact !== undefined) act('contact', 'Get this done with HBM');
+  }, true);
+  document.querySelectorAll('form.vs-bar').forEach(function (f) { f.addEventListener('submit', function () { var s = f.querySelector('select, input[name=vs]'); act('compare', s && s.value); flush(); }); });
+})();
+</script>
+{% endif %}
 <footer class="client-foot small muted">Prepared by Home Builder Marketers · AI answers collected {{ a.created_at|datefmt }}. Answers from AI platforms change over time.</footer>
 </div>
 {% endblock %}
