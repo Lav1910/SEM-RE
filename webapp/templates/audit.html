@@ -95,6 +95,7 @@
 (function () {
   var live = document.getElementById('live'); if (!live) return;
   var started = +live.dataset.started * 1000, seen = 0;
+  var CLEAN = {{ 'false' if can('admin') else 'true' }};  // change 24: Sales never see platform errors
   var STATE = {running: ['Running', 'st-good'], done: ['Complete', 'st-done'], off: ['Not connected', 'st-off'], needs_credits: ['Needs credits', 'st-bad'], waiting: ['Waiting', 'st-off']};
   function fmtTime(t) { var d = new Date(t * 1000); return d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit', second: '2-digit'}); }
   setInterval(function () {
@@ -121,6 +122,7 @@
       row.querySelector('.mini-bar i').style.width = (st === 'off' ? 0 : pct) + '%';
       row.querySelector('.eng-count').textContent = e && st !== 'off' ? e.done + ' of ' + e.total + ' questions' : '';
       row.classList.toggle('muted-row', st === 'off' || st === 'needs_credits');
+      if (CLEAN) row.hidden = !e && p >= 30 || st === 'off' || st === 'needs_credits';
     });
     var feed = d.activity || [];
     if (feed.length && feed.length !== seen) {

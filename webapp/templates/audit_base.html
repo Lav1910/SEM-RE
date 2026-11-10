@@ -91,7 +91,7 @@
     <label class="ctl ctl-select"><span class="sr-only">AI platform</span>
       <select name="platform" id="platform" onchange="this.form.submit()">
         <option value="all" {{ 'selected' if platform == 'all' }}>All AI platforms</option>
-        {% for en, lab in engine_labels.items() %}<option value="{{ en }}" {{ 'selected' if platform == en }}>{{ lab }}</option>{% endfor %}
+        {% for en in (V.platforms if V and V.platforms is defined else engine_labels) %}<option value="{{ en }}" {{ 'selected' if platform == en }}>{{ engine_labels[en] }}</option>{% endfor %}
       </select></label>
   </form>
   {% endif %}

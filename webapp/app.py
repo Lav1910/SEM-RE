@@ -167,6 +167,19 @@ def ago(ts):
 
 app.jinja_env.filters["ago"] = ago
 app.jinja_env.filters["md"] = markdown.render
+
+
+def duration(secs):
+    """Run time to the second: 47s, 2m 47s, 1h 3m 5s (change 25)."""
+    if secs is None:
+        return "—"
+    s_ = max(0, int(round(secs)))
+    h, rem = divmod(s_, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}h {m}m {sec}s" if h else (f"{m}m {sec}s" if m else f"{sec}s")
+
+
+app.jinja_env.filters["dur"] = duration
 app.jinja_env.filters["datefmt"] = lambda ts: dates.date_time(ts) if ts else "—"
 app.jinja_env.globals["engine_labels"] = engines.ENGINE_LABELS
 
@@ -486,18 +499,55 @@ def avatar(uid):
 
 
 # ---------------- salesperson screens ----------------
+def _backfill_costs(limit=300):
+    """Older audits finished before costs were saved: work theirs out once from the stored answers."""
+    from aeo import budget
+    for r in db.q("SELECT id FROM audits WHERE status='done' AND cost_usd IS NULL ORDER BY created_at DESC LIMIT ?", (limit,)):
+        A = store.load_json(r["id"])
+        db.x("UPDATE audits SET cost_usd=? WHERE id=?", (budget.audit_cost(A) if A else 0.0, r["id"]))
+
+
+PER_PAGE = 25
+
+
 @app.route("/")
 @login_required
 def dashboard():
     scope = request.args.get("scope", "mine") if auth.can(g.user, "team_audits") else "mine"
-    where, args = ("", ()) if scope == "team" else ("WHERE a.user_id=?", (g.user["id"],))
-    rows = db.q(f"SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id {where} ORDER BY a.created_at DESC LIMIT 100", args)
+    q = request.args.get("q", "").strip()[:100]
+    page = max(1, int(request.args.get("page", "1")) if request.args.get("page", "1").isdigit() else 1)
+    conds, args = ([], []) if scope == "team" else (["a.user_id=?"], [g.user["id"]])
+    if q:  # change 25: search by builder name, website or who ran it
+        like = "%" + q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        conds.append("(LOWER(COALESCE(a.builder_name,'')) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(a.domain,'')) LIKE ? ESCAPE '\\' "
+                     "OR LOWER(a.url) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(u.name,'')) LIKE ? ESCAPE '\\' OR LOWER(u.email) LIKE ? ESCAPE '\\')")
+        args += [like] * 5
+    where = ("WHERE " + " AND ".join(conds)) if conds else ""
+    see_costs = auth.can(g.user, "see_costs")
+    if see_costs:
+        _backfill_costs()
+    content_cost = "(SELECT COALESCE(SUM(sc.cost), 0) FROM strategy_content sc WHERE sc.audit_id=a.id)"
+    summary = db.q(f"""SELECT COUNT(*) AS n,
+                       AVG(CASE WHEN a.status='done' AND a.started_at IS NOT NULL AND a.finished_at IS NOT NULL
+                                THEN a.finished_at - a.started_at END) AS avg_secs,
+                       SUM(CASE WHEN a.status='done' THEN COALESCE(a.cost_usd, 0) + {content_cost} ELSE 0 END) AS cost
+                       FROM audits a JOIN users u ON u.id=a.user_id {where}""", tuple(args), one=True)
+    pages = max(1, -(-summary["n"] // PER_PAGE))
+    page = min(page, pages)
+    rows = db.q(f"""SELECT a.*, u.name AS owner,
+                    CASE WHEN a.started_at IS NOT NULL AND a.finished_at IS NOT NULL THEN a.finished_at - a.started_at END AS run_secs,
+                    CASE WHEN a.status='done' THEN COALESCE(a.cost_usd, 0) + {content_cost} END AS total_cost
+                    FROM audits a JOIN users u ON u.id=a.user_id {where} ORDER BY a.created_at DESC LIMIT ? OFFSET ?""",
+                tuple(args) + (PER_PAGE, (page - 1) * PER_PAGE))
+    hist = {"q": q, "page": page, "pages": pages, "n": summary["n"], "avg_secs": summary["avg_secs"],
+            "cost": summary["cost"] if see_costs else None, "first": (page - 1) * PER_PAGE + 1 if summary["n"] else 0,
+            "last": min(page * PER_PAGE, summary["n"])}
     live = [en for en in engines.ENGINES if engines.is_configured(en)]
     b = budget.status()
     last = db.q("SELECT id FROM audits WHERE status='done' ORDER BY created_at DESC LIMIT 1", one=True)
     LA = store.load_json(last["id"]) if last else None
     from aeo.engines import STATE_CODES
-    return render_template("dashboard.html", rows=rows, scope=scope, live=live, budget=b if auth.can(g.user, "see_costs") else {}, pstat=status.current(LA),
+    return render_template("dashboard.html", rows=rows, scope=scope, hist=hist, live=live, budget=b if auth.can(g.user, "see_costs") else {}, pstat=status.current(LA),
                            states=sorted(STATE_CODES.values()))
 
 
@@ -757,7 +807,7 @@ def _report_html(a, A):
     """The full HBM report, built fresh so page 1 matches the Visibility Overview (with this builder's history)."""
     from aeo import render
     hist = _history(a, A)
-    return render.render(A, {"V": views.build(A, "all", hist), "chart": views.chart(A, hist)})
+    return render.render(A, {"V": views.build(A, "all", hist, clean=True), "chart": views.chart(A, hist)})  # prospect-facing: always clean
 
 
 def _pdf_response(aid, html, cache_name, download_name):
@@ -788,7 +838,7 @@ def export_overview(aid):
     platform = platform if platform in engines.ENGINES else "all"
     area = request.args.get("area") or None
     hist = _history(a, A, platform)
-    ov = {"V": views.build(A, platform, hist, None, area), "chart": views.chart(A, hist)}
+    ov = {"V": views.build(A, platform, hist, None, area, clean=True), "chart": views.chart(A, hist)}  # prospect-facing: always clean
     label = " · ".join(x for x in (area, engines.ENGINE_LABELS.get(platform) + " only" if platform != "all" else None) if x) or None
     html = render.overview_html(A, ov, label)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
@@ -815,7 +865,10 @@ def audit_view(aid, view):
     hist = _history(a, A, platform)
     vs = [v for v in request.args.getlist("vs") if v]
     area = request.args.get("area") or None
-    V = views.build(A, platform, hist, vs, area)
+    clean = not auth.can(g.user, "admin")  # change 24: only admins see platform errors and connection labels
+    if clean and platform != "all" and platform not in views.measured_engines(A):
+        platform = "all"
+    V = views.build(A, platform, hist, vs, area, clean=clean)
     V["chart"] = views.chart(A, hist)
     if view in VIEWS_STRATEGY:
         V["S"] = _strategy_ctx(a, A)
@@ -855,6 +908,9 @@ def api_status(aid):
     data["ahead"] = ahead
     data["activity"] = json.loads(a["activity"] or "[]")
     data["engines"] = json.loads(a["engines"] or "{}")
+    if not auth.can(g.user, "admin"):  # change 24: Sales see only platforms that are working, and no "skipped" lines
+        data["engines"] = {k: v for k, v in data["engines"].items() if v.get("state") not in ("off", "needs_credits")}
+        data["activity"] = [ev for ev in data["activity"] if not str(ev.get("text", "")).startswith("Skipped")]
     if a["status"] in ("queued", "running") and (a["lease_until"] or 0) < time.time():
         jobs.kick(PUBLIC_URL or request.host_url)  # serverless: nobody is working on it right now, start a tick
     return jsonify(data)
