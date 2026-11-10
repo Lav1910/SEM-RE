@@ -65,8 +65,8 @@
     </form>
     <div class="hist-summary">
       <div><span>Audits{{ ' found' if hist.q }}</span><b>{{ hist.n }}</b></div>
-      <div><span>Average run time</span><b>{{ hist.avg_secs|dur }}</b></div>
-      {% if can('see_costs') %}<div><span>Total cost</span><b>${{ '%.2f'|format(hist.cost or 0) }}</b></div>{% endif %}
+      <div><span>Average run time {{ tip("How long finished audits took, from starting to the report being ready. Time waiting in the queue doesn't count.") }}</span><b>{{ hist.avg_secs|dur }}</b></div>
+      {% if can('see_costs') %}<div><span>Total cost {{ tip("What these audits cost in AI platform fees. Perplexity and DataForSEO charges are exact; ChatGPT and Gemini use their typical price per answer.") }}</span><b>${{ '%.2f'|format(hist.cost or 0) }}</b></div>{% endif %}
     </div>
     {% if rows %}
     <div class="tw" style="margin-top:10px"><table>

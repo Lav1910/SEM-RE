@@ -3,7 +3,7 @@
 {% set passed = V.checks|selectattr(0, 'equalto', 'good')|list|length %}
 <div class="ov-mid">
   <section class="panel">
-    <div class="panel-h"><h2>AI readiness</h2></div>
+    <div class="panel-h"><h2>AI readiness {{ tip("How many of the website checks passed. These are the things that help AI tools read and trust the site: business details, markup, reviews, and access for AI crawlers.") }}</h2></div>
     {% if A.profile.site_blocked %}
     <p class="big-stat">— <small>not checked</small></p>
     <p class="small muted">{{ A.profile.domain }} turns away automated visitors, so its homepage and markup couldn't be read in this audit. The AI platform results don't depend on it.</p>
@@ -39,7 +39,7 @@
 </section>
 {% endif %}
 <section class="panel">
-  <div class="panel-h"><h2>Website checks</h2></div>
+  <div class="panel-h"><h2>Website checks {{ tip("Each check, what we found, and whether it passes, could be better, or needs fixing.") }}</h2></div>
   {% if A.profile.site_blocked %}<div class="empty">Not run: this website turns away automated visitors.</div>{% endif %}
   {% for st, title, detail in V.checks %}
   <div class="ck ck-{{ st }}"><span class="ck-i">{{ '✓' if st == 'good' else ('!' if st == 'warn' else '✕') }}</span>

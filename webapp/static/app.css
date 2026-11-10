@@ -865,3 +865,13 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .rerun-menu button { display:grid; gap:2px; text-align:left; background:none; border:0; padding:9px 11px; border-radius:9px; cursor:pointer; font:inherit; color:inherit; }
 .rerun-menu button:hover { background:#F2F8F8; }
 .rerun-menu b { font-weight:600; font-size:14px; } .rerun-menu span { font-size:12.5px; color:var(--muted); }
+
+/* ===== change 37: info tooltips ===== */
+.info { cursor:pointer; transition:border-color .15s, color .15s, background .15s; vertical-align:1px; }
+.info:hover, .info:focus-visible { border-color:var(--teal-b); color:var(--teal); background:#EAF6F6; outline:none; }
+.tip-bubble { position:absolute; z-index:1000; max-width:270px; padding:9px 12px; border-radius:10px; background:#0C3335; color:#fff;
+  font:400 12.8px/1.45 var(--font); box-shadow:0 10px 28px rgba(12,51,53,.28); pointer-events:none; opacity:0; transform:translateY(4px);
+  transition:opacity .12s, transform .12s; --ax:50%; }
+.tip-bubble.on { opacity:1; transform:none; }
+.tip-bubble::after { content:""; position:absolute; left:calc(var(--ax) - 6px); bottom:-6px; border:6px solid transparent; border-bottom:0; border-top-color:#0C3335; }
+.tip-bubble.below::after { bottom:auto; top:-6px; border:6px solid transparent; border-top:0; border-bottom-color:#0C3335; }
