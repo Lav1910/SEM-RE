@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS feedback (
 LATER_COLUMNS = {
     "audits": [("activity", "TEXT"), ("engines", "TEXT"), ("scope", "TEXT"), ("locations", "TEXT"), ("phase", "TEXT"),
                ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("batch_id", "TEXT"), ("summary", "TEXT"),
-               ("cost_usd", "REAL")],
+               ("cost_usd", "REAL"), ("client_token", "TEXT"), ("client_expires", "REAL"), ("client_views", "INTEGER NOT NULL DEFAULT 0"),
+               ("client_last_view", "REAL")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
               ("last_login", "REAL"), ("avatar_at", "REAL")],
     "strategy_content": [("lease_until", "REAL")],

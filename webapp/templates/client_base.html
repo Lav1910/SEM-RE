@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{# change 31: the client's interactive page. Visibility Overview and Competitor Research only, read-only, no sign-in. #}
+{% block title %}{{ views_nav[view] }}: {{ A.profile.name or a.domain }}{% endblock %}
+{% block body %}
+<header class="client-top">
+  <img class="client-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
+  <div class="client-who">
+    <span class="eyebrow-sm">AI visibility audit</span>
+    <b>{{ A.profile.name or a.domain }}</b>
+    <span class="small muted">{{ a.domain }} · {{ A.market.city }}, {{ A.market.state_code }} · {{ a.created_at|datefmt }}</span>
+  </div>
+</header>
+<nav class="client-tabs" aria-label="Report sections">
+  <a class="{{ 'on' if view == 'overview' }}" href="{{ vurl(a.id, 'overview', platform=platform if platform != 'all' else None, area=V.area or None) }}">Visibility Overview</a>
+  <a class="{{ 'on' if view == 'competitors' }}" href="{{ vurl(a.id, 'competitors', platform=platform if platform != 'all' else None, area=V.area or None) }}">Competitor Research</a>
+</nav>
+{% if V.areas and V.areas|length > 1 %}
+<div class="area-bar">
+<nav class="area-tabs" aria-label="Market areas">
+  <a class="{{ 'on' if not V.area }}" href="{{ vurl(a.id, view, platform=platform if platform != 'all' else None, vs=request.args.getlist('vs') or None) }}">All areas{% if V.score_all is not none and V.area_scores %} <span class="at-score {{ 'lo' if V.score_all < 35 else ('hi' if V.score_all >= 70 else '') }}">{{ V.score_all }}</span>{% endif %}</a>
+  {% for ar in V.areas %}{% set sc = V.area_scores.get(ar) if V.area_scores else none %}
+  <a class="{{ 'on' if V.area == ar }}" href="{{ vurl(a.id, view, area=ar, platform=platform if platform != 'all' else None, vs=request.args.getlist('vs') or None) }}">{{ ar }}{% if sc is not none %} <span class="at-score {{ 'lo' if sc < 35 else ('hi' if sc >= 70 else '') }}">{{ sc }}</span>{% endif %}</a>{% endfor %}
+</nav>
+</div>
+{% endif %}
+<div class="filters">
+  <div class="ctl ctl-market" title="Search location used for every AI question">
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.5" fill="currentColor"/></svg>
+    <span>{{ A.market.city }}, {{ A.market.state_code }}</span>
+  </div>
+  <form method="get" class="ctl-form">
+    {% for v in request.args.getlist('vs') %}<input type="hidden" name="vs" value="{{ v }}">{% endfor %}
+    {% if V.area %}<input type="hidden" name="area" value="{{ V.area }}">{% endif %}
+    <label class="ctl ctl-select"><span class="sr-only">AI platform</span>
+      <select name="platform" id="platform" onchange="this.form.submit()">
+        <option value="all" {{ 'selected' if platform == 'all' }}>All AI platforms</option>
+        {% for en in V.platforms %}<option value="{{ en }}" {{ 'selected' if platform == en }}>{{ engine_labels[en] }}</option>{% endfor %}
+      </select></label>
+  </form>
+</div>
+{% block view %}{% endblock %}
+<footer class="client-foot small muted">Prepared by Home Builder Marketers · AI answers collected {{ a.created_at|datefmt }}. Answers from AI platforms change over time.</footer>
+{% endblock %}

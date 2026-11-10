@@ -1,4 +1,4 @@
-{% extends "audit_base.html" %}
+{% extends base_tpl|default("audit_base.html") %}
 {% block view %}
 {% set top = V.competitors[0] if V.competitors else None %}
 <div class="ov-mid">
