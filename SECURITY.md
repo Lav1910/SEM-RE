@@ -63,5 +63,17 @@
 - Admin → **Security log** records sign-ins, failed and blocked attempts, account creation, approvals, role changes,
   deactivations and password changes, with the IP address.
 
+## AI agents (MCP)
+- `/mcp` lets AI agents (Claude, ChatGPT, Grok, Cursor) use the app as the person who connected them, with that person's
+  role and access. Code: `webapp/mcp.py`.
+- Sign-in is OAuth 2.1: authorization code with PKCE (S256 only), dynamic client registration and refresh tokens that
+  rotate on every use. Redirect addresses must be https, loopback (any port) or an app scheme, and must match the
+  registered ones exactly. The Allow page needs a normal signed-in session and a CSRF token.
+- Personal access tokens (Settings › AI connections) are shown once. Every token is stored only as a SHA-256 hash and
+  can be revoked at once. Access tokens expire after 24 hours; connections unused for 90 days must sign in again.
+- Agent-started audits count toward the spending cap and a per-person daily limit (Admin › AI connections, default 20).
+  Each person is limited to 90 agent actions a minute, every action is logged, and admins can turn the feature off.
+- File links given to agents are signed, tied to the person and expire after an hour.
+
 ## Reporting a problem
 Tell the HBM admin (lav@homebuildermarketers.com). Don't post details in public channels.

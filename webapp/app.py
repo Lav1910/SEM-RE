@@ -79,9 +79,15 @@ def latest_audit():
     return {"latest_audit_id": r["id"] if r else None}
 
 
+# change 50: machine endpoints for AI agents: bearer tokens, no cookies, no form CSRF (they never use a session)
+API_PATHS = ("/mcp", "/oauth/token", "/oauth/register", "/oauth/revoke", "/.well-known/")
+
+
 @app.before_request
 def load_user():
     g.user = None
+    if request.path.startswith(API_PATHS):
+        return
     uid = session.get("uid")
     if uid:
         g.user = db.q("SELECT * FROM users WHERE id=? AND active=1 AND pending=0", (uid,), one=True)
@@ -115,6 +121,8 @@ def headers(resp):
     else:
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Content-Security-Policy"] = CSP
+        if g.get("form_action_extra"):  # change 50: the Allow button on the AI sign-in page returns to the AI app
+            resp.headers["Content-Security-Policy"] = CSP.replace("form-action 'self'", "form-action 'self' " + g.form_action_extra)
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     if (g.get("user") or request.path.startswith("/c/")) and resp.mimetype == "text/html":
         resp.headers["Cache-Control"] = "no-store"
@@ -474,8 +482,12 @@ def account():
             flash("Password saved. Next time, sign in with your email and this password, or with an emailed code.", "good")
             return redirect(url_for("account", tab="security"))
     tab = "security" if request.method == "POST" or request.args.get("tab") == "security" or request.args.get("setup") else "profile"
+    if request.method == "GET" and request.args.get("tab") == "ai":
+        tab = "ai"
+    from . import mcp
     return render_template("account.html", has_pw=has_pw, via_code=via_code, setup=request.args.get("setup"), tab=tab,
-                           google=auth.google_enabled())
+                           google=auth.google_enabled(), ai=mcp.account_ctx(g.user) if tab == "ai" else None,
+                           new_token=g.get("new_token"))
 
 
 IMAGE_TYPES = {b"\x89PNG": "image/png", b"\xff\xd8\xff": "image/jpeg", b"RIFF": "image/webp"}
@@ -1176,19 +1188,24 @@ def client_link(aid):
         db.x("UPDATE audits SET client_full=? WHERE id=?", (1 if act == "full" else 0, aid))
         info = _client_info(get_audit(aid))
     else:
-        if act == "new" or not _client_info(a):
-            db.x("""UPDATE audits SET client_token=?, client_expires=?, client_views=0, client_last_view=NULL, client_by=?,
-                    client_created_at=COALESCE(client_created_at, ?), client_alerted_at=NULL WHERE id=?""",
-                 (secrets.token_urlsafe(24), time.time() + CLIENT_DAYS * 86400, g.user["id"], time.time(), aid))
-            security_event("client_link_created", g.user["email"], aid)
-        from . import todo
-        todo.mark_exported(g.user["id"], a, "client")  # sending the link counts like exporting a PDF
-        _write_all_content(a, g.user["id"])  # change 46: every deliverable ready for the client
-        info = _client_info(get_audit(aid))
+        info = _ensure_client_link(a, new=act == "new")
     if request.headers.get("Accept", "").startswith("application/json"):
         return jsonify({"link": _link_json(info)})
     flash(("Client link ready and copied below: " + info["url"]) if info else "Client link turned off.", "good")
     return redirect(url_for("audit_view", aid=aid, view="tracking" if request.form.get("next") == "tracking" else "overview"))
+
+
+def _ensure_client_link(a, new=False):
+    """Create (or reuse) the client link for a finished audit as g.user; also used by AI agents (change 50)."""
+    if new or not _client_info(a):
+        db.x("""UPDATE audits SET client_token=?, client_expires=?, client_views=0, client_last_view=NULL, client_by=?,
+                client_created_at=COALESCE(client_created_at, ?), client_alerted_at=NULL WHERE id=?""",
+             (secrets.token_urlsafe(24), time.time() + CLIENT_DAYS * 86400, g.user["id"], time.time(), a["id"]))
+        security_event("client_link_created", g.user["email"], a["id"])
+    from . import todo
+    todo.mark_exported(g.user["id"], a, "client")  # sending the link counts like exporting a PDF
+    _write_all_content(a, g.user["id"])  # change 46: every deliverable ready for the client
+    return _client_info(get_audit(a["id"]))
 
 
 def _write_all_content(a, user_id):
@@ -1669,7 +1686,7 @@ def admin():
     seclog = db.q("SELECT * FROM security_log ORDER BY t DESC LIMIT 40")
     return render_template("admin.html", feedback=fb, seclog=seclog, auth_info={"google": auth.google_enabled(),
                            "password": True, "mail": mailer.configured(), "domain": auth.ALLOWED_DOMAIN}, roles=auth.ROLES, users=users, platforms=platforms, budget=budget.status(), stats=stats,
-                           workers=jobs.WORKERS, keys_file=config.KEYS_FILE)
+                           workers=jobs.WORKERS, keys_file=config.KEYS_FILE, ai=mcp.admin_ctx())
 
 
 @app.errorhandler(400)
@@ -1708,4 +1725,4 @@ def create_app():
     return app
 
 
-from . import bulk, todo  # noqa: E402,F401  (Bulk Analysis and To-do routes)
+from . import bulk, todo, mcp  # noqa: E402,F401  (Bulk Analysis, To-do and AI agent (MCP) routes)

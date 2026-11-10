@@ -95,6 +95,25 @@ CREATE TABLE IF NOT EXISTS security_log (
   id {pk}, t {real} NOT NULL, user_id INTEGER, email TEXT, ip TEXT, event TEXT NOT NULL, detail TEXT
 );
 CREATE INDEX IF NOT EXISTS security_log_t ON security_log(event, t);
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id {pk}, user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, name TEXT NOT NULL, prefix TEXT,
+  token_hash TEXT UNIQUE NOT NULL, refresh_hash TEXT UNIQUE, client_id TEXT, scope TEXT, created_at {real} NOT NULL,
+  expires_at {real}, refresh_expires_at {real}, last_used_at {real}, revoked INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens(user_id, revoked);
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, secret_hash TEXT,
+  auth_method TEXT NOT NULL DEFAULT 'none', created_at {real} NOT NULL, ip TEXT
+);
+CREATE TABLE IF NOT EXISTS oauth_codes (
+  code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, user_id INTEGER NOT NULL, redirect_uri TEXT NOT NULL,
+  challenge TEXT NOT NULL, scope TEXT, expires {real} NOT NULL, used INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS agent_log (
+  id {pk}, t {real} NOT NULL, user_id INTEGER NOT NULL, token_id INTEGER, client TEXT, tool TEXT NOT NULL, detail TEXT,
+  audit_id TEXT, ok INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS agent_log_user ON agent_log(user_id, t);
 CREATE TABLE IF NOT EXISTS feedback (
   id {pk},
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -108,7 +127,8 @@ LATER_COLUMNS = {
                ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("batch_id", "TEXT"), ("summary", "TEXT"),
                ("cost_usd", "REAL"), ("client_token", "TEXT"), ("client_expires", "REAL"), ("client_views", "INTEGER NOT NULL DEFAULT 0"),
                ("client_last_view", "REAL"), ("depth", "TEXT"), ("client_by", "INTEGER"), ("client_created_at", "REAL"),
-               ("client_full", "INTEGER NOT NULL DEFAULT 0"), ("client_alerted_at", "REAL")],
+               ("client_full", "INTEGER NOT NULL DEFAULT 0"), ("client_alerted_at", "REAL"),
+               ("via", "TEXT")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
               ("last_login", "REAL"), ("avatar_at", "REAL")],
     "strategy_content": [("lease_until", "REAL")],
@@ -202,7 +222,7 @@ def x(sql, args=()):
 
 def _has_serial(sql):
     t = sql.split("INTO", 1)[1].strip().split()[0].lower() if "INTO" in sql.upper() else ""
-    return t in ("users", "login_codes", "security_log", "feedback", "todos")
+    return t in ("users", "login_codes", "security_log", "feedback", "todos", "api_tokens", "agent_log")
 
 
 def upsert(table, data, keys):

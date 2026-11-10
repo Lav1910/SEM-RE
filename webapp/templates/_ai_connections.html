@@ -1,0 +1,112 @@
+{# change 50: Settings > AI connections. Connect Claude, ChatGPT, Grok and other agents; tokens, connected apps, activity #}
+{% set ICO_PLUG %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endset %}
+{% if not ai.enabled %}
+<section class="acct-card">
+  <header><span class="acct-ico">{{ ICO_PLUG }}</span><div><h2>AI connections</h2><p>AI connections are turned off for your team. Ask an admin to turn them on.</p></div></header>
+</section>
+{% else %}
+{% if new_token %}
+<section class="acct-card ai-new">
+  <header><span class="acct-ico">✓</span><div><h2>Token “{{ new_token.name }}” created</h2><p>Copy it now. For your security it won't be shown again.</p></div></header>
+  <div class="acct-body">
+    <div class="ai-copy"><input id="new-token" type="text" value="{{ new_token.token }}" readonly aria-label="New access token" onfocus="this.select()">
+      <button class="btn btn-primary btn-small" type="button" data-copy="new-token">Copy</button></div>
+    <p class="small muted" style="margin:10px 0 0">Treat it like a password: anyone with it can use AEO Snapshot as you. Paste it only into your own AI tools.</p>
+  </div>
+</section>
+{% endif %}
+
+<section class="acct-card">
+  <header><span class="acct-ico">{{ ICO_PLUG }}</span>
+    <div><h2>Connect an AI agent</h2><p>Let Claude, ChatGPT, Grok and other AI agents use AEO Snapshot as you: look up audits, run new ones, make client links and check who opened them.</p></div></header>
+  <div class="acct-body">
+    <span class="acct-label">Connector address (MCP server URL)</span>
+    <div class="ai-copy" style="margin-top:6px"><input id="mcp-url" type="text" value="{{ ai.url }}" readonly aria-label="MCP server URL" onfocus="this.select()">
+      <button class="btn btn-primary btn-small" type="button" data-copy="mcp-url">Copy</button></div>
+
+    <div class="seg ai-tabs" role="tablist" aria-label="Setup steps">
+      {% for k, lab in (('claude', 'Claude'), ('chatgpt', 'ChatGPT'), ('grok', 'Grok'), ('code', 'Claude Code · Cursor')) %}
+      <button type="button" class="seg-item {{ 'on' if loop.first }}" role="tab" aria-selected="{{ 'true' if loop.first else 'false' }}" data-ai-tab="{{ k }}">{{ lab }}</button>{% endfor %}
+    </div>
+    <div class="ai-steps" data-ai-panel="claude">
+      <ol><li>In Claude (web or desktop), open <b>Settings › Connectors</b> and choose <b>Add custom connector</b>.</li>
+        <li>Name it <b>AEO Snapshot</b> and paste the address above. Click <b>Add</b>.</li>
+        <li>Click <b>Connect</b>, sign in here and click <b>Allow</b>. Then ask Claude things like “run a Quick audit on builder.com”.</li></ol>
+      <p class="small muted">On a Claude Team or Enterprise plan, an owner adds the connector once for the organization first.</p>
+    </div>
+    <div class="ai-steps" data-ai-panel="chatgpt" hidden>
+      <ol><li>In ChatGPT, open <b>Settings › Apps &amp; Connectors › Advanced settings</b> and turn on <b>Developer mode</b>.</li>
+        <li>Back in <b>Apps &amp; Connectors</b>, choose <b>Create</b>. Name it <b>AEO Snapshot</b>, paste the address above and pick <b>OAuth</b> for authentication.</li>
+        <li>Sign in here and click <b>Allow</b>. In a chat, turn on AEO Snapshot from the tools menu.</li></ol>
+      <p class="small muted">Developer mode is available on paid ChatGPT plans.</p>
+    </div>
+    <div class="ai-steps" data-ai-panel="grok" hidden>
+      <ol><li>Create an access token below.</li>
+        <li>In xAI's API (Grok), add a <b>remote MCP</b> tool with the address above as the server URL and the token as the authorization: <code>Bearer aeo_pat_…</code></li>
+        <li>Ask Grok to use the AEO Snapshot tools.</li></ol>
+      <p class="small muted">If your Grok app offers custom connectors, add the address above there and sign in when asked.</p>
+    </div>
+    <div class="ai-steps" data-ai-panel="code" hidden>
+      <p style="margin:0 0 6px"><b>Claude Code</b>: run this, then type <code>/mcp</code> in Claude Code to sign in:</p>
+      <div class="ai-copy"><input id="cc-cmd" type="text" value="claude mcp add --transport http aeo-snapshot {{ ai.url }}" readonly aria-label="Claude Code command" onfocus="this.select()">
+        <button class="btn btn-ghost btn-small" type="button" data-copy="cc-cmd">Copy</button></div>
+      <p style="margin:14px 0 6px"><b>Cursor and other tools</b>: add this to the tool's MCP settings (mcp.json), with an access token from below:</p>
+      <pre class="ai-code" id="cursor-json">{"mcpServers": {"aeo-snapshot": {"url": "{{ ai.url }}", "headers": {"Authorization": "Bearer YOUR_TOKEN"}}}}</pre>
+      <button class="btn btn-ghost btn-small" type="button" data-copy="cursor-json">Copy</button>
+    </div>
+  </div>
+</section>
+
+<section class="acct-card">
+  <header><span class="acct-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 12h9M18 12v3M21 12v2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+    <div><h2>Access tokens</h2><p>For agents that need a key instead of signing in, like Grok's API, Claude Code and Cursor.</p></div></header>
+  <div class="acct-body">
+    {% if ai.tokens %}
+    <ul class="ai-rows">
+      {% for t in ai.tokens %}
+      <li><div><b>{{ t.name }}</b><span class="small muted"><code>{{ t.prefix }}</code> · created {{ t.created_at|ago }} · {{ ('last used ' ~ (t.last_used_at|ago)) if t.last_used_at else 'never used' }}</span></div>
+        <form method="post" action="{{ url_for('ai_token_revoke', tid=t.id) }}" data-confirm="Revoke “{{ t.name }}”? Agents using it stop working straight away."><input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <button class="link-btn small danger" type="submit">Revoke</button></form></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted" style="margin:0">No access tokens yet.</p>{% endif %}
+  </div>
+  <form class="ai-create" method="post" action="{{ url_for('ai_token_create') }}">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label class="sr-only" for="tok-name">Token name</label>
+    <input id="tok-name" type="text" name="name" maxlength="60" placeholder="Name it, e.g. My Claude Code" required>
+    <button class="btn btn-primary" type="submit">Create token</button>
+  </form>
+</section>
+
+<section class="acct-card">
+  <header><span class="acct-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 21h8M12 17v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+    <div><h2>Connected apps</h2><p>AI apps you allowed by signing in, like Claude and ChatGPT.</p></div></header>
+  <div class="acct-body">
+    {% if ai.apps %}
+    <ul class="ai-rows">
+      {% for t in ai.apps %}
+      <li><div><b>{{ t.name }}</b><span class="small muted">connected {{ t.created_at|ago }} · {{ ('last used ' ~ (t.last_used_at|ago)) if t.last_used_at else 'not used yet' }}</span></div>
+        <form method="post" action="{{ url_for('ai_token_revoke', tid=t.id) }}" data-confirm="Disconnect {{ t.name }}? It stops working straight away."><input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <button class="link-btn small danger" type="submit">Disconnect</button></form></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted" style="margin:0">No apps connected yet. Follow the steps above to connect one.</p>{% endif %}
+  </div>
+</section>
+
+<section class="acct-card">
+  <header><span class="acct-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l2-6 4 12 2-6h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <div><h2>Recent agent activity</h2><p>{% if ai.limit %}<b>{{ ai.used }} of {{ ai.limit }}</b> agent audits used today (the count resets 24 hours after each audit).{% else %}<b>{{ ai.used }}</b> agent audits today.{% endif %}</p></div></header>
+  <div class="acct-body">
+    {% if ai.limit %}<div class="inv-sbar ai-bar {{ 'warn' if ai.used >= ai.limit }}"><i style="width:{{ [100 * ai.used // ai.limit, 100]|min }}%"></i></div>{% endif %}
+    {% if ai.activity %}
+    <ul class="ai-log">
+      {% for e in ai.activity %}
+      <li class="{{ '' if e.ok else 'bad' }}"><span class="ai-who">{{ e.client }}</span><span class="ai-what">{{ e.detail }}{% if e.n > 1 %} <span class="muted">×{{ e.n }}</span>{% endif %}</span><span class="ai-when">{{ e.t|ago }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted" style="margin:0">Nothing yet. What your agents do shows up here.</p>{% endif %}
+  </div>
+</section>
+{% endif %}

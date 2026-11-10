@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Connect an AI agent · AEO Snapshot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+{# change 50: the Allow page an AI app (Claude, ChatGPT, ...) opens when someone adds the AEO Snapshot connector #}
+<div class="login-shell">
+  {% if problem %}
+  <div class="login-card stack">
+    <img class="login-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
+    <div><h1>Can't connect</h1><p class="sub" style="margin:0">{{ problem }}</p></div>
+  </div>
+  {% else %}
+  <form class="login-card stack oauth-card" method="post" action="{{ url_for('oauth_authorize') }}">
+    <img class="login-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
+    <div>
+      <div class="oauth-eyebrow">Connect an AI agent</div>
+      <h1 style="margin:2px 0 6px">Allow <span class="oauth-app">{{ client.name }}</span> to use AEO Snapshot?</h1>
+      <p class="sub" style="margin:0">It will act as <b>{{ g.user.name }}</b> ({{ g.user.email }}), with the same access you have.</p>
+    </div>
+    <ul class="oauth-list">
+      <li><b>See audits</b><span>{{ "Yours and your team's" if can('team_audits') else 'Yours' }}: scores, competitors, strategy, fixes and content</span></li>
+      <li><b>Run audits</b><span>Quick, Standard or Full. They count toward the team's spending cap{% if daily %} and your limit of {{ daily }} agent audits a day{% endif %}.</span></li>
+      <li><b>Share with prospects</b><span>Create client links and see who opened them</span></li>
+      <li><b>Add to your to-do list</b></li>
+    </ul>
+    <p class="small muted" style="margin:0">It can't see your password or change your account, and it can't use the Admin page.
+      You can disconnect it any time in Settings › AI connections.</p>
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    {% for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <div class="oauth-actions">
+      <button class="btn btn-ghost" type="submit" name="decision" value="deny">Cancel</button>
+      <button class="btn btn-primary" type="submit" name="decision" value="allow" autofocus>Allow</button>
+    </div>
+    <p class="small muted" style="margin:0">You'll go back to {{ app_host }}.</p>
+  </form>
+  {% endif %}
+</div>
+</body>
+</html>

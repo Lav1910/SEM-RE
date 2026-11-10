@@ -6,7 +6,7 @@
   <div>
     <div class="acct-eyebrow">Your account</div>
     <h1>Settings</h1>
-    <p>Your profile, how you sign in, and your security.</p>
+    <p>Your profile, how you sign in, your security and your AI connections.</p>
   </div>
   <div class="acct-chip">
     {% if u.avatar_at %}<img class="acct-av" src="{{ url_for('avatar', uid=u.id, v=u.avatar_at|int) }}" alt="">{% else %}<span class="acct-av acct-av-letter">{{ u.name[:1]|upper }}</span>{% endif %}
@@ -22,6 +22,8 @@
     <div class="acct-group">Access</div>
     <a class="acct-link {{ 'on' if tab == 'security' }}" href="{{ url_for('account', tab='security') }}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>Security</a>
+    <a class="acct-link {{ 'on' if tab == 'ai' }}" href="{{ url_for('account', tab='ai') }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>AI connections</a>
     <form class="acct-signout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
       <button type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Sign out</button></form>
   </nav>
@@ -58,7 +60,7 @@
       </div>
       <footer><button class="btn btn-primary" type="submit" form="profile-form" data-save disabled>Save changes</button></footer>
     </section>
-  {% else %}
+  {% elif tab == 'security' %}
     <section class="acct-card">
       <header><span class="acct-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.7"/></svg></span>
         <div><h2>{{ 'Set a password' if not has_pw else 'Password' }}</h2><p>{% if setup or not has_pw %}You're signed in with an emailed code. Set a password for next time, or skip it: you can always sign in with a code.{% elif via_code %}You signed in with an emailed code, so you can set a new password without the old one.{% else %}Change the password you sign in with.{% endif %}</p></div></header>
@@ -83,6 +85,7 @@
         <p class="small muted" style="margin:12px 0 0">Last sign-in: <b>{{ u.last_login|datefmt if u.last_login else '—' }}</b></p>
       </div>
     </section>
+  {% elif tab == 'ai' %}{% include "_ai_connections.html" %}
   {% endif %}
   </div>
 </div>
@@ -93,6 +96,19 @@
   document.querySelectorAll('[data-autosubmit]').forEach(function (i) { i.addEventListener('change', function () { if (i.files[0]) i.form.submit(); }); });
   var f = document.getElementById('profile-form'), save = document.querySelector('[data-save]');
   if (f && save) { var n = f.querySelector('#name'), start = n.value; n.addEventListener('input', function () { save.disabled = n.value.trim() === start || n.value.trim().length < 2; }); }
+  // change 50: copy buttons and the per-app setup tabs on AI connections
+  document.querySelectorAll('[data-copy]').forEach(function (b) { b.addEventListener('click', function () {
+    var src = document.getElementById(b.dataset.copy), txt = src ? (src.value || src.textContent) : '';
+    var done = function () { var t = b.textContent; b.textContent = 'Copied'; setTimeout(function () { b.textContent = t; }, 1600); };
+    if (navigator.clipboard) navigator.clipboard.writeText(txt.trim()).then(done, function () { src.select && src.select(); });
+    else { src.select && src.select(); document.execCommand('copy'); done(); }
+  }); });
+  document.querySelectorAll('form[data-confirm]').forEach(function (f) { f.addEventListener('submit', function (e) { if (!confirm(f.dataset.confirm)) e.preventDefault(); }); });
+  var tabs = document.querySelectorAll('[data-ai-tab]');
+  tabs.forEach(function (t) { t.addEventListener('click', function () {
+    tabs.forEach(function (x) { x.classList.toggle('on', x === t); x.setAttribute('aria-selected', x === t); });
+    document.querySelectorAll('[data-ai-panel]').forEach(function (p) { p.hidden = p.dataset.aiPanel !== t.dataset.aiTab; });
+  }); });
 })();
 </script>
 {% endblock %}
