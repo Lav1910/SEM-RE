@@ -2,7 +2,6 @@
   "name": "hbm-ai-visibility-pdf",
   "private": true,
   "description": "Node part of the Vercel deployment: api/pdf.js prints reports to PDF.",
-  "engines": { "node": "20.x" },
   "dependencies": {
     "@sparticuz/chromium": "131.0.1",
     "puppeteer-core": "23.10.4"
