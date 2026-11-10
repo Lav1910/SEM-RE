@@ -182,3 +182,6 @@
   box.querySelector('.loc-add-city').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); box.querySelector('.loc-add-btn').click(); } });
   form.addEventListener('submit', function () { boxes().forEach(function (b) { b.disabled = false; }); });
 })();
+
+/* close the export menu when clicking elsewhere */
+document.addEventListener('click', function (e) { document.querySelectorAll('details.exp[open]').forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute('open'); }); });

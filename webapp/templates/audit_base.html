@@ -17,6 +17,7 @@
   {% endfor %}
   <div class="side-group">Reports</div>
   <a class="side-link" href="{{ url_for('export_pdf', aid=a.id) }}">Export PDF report</a>
+  <a class="side-link" href="{{ url_for('export_overview', aid=a.id, platform=platform if platform != 'all' else None, area=V.area if V and V.area else None) }}">Export overview (1 page)</a>
   <a class="side-link" href="{{ url_for('audit_report', aid=a.id) }}" target="_blank" rel="noopener">Open full report</a>
 </nav>
 {% endblock %}
@@ -40,8 +41,13 @@
     <button class="link-btn" type="button" data-feedback>
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Send feedback</button>
     <form method="post" action="{{ url_for('rerun', aid=a.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn" type="submit">Run again</button></form>
-    <a class="btn btn-ghost btn-small" href="{{ url_for('export_pdf', aid=a.id) }}">
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Export to PDF</a>
+    <details class="exp">
+      <summary class="btn btn-ghost btn-small"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Export to PDF<span class="exp-caret" aria-hidden="true"></span></summary>
+      <div class="exp-menu">
+        <a href="{{ url_for('export_pdf', aid=a.id) }}"><b>Full report</b><span>Every section, HBM-branded · 8 pages</span></a>
+        <a href="{{ url_for('export_overview', aid=a.id, platform=platform if platform != 'all' else None, area=V.area if V and V.area else None) }}"><b>Overview only</b><span>1 page{% if V and (V.area or platform != 'all') %} · this filtered view{% else %} · gauge, graph, platforms, what's next{% endif %}</span></a>
+      </div>
+    </details>
   </div>
 </div>
 <div class="crumbs"><a href="{{ url_for('dashboard') }}">Audits</a> <span>›</span> AI Visibility <span>›</span> {{ views_nav[view] }}</div>

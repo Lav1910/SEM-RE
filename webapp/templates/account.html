@@ -1,17 +1,98 @@
 {% extends "base.html" %}
-{% block title %}Account{% endblock %}
+{% block title %}Settings{% endblock %}
 {% block body %}
-<section class="card" style="max-width:32rem">
-  <h1>{{ 'Set a password' if setup or not has_pw else 'Your account' }}</h1>
-  <p class="sub">{{ g.user.name }} · {{ g.user.email }} · {{ role_label(g.user) }}</p>
-  {% if setup or not has_pw %}<p class="small muted">You're signed in with an emailed code. Set a password for next time, or <a href="{{ url_for('dashboard') }}">skip</a>: you can always sign in with a code instead.</p>
-  {% elif via_code %}<p class="small muted">You signed in with an emailed code, so you can set a new password without the old one.</p>{% endif %}
-  <form method="post" class="stack">
-    <input type="hidden" name="csrf" value="{{ session.csrf }}">
-    {% if has_pw and not via_code %}<label><span class="label">Current password</span><input id="current" type="password" name="current" autocomplete="current-password" required></label>{% endif %}
-    <label><span class="label">{{ 'New password' if has_pw else 'Password' }} (12+ characters)</span><input id="new" type="password" name="new" minlength="12" autocomplete="new-password" required></label>
-    <label><span class="label">Repeat it</span><input id="confirm" type="password" name="confirm" minlength="12" autocomplete="new-password" required></label>
-    <button class="btn btn-primary" type="submit" style="justify-self:start">{{ 'Change password' if has_pw else 'Save password' }}</button>
-  </form>
+{% set u = g.user %}
+<section class="acct-band">
+  <div>
+    <div class="acct-eyebrow">Your account</div>
+    <h1>Settings</h1>
+    <p>Your profile, how you sign in, and your security.</p>
+  </div>
+  <div class="acct-chip">
+    {% if u.avatar_at %}<img class="acct-av" src="{{ url_for('avatar', uid=u.id, v=u.avatar_at|int) }}" alt="">{% else %}<span class="acct-av acct-av-letter">{{ u.name[:1]|upper }}</span>{% endif %}
+    <div><b>{{ u.name }}</b><span>{{ role_label(u) }} · <i class="dot-live"></i> Active</span></div>
+  </div>
 </section>
+
+<div class="acct-grid">
+  <nav class="acct-menu" aria-label="Settings">
+    <div class="acct-group">Account</div>
+    <a class="acct-link {{ 'on' if tab == 'profile' }}" href="{{ url_for('account') }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Profile</a>
+    <div class="acct-group">Access</div>
+    <a class="acct-link {{ 'on' if tab == 'security' }}" href="{{ url_for('account', tab='security') }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>Security</a>
+    <form class="acct-signout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <button type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Sign out</button></form>
+  </nav>
+
+  <div class="acct-main">
+  {% if tab == 'profile' %}
+    <section class="acct-card">
+      <header><span class="acct-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+        <div><h2>Profile</h2><p>Your name and photo, as your teammates see them.</p></div></header>
+      <div class="acct-body">
+        <div class="acct-who">
+          <form class="acct-photo" method="post" action="{{ url_for('account_profile') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf" value="{{ session.csrf }}">
+            {% if u.avatar_at %}<img src="{{ url_for('avatar', uid=u.id, v=u.avatar_at|int) }}" alt="Your photo">{% else %}<span class="acct-photo-letter">{{ u.name[:1]|upper }}</span>{% endif %}
+            <label class="acct-cam" title="Change photo"><span class="sr-only">Change photo</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+              <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" data-autosubmit></label>
+          </form>
+          <div>
+            <b class="acct-name">{{ u.name }}</b>
+            <span class="acct-mail">{{ u.email }}</span>
+            <div class="acct-badges"><span class="acct-badge good">Active</span><span class="acct-badge">{{ role_label(u) }}</span></div>
+            <p class="small muted" style="margin:6px 0 0">Tap the camera to change your photo (JPG, PNG or WebP, max 2 MB).
+              {% if u.avatar_at %}<form method="post" action="{{ url_for('account_profile') }}" style="display:inline;margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn" name="remove_photo" value="1" style="padding:0 4px">Remove photo</button></form>{% endif %}</p>
+          </div>
+        </div>
+        <form class="acct-fields" method="post" action="{{ url_for('account_profile') }}" id="profile-form">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <label><span class="acct-label">Full name</span><input id="name" type="text" name="name" value="{{ u.name }}" minlength="2" maxlength="100" required>
+            <small class="muted">Between 2 and 100 characters.</small></label>
+          <label><span class="acct-label">Email</span><input id="email-ro" type="email" value="{{ u.email }}" disabled>
+            <small class="muted">Ask an admin to change it.</small></label>
+        </form>
+      </div>
+      <footer><button class="btn btn-primary" type="submit" form="profile-form" data-save disabled>Save changes</button></footer>
+    </section>
+  {% else %}
+    <section class="acct-card">
+      <header><span class="acct-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.7"/></svg></span>
+        <div><h2>{{ 'Set a password' if not has_pw else 'Password' }}</h2><p>{% if setup or not has_pw %}You're signed in with an emailed code. Set a password for next time, or skip it: you can always sign in with a code.{% elif via_code %}You signed in with an emailed code, so you can set a new password without the old one.{% else %}Change the password you sign in with.{% endif %}</p></div></header>
+      <form class="acct-body acct-fields one" method="post" action="{{ url_for('account') }}" id="pw-form">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        {% if has_pw and not via_code %}<label><span class="acct-label">Current password</span><input id="current" type="password" name="current" autocomplete="current-password" required></label>{% endif %}
+        <label><span class="acct-label">{{ 'New password' if has_pw else 'Password' }} (12+ characters)</span><input id="new" type="password" name="new" minlength="12" autocomplete="new-password" required></label>
+        <label><span class="acct-label">Repeat it</span><input id="confirm" type="password" name="confirm" minlength="12" autocomplete="new-password" required></label>
+      </form>
+      <footer>{% if setup %}<a class="btn btn-ghost" href="{{ url_for('dashboard') }}">Skip for now</a>{% endif %}<button class="btn btn-primary" type="submit" form="pw-form">{{ 'Change password' if has_pw else 'Save password' }}</button></footer>
+    </section>
+
+    <section class="acct-card">
+      <header><span class="acct-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></span>
+        <div><h2>How you can sign in</h2><p>Only @{{ u.email.split('@')[1] }} accounts can use this app.</p></div></header>
+      <div class="acct-body">
+        <ul class="acct-methods">
+          <li><b>Email and password</b><span>{{ 'Set up' if has_pw else 'Not set yet' }}</span></li>
+          <li><b>One-time code by email</b><span>Always available, and also how you reset a forgotten password</span></li>
+          {% if google %}<li><b>Google</b><span>Your HBM Google Workspace account</span></li>{% endif %}
+        </ul>
+        <p class="small muted" style="margin:12px 0 0">Last sign-in: <b>{{ u.last_login|datefmt if u.last_login else '—' }}</b></p>
+      </div>
+    </section>
+  {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('[data-autosubmit]').forEach(function (i) { i.addEventListener('change', function () { if (i.files[0]) i.form.submit(); }); });
+  var f = document.getElementById('profile-form'), save = document.querySelector('[data-save]');
+  if (f && save) { var n = f.querySelector('#name'), start = n.value; n.addEventListener('input', function () { save.disabled = n.value.trim() === start || n.value.trim().length < 2; }); }
+})();
+</script>
 {% endblock %}

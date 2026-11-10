@@ -38,7 +38,7 @@
       <tbody>
       {% for u in users %}
         <tr class="{{ 'row-pending' if u.pending }}">
-          <td><b>{{ u.name }}</b>{% if u.pending %} <span class="pill p-warn">Waiting for approval</span>{% elif not u.active %} <span class="pill p-mute">Deactivated</span>{% endif %}</td>
+          <td><span class="team-who">{% if u.avatar_at %}<img class="team-av" src="{{ url_for('avatar', uid=u.id, v=u.avatar_at|int) }}" alt="">{% else %}<span class="team-av">{{ u.name[:1]|upper }}</span>{% endif %}<b>{{ u.name }}</b></span>{% if u.pending %} <span class="pill p-warn">Waiting for approval</span>{% elif not u.active %} <span class="pill p-mute">Deactivated</span>{% endif %}</td>
           <td>{{ u.email }}</td>
           <td>{% if u.id != g.user.id and not u.pending %}
             <form method="post" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="uid" value="{{ u.id }}"><input type="hidden" name="action" value="set_role">

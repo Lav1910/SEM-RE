@@ -26,7 +26,44 @@ def pill(kind):
     return f'<span class="tag tag-{kind}">{lab}</span>'
 
 
-def render(A):
+def _overview(A, ov):
+    if ov is None:  # stored report (no audit history at hand): build the same view model the overview screen uses
+        from webapp import views
+        ov = {"V": views.build(A), "chart": views.chart(A, [])}
+    return ov
+
+
+def overview_html(A, ov=None, filter_label=None):
+    """One-page PDF: just the Visibility Overview."""
+    from . import overview_page
+    ov = _overview(A, ov)
+    name, date = A["profile"]["name"], A["date"]
+    logo = _logo()
+    strip = (f'<div class="ov-strip">{f"<img class={chr(34)}logo{chr(34)} src={chr(34)}{logo}{chr(34)} alt={chr(34)}Home Builder Marketers{chr(34)}>" if logo else "<b>Home Builder Marketers</b>"}'
+             f'<span class="band-tag">AI Visibility Overview</span></div>')
+    page = (f'<section class="page ov-page">{strip}{overview_page.section(A, ov, filter_label)}'
+            f'<footer><span class="f-brand">Home Builder Marketers</span><span class="f-mid">HomeBuilderMarketers.com · {e(name)} · {e(date)}</span>'
+            f'<span class="f-pg">AI Visibility Overview</span></footer></section>')
+    return _doc(f"{name} AI Visibility Overview", page, overview_page.CSS)
+
+
+def _doc(title, pages, extra_css=""):
+    css = open(os.path.join(ROOT, "tools", "report.css")).read()
+    return f'''<!doctype html><meta charset="utf-8">
+<title>{e(title)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
+<style>{css}{extra_css}</style>
+<main class="screen">{pages}</main>'''
+
+
+def wtm(text):
+    """'What this means' callout: the plain-English takeaway at the top of a page."""
+    return f'<div class="wtm"><span class="wtm-k">What this means</span><p>{text}</p></div>'
+
+
+def render(A, ov=None):
     P, K, M, X = A["profile"], A["analysis"]["kpis"], A["market"], A["analysis"]
     S = A.get("semrush") or {}
     D = S.get("domain") or {}
@@ -48,7 +85,7 @@ def render(A):
                 f'<div class="tags">{"".join(pill(k) for k in kinds)}</div></div>'
                 f'<div class="ph-meta">{e(name)}<span>{e(date)}</span></div></div>')
 
-    TOTAL = 7
+    TOTAL = 8
     # ---------------- cover ----------------
     score = K["score"]
     hero = [
@@ -72,29 +109,43 @@ def render(A):
     elif K["answers"]:
         summ.append(f'Across <b>{K["answers"]} AI answers</b>, {e(name)} was named in <b>{K["mentioned"]}</b>, by {K["engines_named"]} of {K["engines_measured"]} platforms. '
                     + (f'<b>{e(leader["name"])}</b> came up most often among other builders, and {e(name)} ranks <b>#{me_rank}</b> of the {len(lb)} builders compared.' if leader else ""))
-    gaps = [r["title"].lower() for r in X["recommendations"][:3]]
+    gaps = [e(r["title"]) for r in X["recommendations"][:3]]
     if gaps:
-        summ.append("The biggest opportunities: " + "; ".join(gaps) + ".")
+        summ.append("The biggest opportunities: <b>" + "</b>; <b>".join(gaps) + "</b>.")
     if not_measured:
         summ.append(f'Not measured in this audit: {", ".join(not_measured)} (shown as “—”).')
+    # plain-English takeaways for each page
+    missed = K["answers"] - K["mentioned"]
+    w1 = ("Each row is a question local buyers ask an AI tool. <b>Green</b> means the AI named " + e(name) + "; <b>red</b> means it recommended other builders. "
+          + (f"{e(name)} was left out of <b>{missed} of {K['answers']}</b> answers." if K["answers"] else "No AI answers were measured in this audit."))
+    w2 = ((f"When buyers ask AI for a builder near {e(M['city'])}, <b>{e(leader['name'])}</b> is the name that comes up most. "
+           f"{e(name)} is <b>#{me_rank} of {len(lb)}</b> builders compared.") if leader else "No competing builders were named in these answers.")
+    top_src = X["source_domains"][0]["label"] if X.get("source_domains") else None
+    w3 = ("AI tools build their answers from sites they trust. " + (f"<b>{e(top_src)}</b> was cited most. " if top_src else "")
+          + "Being listed, reviewed and mentioned on these sites raises the chance of being recommended.")
+    w4 = (f"<b>{K['checks_passed']} of {K['checks_total']}</b> checks passed. Each fix makes it easier for AI tools to understand who "
+          f"{e(name)} is, where they build and why buyers trust them.")
+    from . import overview_page
+    ov = _overview(A, ov)
     pages.append(f'''
-<section class="page p1">
- <div class="band">
-  <div class="band-top">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else '<b>Home Builder Marketers</b>'}<span class="band-tag">AI Visibility Audit</span></div>
-  <div class="band-title">
-   <div class="eyebrow">AI answers · Competitors · Sources · Website readiness</div>
-   <h1>{e(name)}</h1>
-   <div class="period">{e(M["city"])}, {e(M["state"])} · Audit date {e(date)}</div>
-   <div class="cmpctx">{e(" · ".join(ENGINE_LABELS[en] for en in measured) or "No AI platforms connected")} · Website checks · Semrush</div>
-  </div>
- </div>
- <div class="p1-body">
-  <div class="hero">{"".join(f'<div class="hk"><div class="hk-l">{l}</div><div class="hk-v">{v}</div><div class="hk-s">{s}</div></div>' for l, v, s in hero)}</div>
-  <div class="support five">{support_html}</div>
-  <div class="summary"><div class="sum-label">Executive summary</div>{"".join(f"<p>{x}</p>" for x in summ)}</div>
-  <div class="legend"><span>How to read this report</span>{pill("ai")} measured from real AI answers {pill("search")} measured from Google results {pill("site")} checked on the website {pill("rec")} our advice</div>
- </div>
+<section class="page ov-page">
+ <div class="ov-strip">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else '<b>Home Builder Marketers</b>'}<span class="band-tag">AI Visibility Audit</span></div>
+ {overview_page.section(A, ov)}
  {footer(1, TOTAL)}
+</section>''')
+    lead = (f"{e(name)} was named in <b>{K['mentioned']} of {K['answers']}</b> AI answers to local home-buyer questions"
+            + (f" (an AI visibility score of <b>{score}/100</b>)." if score is not None else ".")
+            + (f" <b>{e(leader['name'])}</b> is the builder AI recommends most often." if leader else "")) if K["answers"] else \
+        "No AI platform answers were measured in this audit, so the score isn't available yet; the website checks and Google data still apply."
+    pages.append(f'''
+<section class="page">
+ {ph("", "Summary", "The headline numbers, in plain English", ["ai", "search", "site"])}
+ {wtm(lead)}
+ <div class="hero">{"".join(f'<div class="hk"><div class="hk-l">{l}</div><div class="hk-v">{v}</div><div class="hk-s">{s}</div></div>' for l, v, s in hero)}</div>
+ <div class="support five">{support_html}</div>
+ <div class="summary"><div class="sum-label">Executive summary</div>{"".join(f"<p>{x}</p>" for x in summ)}</div>
+ <div class="legend"><span>How to read this report</span>{pill("ai")} measured from real AI answers {pill("search")} measured from Google results {pill("site")} checked on the website {pill("rec")} our advice</div>
+ {footer(2, TOTAL)}
 </section>''')
 
     # ---------------- 01 matrix ----------------
@@ -120,6 +171,7 @@ def render(A):
     pages.append(f'''
 <section class="page">
  {ph("01", "What AI tells local home buyers", "Each local question asked on every AI platform, and whether the builder was named", ["ai"])}
+ {wtm(w1)}
  <div class="sec-l">Visibility score by platform <span>0–100, weighted by search demand</span></div>
  <div class="plats">{eng_cards}</div>
  <div class="tbl-wrap" style="margin-top:18px"><table class="tbl matrix">
@@ -127,7 +179,7 @@ def render(A):
   <thead><tr><th>Question</th><th class="r">Monthly searches</th>{"".join(f"<th>{ENGINE_LABELS[en]}</th>" for en in ENGINES)}</tr></thead>
   <tbody>{"".join(rows)}</tbody></table></div>
  <p class="note">“Named #2” means the builder was the second business named in that answer. Monthly searches are Semrush US estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
- {footer(2, TOTAL)}
+ {footer(3, TOTAL)}
 </section>''')
 
     # ---------------- 02 competitors ----------------
@@ -149,9 +201,10 @@ def render(A):
     pages.append(f'''
 <section class="page">
  {ph("02", "Who AI recommends instead", "Builders named in the same AI answers, and who holds the Maps 3-pack", ["ai", "search"])}
+ {wtm(w2)}
  {lb_html}
  <p class="note">Builder names are taken from the answer text and matched against Google Maps listings. Visibility points: 2 per AI answer naming the builder, 1 per Maps 3-pack spot.</p>
- {footer(3, TOTAL)}
+ {footer(4, TOTAL)}
 </section>''')
 
     # ---------------- 03 sources ----------------
@@ -175,9 +228,10 @@ def render(A):
     pages.append(f'''
 <section class="page">
  {ph("03", "Where AI answers get their information", "The websites the AI platforms cited across all answers", ["ai"])}
+ {wtm(w3)}
  {sources_html}
  {kw_block}
- {footer(4, TOTAL)}
+ {footer(5, TOTAL)}
 </section>''')
 
     # ---------------- 04 website checks ----------------
@@ -193,10 +247,11 @@ def render(A):
     pages.append(f'''
 <section class="page">
  {ph("04", "Website readiness", "What the website gives AI tools to work with", ["site", "search"])}
+ {wtm(w4)}
  <div class="sec-l">Website checks <span>{K["checks_passed"]} of {K["checks_total"]} passed · {e(P["domain"])} homepage, robots.txt, llms.txt and sitemap, {e(date)}</span></div>
  <div class="checks">{chk}</div>
  {google_block}
- {footer(5, TOTAL)}
+ {footer(6, TOTAL)}
 </section>''')
 
     # ---------------- 05 priorities ----------------
@@ -206,7 +261,7 @@ def render(A):
 <section class="page">
  {ph("05", "What we'd focus on first", "Specific opportunities, in the order we would tackle them", ["rec"])}
  {pri or '<p class="lede">No major gaps found.</p>'}
- {footer(6, TOTAL)}
+ {footer(7, TOTAL)}
 </section>''')
 
     # ---------------- 06 notes ----------------
@@ -220,19 +275,17 @@ def render(A):
   <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from Semrush's latest US data.</p></div>
   <div><h4>Website checks</h4><p>The homepage, robots.txt, llms.txt and sitemap were read on {e(date)}. Nothing on the site was changed.</p></div>
  </div>
- <div class="close">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else ''}<div class="close-r"><div class="close-k">Prepared by</div><div class="close-n">Home Builder Marketers</div><div class="close-u">HomeBuilderMarketers.com</div><div class="close-d">Report date: {e(date)}<br>Sources: {e(" · ".join(ENGINE_LABELS[en] for en in measured))} · Google search results · Semrush · Website checks</div></div></div>
+ <div class="close">
+  <div class="close-l">{f'<img class="logo" src="{LOGO}" alt="Home Builder Marketers">' if LOGO else ''}</div>
+  <div class="close-r"><div class="close-k">Prepared by</div><div class="close-n">Home Builder Marketers</div><div class="close-u">HomeBuilderMarketers.com</div><div class="close-d">Report date {e(date)}</div></div>
+ </div>
+ <p class="close-src">Sources · {e(" · ".join(ENGINE_LABELS[en] for en in measured) or "Website checks")} · Google search results · Semrush · Website checks</p>
+ <div class="next-hbm"><b>Next step with HBM</b> A 20-minute walkthrough of these findings and the first three fixes, with a plan to get {e(name)} named in more AI answers.</div>
  <p class="note">Figures come directly from each source and are frozen as of the report date. “—” means a figure was not available for this audit; it is never shown as zero.</p>
- {footer(7, TOTAL)}
+ {footer(8, TOTAL)}
 </section>''')
 
-    css = open(os.path.join(ROOT, "tools", "report.css")).read()
-    return f'''<meta charset="utf-8">
-<title>{e(name)} AI Visibility Audit</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
-<style>{css}</style>
-<main class="screen">{"".join(pages)}</main>'''
+    return _doc(f"{name} AI Visibility Audit", "".join(pages), overview_page.CSS)
 
 
 def talking_points(A):
@@ -243,10 +296,10 @@ def talking_points(A):
     lines = [f"Loom talking points: {P['name']} ({A['date']})", ""]
     pts = []
     if K["answers"]:
-        pts.append(f"Open on the cover: {P['name']} was named in {K['mentioned']} of {K['answers']} AI answers"
+        pts.append(f"Open on page 1 (the overview): {P['name']} was named in {K['mentioned']} of {K['answers']} AI answers"
                    + (f" (score {K['score']}/100)." if K["score"] is not None else "."))
     if leader:
-        pts.append(f"Show page 02: AI tools and Google Maps surface {leader['name']} most often for these questions.")
+        pts.append(f"Show section 02: AI tools and Google Maps surface {leader['name']} most often for these questions.")
     if K["pack"] is not None:
         pts.append(f"Maps 3-pack: {P['name']} appeared in {K['pack']} of {K['pack_of']} local searches.")
     pts += [f"{r['title']}: {r['why']}" for r in X["recommendations"][:3]]
