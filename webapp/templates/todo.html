@@ -71,7 +71,7 @@
               {% else %}<span class="pill p-mute">○ To do</span>{% endif %}</td>
           {# change 41: the prospect opened the client link #}
           {% set cv = (r.audit.client_views if r.audit else 0) or 0 %}
-          <td class="small muted">{{ r.created_at|ago }}{% if cv %}<a class="pill p-info todo-opened" href="{{ url_for('links_detail', aid=r.audit.id) }}" title="Last opened {{ r.audit.client_last_view|ago }}">Client opened · {{ cv }}×</a>{% endif %}</td>
+          <td class="small muted">{{ r.created_at|ago }}{% if cv %}<a class="pill p-info todo-opened" href="{{ url_for('audit_view', aid=r.audit.id, view='tracking') }}" title="Last opened {{ r.audit.client_last_view|ago }}">Client opened · {{ cv }}×</a>{% endif %}</td>
           <td class="r"><div class="todo-acts">
             {% if r.audit %}<a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=r.audit.id, view='overview') }}">Open audit</a>{% endif %}
             {% if mine and st != 'done' and not r.running %}

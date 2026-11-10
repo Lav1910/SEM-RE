@@ -52,7 +52,7 @@
 
   <section class="card">
     <div class="status-row"><h2 style="margin:0">Audits</h2>
-      {% if can('team_audits') %}<div class="tabs" style="margin:0"><a href="{{ url_for('dashboard', scope='mine', q=hist.q or None) }}" class="{{ 'on' if scope != 'team' }}">Mine</a><a href="{{ url_for('dashboard', scope='team', q=hist.q or None) }}" class="{{ 'on' if scope == 'team' }}">Whole team</a>{% if can('share') %}<a href="{{ url_for('links_home') }}">Client links{% set n = links_new() %}{% if n %} <span class="tab-badge" title="Links opened in the last 24 hours">{{ n }}</span>{% endif %}</a>{% endif %}</div>{% endif %}
+      {% if can('team_audits') %}<div class="tabs" style="margin:0"><a href="{{ url_for('dashboard', scope='mine', q=hist.q or None) }}" class="{{ 'on' if scope != 'team' }}">Mine</a><a href="{{ url_for('dashboard', scope='team', q=hist.q or None) }}" class="{{ 'on' if scope == 'team' }}">Whole team</a></div>{% endif %}
     </div>
     {# change 25: search, a summary of what's listed, and 25 per page #}
     <form class="hist-tools" method="get" action="{{ url_for('dashboard') }}" role="search">
@@ -69,22 +69,22 @@
       {% if can('see_costs') %}<div><span>Total cost {{ tip("What these audits cost in AI platform fees. Perplexity and DataForSEO charges are exact; ChatGPT and Gemini use their typical price per answer.") }}</span><b>${{ '%.2f'|format(hist.cost or 0) }}</b></div>{% endif %}
     </div>
     {% if rows %}
-    <div class="tw" style="margin-top:10px"><table>
-      <thead><tr><th>Builder</th><th>Status</th><th class="r">Score</th><th class="r">Named in AI</th><th class="r">Maps 3-pack</th><th class="r">Site checks</th>{% if scope == 'team' %}<th>By</th>{% endif %}<th>Run</th><th class="r">Run time</th>{% if can('see_costs') %}<th class="r" title="Perplexity and DataForSEO charges are exact; ChatGPT and Gemini use their typical price per answer. Includes generated Strategy content.">Cost</th>{% endif %}<th></th></tr></thead>
+    <div class="tw" style="margin-top:10px"><table class="hist-table">{# change 45: balanced columns #}
+      <thead><tr><th class="hc-builder">Builder</th><th class="hc-status">Status</th><th class="c">Score</th><th class="c">Named in AI</th><th class="c">Maps 3-pack</th><th class="c">Site checks</th>{% if scope == 'team' %}<th class="hc-by">By</th>{% endif %}<th class="hc-ran">Ran</th><th class="c">Run time</th>{% if can('see_costs') %}<th class="c">Cost</th>{% endif %}<th></th></tr></thead>
       <tbody>
       {% for a in rows %}
         <tr>
-          <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.market or a.url }}</small></td>
-          <td>{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad"{% if can('admin') %} title="{{ a.error }}"{% endif %}>Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
-              {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif depth_of(a) != 'full' %}<span class="pill p-mute">{{ DEPTH_INFO[depth_of(a)].label }}</span>{% endif %}{% if a.client_views %}<a class="pill p-info" href="{{ url_for('links_detail', aid=a.id) }}" title="The client opened their link {{ a.client_views }} time{{ 's' if a.client_views != 1 }}">Opened {{ a.client_views }}×</a>{% endif %}</td>
-          <td class="r">{% if a.score is not none %}<span class="score-badge {{ 'sb-low' if a.score < 35 else ('sb-mid' if a.score < 70 else 'sb-great') }}">{{ a.score }}</span>{% else %}—{% endif %}</td>
-          <td class="r">{% if a.answers %}{{ a.mentioned }} of {{ a.answers }}{% else %}—{% endif %}</td>
-          <td class="r">{% if a.pack_of %}{{ a.pack }} of {{ a.pack_of }}{% else %}—{% endif %}</td>
-          <td class="r">{% if a.checks_total %}{{ a.checks_passed }} of {{ a.checks_total }}{% else %}—{% endif %}</td>
-          {% if scope == 'team' %}<td>{{ a.owner }}</td>{% endif %}
-          <td class="muted" style="white-space:nowrap">{{ a.created_at|ago }}</td>
-          <td class="r tnum">{{ a.run_secs|dur if a.status == 'done' else '—' }}</td>
-          {% if can('see_costs') %}<td class="r tnum">{{ ('$%.2f'|format(a.total_cost)) if a.total_cost is not none else '—' }}</td>{% endif %}
+          <td class="hc-builder"><b title="{{ a.builder_name or a.domain }}">{{ a.builder_name or a.domain }}</b><small>{{ a.market or a.url }}</small></td>
+          <td class="hc-status"><div class="hc-pills">{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad"{% if can('admin') %} title="{{ a.error }}"{% endif %}>Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
+              {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif depth_of(a) != 'full' %}<span class="pill p-mute">{{ DEPTH_INFO[depth_of(a)].label }}</span>{% endif %}{% if a.client_views %}<a class="pill p-info" href="{{ url_for('audit_view', aid=a.id, view='tracking') }}" title="The client opened their link {{ a.client_views }} time{{ 's' if a.client_views != 1 }}">Opened {{ a.client_views }}×</a>{% endif %}</div></td>
+          <td class="c">{% if a.score is not none %}<span class="score-badge {{ 'sb-low' if a.score < 35 else ('sb-mid' if a.score < 70 else 'sb-great') }}">{{ a.score }}</span>{% else %}—{% endif %}</td>
+          <td class="c tnum">{% if a.answers %}{{ a.mentioned }} of {{ a.answers }}{% else %}—{% endif %}</td>
+          <td class="c tnum">{% if a.pack_of %}{{ a.pack }} of {{ a.pack_of }}{% else %}—{% endif %}</td>
+          <td class="c tnum">{% if a.checks_total %}{{ a.checks_passed }} of {{ a.checks_total }}{% else %}—{% endif %}</td>
+          {% if scope == 'team' %}<td class="hc-by" title="{{ a.owner }}">{{ a.owner }}</td>{% endif %}
+          <td class="hc-ran muted">{{ a.created_at|ago }}</td>
+          <td class="c tnum">{{ a.run_secs|dur if a.status == 'done' else '—' }}</td>
+          {% if can('see_costs') %}<td class="c tnum">{{ ('$%.2f'|format(a.total_cost)) if a.total_cost is not none else '—' }}</td>{% endif %}
           <td class="r"><a class="btn btn-ghost btn-small" href="{{ url_for('audit_page', aid=a.id) }}">Open</a></td>
         </tr>
       {% endfor %}

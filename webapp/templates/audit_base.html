@@ -15,6 +15,8 @@
   {% for key in ('strategy', 'content', 'fixes') %}
     <a class="side-link {{ 'on' if view == key }}" href="{{ url_for('audit_view', aid=a.id, view=key) }}">{{ views_nav[key] }}</a>
   {% endfor %}
+  <div class="side-group">Client link</div>{# change 44 #}
+  <a class="side-link {{ 'on' if view == 'tracking' }}" href="{{ url_for('audit_view', aid=a.id, view='tracking') }}">Report tracking{% if a.client_views %} <span class="side-count">{{ a.client_views }}</span>{% endif %}</a>
   <div class="side-group">Reports</div>
   <a class="side-link" href="{{ url_for('export_pdf', aid=a.id) }}">Export PDF report</a>
   <a class="side-link" href="{{ url_for('export_overview', aid=a.id, platform=platform if platform != 'all' else None, area=V.area if V and V.area else None) }}">Export overview (1 page)</a>
@@ -58,12 +60,7 @@
           <div class="cl-on" {% if not client %}hidden{% endif %}>
             <input class="exp-client-url" type="text" readonly value="{{ client.url if client else '' }}" aria-label="Client link">
             <span class="small muted" data-stats>{% if client %}{{ ('Opened ' ~ client.views ~ ' time' ~ ('s' if client.views != 1 else '') ~ ' · last ' ~ (client.last|ago)) if client.views else 'Not opened yet' }} · expires {{ client.expires|datefmt }}{% endif %}</span>
-            <div class="cl-access" role="radiogroup" aria-label="Strategy tabs on the link">{# change 42 #}
-              <span class="small muted">Strategy tabs:</span>
-              <button type="button" class="cl-acc {{ 'on' if not (client and client.full) }}" data-act="preview" title="Steps and why they matter; the how-to, content and code stay locked">Preview</button>
-              <button type="button" class="cl-acc {{ 'on' if client and client.full }}" data-act="full" title="Everything: how-to, generated content and code snippets">Full access</button>
-            </div>
-            <div class="exp-client-acts"><a class="link-btn small" href="{{ url_for('links_detail', aid=a.id) }}">Activity</a><button type="button" class="link-btn small" data-act="copy">Copy</button>
+            <div class="exp-client-acts"><a class="link-btn small" href="{{ url_for('audit_view', aid=a.id, view='tracking') }}">Tracking</a><button type="button" class="link-btn small" data-act="copy">Copy</button>
               <button type="button" class="link-btn small" data-act="new">New link</button>
               <button type="button" class="link-btn small" data-act="off">Turn off</button></div>
           </div>

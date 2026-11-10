@@ -976,3 +976,31 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .locked { min-height:150px; }
 .locked-cta { flex-direction:column; gap:8px; }
 .locked-cta > span:not(.locked-ico) { max-width:360px; }
+
+/* ===== change 45: balanced Audits table ===== */
+.hist-table { table-layout:auto; }
+.hist-table th, .hist-table td { padding-left:10px; padding-right:10px; }
+.hist-table th:first-child, .hist-table td:first-child { padding-left:0; }
+.hist-table th:last-child, .hist-table td:last-child { padding-right:0; text-align:right; }
+.hist-table .c { text-align:center; white-space:nowrap; }
+.hist-table .hc-builder { width:30%; max-width:340px; }
+.hist-table td.hc-builder b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:340px; }
+.hist-table td.hc-builder small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:340px; }
+.hist-table .hc-status { width:150px; }
+.hc-pills { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.hist-table .hc-ran { white-space:nowrap; }
+.hist-table td.hc-by { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
+.hist-table .hc-status { width:170px; }
+.hc-pills { flex-wrap:nowrap; } .hist-table .hc-status { width:auto; white-space:nowrap; }
+
+/* ===== change 44: Report tracking in the audit sidebar ===== */
+.side-count { display:inline-grid; place-items:center; min-width:18px; height:18px; padding:0 5px; border-radius:999px; background:#F0A13A; color:#fff; font-size:11px; font-weight:600; margin-left:6px; }
+.trk-url { width:260px; }
+@media (max-width: 640px) { .trk-url { width:100%; } }
+
+/* ===== change 46: friendly call to action on the client link ===== */
+.client-cta { display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; margin:18px 0 6px; padding:20px 22px; border-radius:16px;
+  background:radial-gradient(120% 160% at 100% 0%, rgba(63,214,216,.20) 0%, transparent 52%), linear-gradient(120deg, #0A2C2E 0%, #0C3D3F 48%, #0E5557 100%); color:#fff; }
+.client-cta b { display:block; font-size:17px; font-weight:600; } .client-cta span { display:block; margin-top:4px; color:rgba(255,255,255,.8); font-size:14px; max-width:620px; }
+.client-cta .btn-primary { background:#fff; color:var(--teal); border-color:#fff; }
+.piece-state.writing { color:#B26A00; }
