@@ -760,7 +760,10 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .todo-check:hover { border-color:var(--teal-b); color:#B9D9DA; }
 .todo-check.on { background:#36C08B; border-color:#36C08B; color:#fff; }
 .t-done .todo-name { text-decoration:line-through; text-decoration-color:#9CC9B5; color:var(--ink2); }
-.t-done td { background:#FAFDFB; } .t-audited td:first-child { box-shadow:inset 3px 0 0 #F2B547; }
+.t-done td { background:#FAFDFB; }
+/* change 21: the tick box sits clear of the audited stripe; the stripe is a slim rounded bar */
+.todo-table tbody td:first-child { position:relative; padding-left:16px; }
+.t-audited td:first-child::before { content:""; position:absolute; left:0; top:12px; bottom:12px; width:3px; border-radius:3px; background:#F2B547; }
 .todo-acts { display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
 .todo-run { display:flex; gap:4px; align-items:center; margin:0; }
 .todo-x { border:0; background:none; font-size:20px; line-height:1; color:#A8B5B6; cursor:pointer; padding:2px 6px; border-radius:6px; }
