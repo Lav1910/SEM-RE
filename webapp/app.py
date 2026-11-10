@@ -1343,9 +1343,20 @@ def links_detail(aid):
                            max_sec=(s["sections"][0][1] if s["sections"] else 1) or 1)
 
 
-app.jinja_env.globals["links_new"] = lambda: (db.q("""SELECT COUNT(DISTINCT v.audit_id) AS n FROM client_visits v JOIN audits a ON a.id=v.audit_id
-    WHERE v.started_at>? AND (? OR a.client_by=?)""", (time.time() - 86400, 1 if auth.can(g.user, "admin") else 0, g.user["id"]), one=True)["n"]
-    if getattr(g, "user", None) else 0)
+def _links_new():
+    """Client links opened in the last 24 hours (the badge on the Client links tab). Admins: everyone's; Sales: their own."""
+    if not getattr(g, "user", None):
+        return 0
+    since = time.time() - 86400
+    if auth.can(g.user, "admin"):
+        r = db.q("SELECT COUNT(DISTINCT audit_id) AS n FROM client_visits WHERE started_at>?", (since,), one=True)
+    else:
+        r = db.q("""SELECT COUNT(DISTINCT v.audit_id) AS n FROM client_visits v JOIN audits a ON a.id=v.audit_id
+                    WHERE v.started_at>? AND COALESCE(a.client_by, a.user_id)=?""", (since, g.user["id"]), one=True)
+    return r["n"] if r else 0
+
+
+app.jinja_env.globals["links_new"] = _links_new
 
 
 @app.route("/audits/<aid>/share", methods=["POST"])
