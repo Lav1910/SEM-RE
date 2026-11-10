@@ -30,8 +30,8 @@ GOOGLE_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 
 ROLES = {"admin": "Admin", "sales": "Sales"}
 PERMISSIONS = {
-    "admin": {"admin", "see_costs", "raw_data", "team_audits", "run_audits", "strategy", "share", "manage_any_share"},
-    "sales": {"team_audits", "run_audits", "strategy", "share"},
+    "admin": {"admin", "see_costs", "raw_data", "team_audits", "run_audits", "strategy", "share", "manage_any_share", "bulk"},
+    "sales": {"team_audits", "run_audits", "strategy", "share", "bulk"},
 }
 
 

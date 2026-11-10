@@ -421,7 +421,8 @@ def create_audit():
     if not url:
         flash("Enter a website address, like justindoylehomes.com.", "bad")
         return redirect(url_for("dashboard"))
-    today = db.q("SELECT COUNT(*) AS n FROM audits WHERE user_id=? AND created_at>?", (g.user["id"], time.time() - 86400), one=True)["n"]
+    today = db.q("SELECT COUNT(*) AS n FROM audits WHERE user_id=? AND created_at>? AND batch_id IS NULL",
+                 (g.user["id"], time.time() - 86400), one=True)["n"]  # bulk audits have their own limits
     if today >= DAILY_LIMIT:
         flash(f"You've run {DAILY_LIMIT} audits in the last 24 hours, the daily limit. Ask an admin to raise it.", "bad")
         return redirect(url_for("dashboard"))
@@ -740,7 +741,7 @@ def jobs_tick():
     if not jobs.tick_secret() or not secrets.compare_digest(sent, "Bearer " + jobs.tick_secret()):
         abort(404)
     did = jobs.work()
-    if jobs.pending():
+    if did and jobs.pending():  # hand over only after real work, so idle ticks never chain forever
         jobs.kick(PUBLIC_URL or request.host_url)
     return jsonify({"worked": did})
 
@@ -905,3 +906,6 @@ def create_app():
             logging.getLogger("hbm").warning("SMTP not set: emailed sign-in codes won't work until SMTP_HOST/MAIL_FROM are set")
     jobs.start()
     return app
+
+
+from . import bulk  # noqa: E402,F401  (Bulk Analysis routes)

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ b.name }}{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('bulk_home') }}">Bulk analysis</a> <span>›</span> {{ b.name }}</div>
+<div id="bulk" data-api="{{ url_for('bulk_status', bid=b.id) }}" class="stack">
+  <section class="card bulk-head">
+    <div class="status-row" style="align-items:flex-start">
+      <div><div class="eyebrow-sm">Bulk analysis · {{ 'Full' if b.depth == 'full' else 'Quick' }} depth</div>
+        <h1 style="margin:4px 0 4px">{{ b.name }}</h1>
+        <p class="small muted" style="margin:0">Started by {{ b.owner }} {{ b.created_at|ago }} · {{ b.total }} sites</p></div>
+      <div class="bulk-actions">
+        {% if can_control %}
+        <form method="post" action="{{ url_for('bulk_action', bid=b.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+          {% if b.status == 'running' %}<button class="btn btn-ghost btn-small" name="action" value="pause">Pause</button>
+          {% elif b.status == 'paused' %}<button class="btn btn-primary btn-small" name="action" value="resume">Resume</button>{% endif %}
+          {% if b.status in ('running', 'paused') %}<button class="btn btn-ghost btn-small" name="action" value="cancel" data-confirm="Cancel the rest of this batch? Finished audits are kept.">Cancel</button>{% endif %}
+          <button class="btn btn-ghost btn-small" name="action" value="retry" data-retry {{ 'hidden' if not c.failed }}>Retry failed</button>
+        </form>{% endif %}
+        <a class="btn btn-ghost btn-small" href="{{ url_for('bulk_export', bid=b.id) }}">Download CSV</a>
+      </div>
+    </div>
+    <div class="bulk-progress">
+      <div class="bar run-bar"><i data-bar style="width:{{ (100 * (c.done + c.failed) / (c.total or 1))|round|int }}%"></i></div>
+      <div class="bulk-stats small">
+        <span><b data-n="done">{{ c.done }}</b> ready</span><span><b data-n="running">{{ c.running }}</b> running</span>
+        <span><b data-n="queued">{{ c.queued }}</b> waiting</span><span><b data-n="failed">{{ c.failed }}</b> failed</span>
+        <span class="muted" data-state>{{ {'running':'Running','paused':'Paused: audits already running will finish','done':'Finished'}.get(b.status, '') }}</span>
+        <span class="muted" data-eta></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="status-row"><h2 style="margin:0">Results</h2><span class="small muted">Sorted by opportunity: low AI visibility, real local demand and a competitor winning those answers. Click a column to sort.</span></div>
+    <div class="tw"><table class="bulk-table">
+      <thead><tr><th data-sort="name">Builder</th><th data-sort="status">Status</th><th class="r" data-sort="opportunity">Opportunity</th><th class="r" data-sort="score">AI visibility</th>
+        <th class="r" data-sort="mentioned">Named in AI</th><th class="r" data-sort="pack">Maps 3-pack</th><th data-sort="top">Top competitor named instead</th><th class="r" data-sort="demand">Monthly searches</th><th></th></tr></thead>
+      <tbody data-rows><tr><td colspan="9" class="muted">Loading…</td></tr></tbody></table></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var root = document.getElementById('bulk'), body = root.querySelector('[data-rows]'), sortKey = 'opportunity', dir = -1, last = [];
+  root.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!confirm(b.dataset.confirm)) e.preventDefault(); }); });
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  var ST = {queued: ['Waiting', 'p-mute'], running: ['Running', 'p-info'], done: ['Ready', 'p-good'], failed: ['Failed', 'p-bad']};
+  function val(r, k) {
+    if (k === 'name') return (r.name || r.domain || '').toLowerCase();
+    if (k === 'status') return {running: 0, queued: 1, done: 2, failed: 3}[r.status];
+    var v = r[k]; return v == null ? -1 : v;
+  }
+  function render() {
+    var rows = last.slice().sort(function (a, b) { var x = val(a, sortKey), y = val(b, sortKey); return x < y ? -dir : x > y ? dir : 0; });
+    body.innerHTML = rows.map(function (r) {
+      var st = ST[r.status] || [r.status, 'p-mute'];
+      var opp = r.opportunity == null ? '—' : '<span class="opp ' + (r.opportunity >= 70 ? 'hi' : r.opportunity >= 45 ? 'mid' : 'lo') + '">' + r.opportunity + '</span>';
+      var stCell = '<span class="pill ' + st[1] + '">' + st[0] + (r.status === 'running' ? ' · ' + r.progress + '%' : '') + '</span>' +
+        (r.status === 'failed' && r.error ? '<small class="muted">' + esc(r.error).slice(0, 90) + '</small>' : '');
+      return '<tr><td><b>' + esc(r.name || r.domain) + '</b><small>' + esc(r.name ? r.domain : (r.market || '')) + '</small></td><td>' + stCell + '</td>' +
+        '<td class="r">' + opp + '</td><td class="r">' + (r.score == null ? '—' : r.score) + '</td>' +
+        '<td class="r">' + (r.answers ? r.mentioned + ' of ' + r.answers : '—') + '</td><td class="r">' + (r.pack_of ? r.pack + ' of ' + r.pack_of : '—') + '</td>' +
+        '<td>' + esc(r.top || '—') + '</td><td class="r">' + (r.demand ? Number(r.demand).toLocaleString() : '—') + '</td>' +
+        '<td class="r"><a class="btn btn-ghost btn-small" href="' + esc(r.url) + '">' + (r.status === 'done' ? 'Open' : 'View') + '</a></td></tr>';
+    }).join('') || '<tr><td colspan="9" class="muted">No sites.</td></tr>';
+    root.querySelectorAll('[data-sort]').forEach(function (th) { th.classList.toggle('sorted', th.dataset.sort === sortKey); th.dataset.dir = dir; });
+  }
+  root.querySelectorAll('[data-sort]').forEach(function (th) {
+    th.addEventListener('click', function () { if (sortKey === th.dataset.sort) dir = -dir; else { sortKey = th.dataset.sort; dir = th.dataset.sort === 'name' ? 1 : -1; } render(); });
+  });
+  (function poll() {
+    fetch(root.dataset.api, {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (d) {
+      last = d.rows; render();
+      var c = d.counts; ['done', 'running', 'queued', 'failed'].forEach(function (k) { root.querySelector('[data-n="' + k + '"]').textContent = c[k]; });
+      root.querySelector('[data-bar]').style.width = Math.round(100 * (c.done + c.failed) / (c.total || 1)) + '%';
+      root.querySelector('[data-eta]').textContent = d.eta ? '· about ' + d.eta + ' left' : '';
+      var rb = root.querySelector('[data-retry]'); if (rb) rb.hidden = !c.failed;
+      if (d.status === 'done' && root.querySelector('[data-state]').textContent !== 'Finished') root.querySelector('[data-state]').textContent = 'Finished';
+      setTimeout(poll, (d.status === 'running' && (c.queued + c.running)) ? 5000 : 30000);
+    }).catch(function () { setTimeout(poll, 10000); });
+  })();
+})();
+</script>
+{% endblock %}

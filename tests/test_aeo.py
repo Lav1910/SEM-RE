@@ -1,5 +1,7 @@
 """Offline tests. Fixtures copy the response shapes in each provider's docs (Nov 2026); the answer
 text is invented test content, not real AI output. Run: python3 -m unittest discover tests"""
+import os as _os, tempfile as _tf
+_os.environ.setdefault("HBM_KV_DIR", _tf.mkdtemp(prefix="hbm-kv-test-"))  # keep tests away from the real spend/health files
 import os
 import sys
 import unittest
@@ -121,13 +123,14 @@ class AnalysisTests(unittest.TestCase):
 class BudgetTests(unittest.TestCase):
     def setUp(self):
         import tempfile
-        from aeo import budget
-        self.budget = budget
-        self.orig = budget.LEDGER
+        from aeo import budget, kv
+        self.budget, self.kv = budget, kv
+        self.orig = (budget.LEDGER, kv.DIR, kv.PG)
         budget.LEDGER = os.path.join(tempfile.mkdtemp(), "spend.json")
+        kv.DIR, kv.PG = tempfile.mkdtemp(), False   # never touch the real ledger
 
     def tearDown(self):
-        self.budget.LEDGER = self.orig
+        self.budget.LEDGER, self.kv.DIR, self.kv.PG = self.orig
 
     def test_cap_stops_calls_and_settles_real_cost(self):
         b = self.budget

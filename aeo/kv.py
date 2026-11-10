@@ -11,7 +11,7 @@ import time
 
 URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or ""
 PG = URL.startswith(("postgres://", "postgresql://"))
-DIR = os.path.expanduser("~/.config/hbm-aeo")
+DIR = os.environ.get("HBM_KV_DIR") or os.path.expanduser("~/.config/hbm-aeo")  # tests point this at a temp folder
 _lock = threading.Lock()
 _local = threading.local()
 

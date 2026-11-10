@@ -46,11 +46,17 @@ CREATE TABLE IF NOT EXISTS audits (
   out_dir TEXT,
   created_at {real} NOT NULL, started_at {real}, finished_at {real},
   activity TEXT, engines TEXT, scope TEXT, locations TEXT,
-  phase TEXT, lease_until {real}, attempts INTEGER NOT NULL DEFAULT 0
+  phase TEXT, lease_until {real}, attempts INTEGER NOT NULL DEFAULT 0,
+  batch_id TEXT, summary TEXT
 );
 CREATE INDEX IF NOT EXISTS audits_status ON audits(status, created_at);
 CREATE INDEX IF NOT EXISTS audits_user ON audits(user_id, created_at);
 CREATE INDEX IF NOT EXISTS audits_domain ON audits(domain, created_at);
+CREATE TABLE IF NOT EXISTS batches (
+  id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), name TEXT, depth TEXT NOT NULL DEFAULT 'quick',
+  status TEXT NOT NULL DEFAULT 'running', total INTEGER NOT NULL DEFAULT 0, created_at {real} NOT NULL, finished_at {real},
+  notified INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS audit_files (
   audit_id TEXT NOT NULL, name TEXT NOT NULL, content {blob} NOT NULL, updated_at {real} NOT NULL,
   PRIMARY KEY (audit_id, name)
@@ -84,7 +90,7 @@ CREATE TABLE IF NOT EXISTS feedback (
 # columns added after the first release, for SQLite files created by older versions
 LATER_COLUMNS = {
     "audits": [("activity", "TEXT"), ("engines", "TEXT"), ("scope", "TEXT"), ("locations", "TEXT"), ("phase", "TEXT"),
-               ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0")],
+               ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("batch_id", "TEXT"), ("summary", "TEXT")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
               ("last_login", "REAL")],
     "strategy_content": [("lease_until", "REAL")],

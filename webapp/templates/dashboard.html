@@ -51,7 +51,7 @@
         <tr>
           <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.market or a.url }}</small></td>
           <td>{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad" title="{{ a.error }}">Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
-              {% if a.test_mode %}<span class="pill p-mute">Test</span>{% endif %}</td>
+              {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif a.test_mode %}<span class="pill p-mute">Test</span>{% endif %}</td>
           <td class="r">{% if a.score is not none %}<span class="score-badge {{ 'sb-low' if a.score < 35 else ('sb-mid' if a.score < 70 else 'sb-great') }}">{{ a.score }}</span>{% else %}—{% endif %}</td>
           <td class="r">{% if a.answers %}{{ a.mentioned }} of {{ a.answers }}{% else %}—{% endif %}</td>
           <td class="r">{% if a.pack_of %}{{ a.pack }} of {{ a.pack_of }}{% else %}—{% endif %}</td>

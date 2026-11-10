@@ -28,6 +28,7 @@ log = logging.getLogger("hbm.jobs")
 SERVERLESS = bool(os.environ.get("VERCEL")) or os.environ.get("HBM_SERVERLESS") == "1"
 WORKERS = int(os.environ.get("AUDIT_WORKERS", "3"))
 TICK = float(os.environ.get("JOB_TICK_SECONDS", "240" if SERVERLESS else "900"))
+BULK_PARALLEL = int(os.environ.get("BULK_PARALLEL", "3"))  # bulk audits running at once (AI platform rate limits)
 MAX_ATTEMPTS = 4  # a phase that keeps getting cut off (crash, timeout) fails the audit instead of looping forever
 _started = False
 
@@ -98,11 +99,15 @@ def step_audit(row, deadline):
                 store.delete(aid, "state.json")
                 k, p, m = A["analysis"]["kpis"], A["profile"], A["market"]
                 out_dir = None if store.USE_DB else os.path.join(db.DATA_DIR, "audits", aid)
+                try:
+                    summ = json.dumps(_summary(A))
+                except Exception:
+                    summ = None
                 db.x("""UPDATE audits SET status='done', stage='Done', progress=100, finished_at=?, out_dir=?, domain=?,
                         builder_name=?, market=?, score=?, mentioned=?, answers=?, pack=?, pack_of=?, checks_passed=?, checks_total=?,
-                        engines_measured=?, phase=NULL, lease_until=NULL WHERE id=?""",
+                        engines_measured=?, summary=?, phase=NULL, lease_until=NULL WHERE id=?""",
                      (time.time(), out_dir, p["domain"], p["name"], f"{m['city']}, {m['state_code']}", k["score"], k["mentioned"],
-                      k["answers"], k["pack"], k["pack_of"], k["checks_passed"], k["checks_total"], k["engines_measured"], aid))
+                      k["answers"], k["pack"], k["pack_of"], k["checks_passed"], k["checks_total"], k["engines_measured"], summ, aid))
                 progress("Done", 100, event="Report ready")
                 return True
             if time.time() > deadline - 20:
@@ -144,16 +149,87 @@ def run_piece(row):
 
 
 # ---------------------------------------------------------------- the loop
+def _claim_audit(seconds):
+    """Single audits first; bulk audits only while fewer than BULK_PARALLEL are running and their batch isn't paused."""
+    row = db.claim("audits", "status IN ('queued','running') AND batch_id IS NULL", (), "created_at",
+                   lease_seconds=seconds + 90, extra_set=", attempts=attempts+1")
+    if row:
+        return row
+    busy = db.q("SELECT COUNT(*) AS n FROM audits WHERE batch_id IS NOT NULL AND status='running' AND lease_until>?",
+                (time.time(),), one=True)["n"]
+    if busy >= BULK_PARALLEL:
+        return None
+    return db.claim("audits", "status IN ('queued','running') AND batch_id IN (SELECT id FROM batches WHERE status='running')",
+                    (), "created_at", lease_seconds=seconds + 90, extra_set=", attempts=attempts+1")
+
+
+def _summary(A):
+    """Short facts kept on the audit row for bulk result tables (so a 100-site table doesn't load 100 audit files)."""
+    X, qs = A["analysis"], A["questions"]
+    top = next((b["name"] for b in X["leaderboard"] if not b.get("prospect") and b.get("mentions")), None)
+    demand = sum(q.get("volume") or 0 for q in qs if q.get("kind") != "brand")
+    k = X["kpis"]
+    score = k.get("score")
+    opp = None
+    if score is not None:  # 0-100: low visibility, real local demand and a competitor winning = a better prospect
+        opp = round(min(100, (100 - score) * 0.6 + min(demand / 40, 25) + (10 if top else 0)
+                        + (5 if k.get("pack") == 0 and k.get("pack_of") else 0)))
+    return {"top_competitor": top, "demand": demand, "opportunity": opp}
+
+
+def after_audit(aid):
+    """When a bulk audit ends, close its batch if everything in it has finished, and email the person who started it."""
+    r = db.q("SELECT batch_id FROM audits WHERE id=?", (aid,), one=True)
+    bid = r["batch_id"] if r else None
+    if not bid:
+        return
+    left = db.q("SELECT COUNT(*) AS n FROM audits WHERE batch_id=? AND status IN ('queued','running')", (bid,), one=True)["n"]
+    if left:
+        return
+    b = db.q("SELECT * FROM batches WHERE id=?", (bid,), one=True)
+    if not b or b["status"] == "done":
+        return
+    db.x("UPDATE batches SET status='done', finished_at=? WHERE id=? AND status!='done'", (time.time(), bid))
+    try:
+        notify_batch(bid)
+    except Exception:
+        log.exception("batch email failed")
+
+
+def notify_batch(bid):
+    from . import mailer
+    b = db.q("SELECT b.*, u.email, u.name AS who FROM batches b JOIN users u ON u.id=b.user_id WHERE b.id=?", (bid,), one=True)
+    if not b or b["notified"]:
+        return
+    n = db.q("""SELECT SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS ok, SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS bad
+                FROM audits WHERE batch_id=?""", (bid,), one=True)
+    base = (os.environ.get("PUBLIC_URL") or "").rstrip("/")
+    link = f"{base}/bulk/{bid}" if base else f"/bulk/{bid}"
+    name = b["name"] or "Your bulk analysis"
+    text = (f"Hi {(b['who'] or '').split(' ')[0] or 'there'},\n\n{name} has finished: {n['ok'] or 0} audits ready"
+            + (f", {n['bad']} could not be completed" if n["bad"] else "") + f".\n\nOpen the results: {link}\n\nHome Builder Marketers")
+    import html as H
+    body = (f'<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#16302F"><div style="background:#0C3335;padding:18px 22px;'
+            f'border-radius:12px 12px 0 0;color:#fff;font-weight:bold;letter-spacing:.04em">HOME BUILDER MARKETERS</div><div style="border:1px solid #E3EBEC;'
+            f'border-top:0;border-radius:0 0 12px 12px;padding:22px"><p><b>{H.escape(name)}</b> has finished.</p><p style="font-size:22px;color:#0A686A;'
+            f'font-weight:bold;margin:6px 0">{n["ok"] or 0} audits ready</p>' + (f'<p>{n["bad"]} could not be completed (you can retry them).</p>' if n["bad"] else "")
+            + f'<p><a href="{H.escape(link)}" style="display:inline-block;background:#0A686A;color:#fff;text-decoration:none;padding:11px 18px;'
+            f'border-radius:8px;font-weight:bold">Open the results</a></p></div></div>')
+    mailer.send(b["email"], f"Bulk analysis finished: {name}", text, body)
+    db.x("UPDATE batches SET notified=1 WHERE id=?", (bid,))
+
+
 def work(seconds=TICK):
     """Do queued work until `seconds` run out. Returns True if anything was worked on."""
     deadline = time.time() + seconds
     did = False
     while time.time() < deadline - 25:
-        row = db.claim("audits", "status IN ('queued','running')", (), "created_at", lease_seconds=seconds + 90,
-                       extra_set=", attempts=attempts+1")
+        row = _claim_audit(seconds)
         if row:
             did = True
-            if not step_audit(row, deadline):
+            if step_audit(row, deadline):
+                after_audit(row["id"])
+            else:
                 db.x("UPDATE audits SET lease_until=NULL WHERE id=?", (row["id"],))
             continue
         piece = db.claim("strategy_content", "status IN ('queued','running')", (), "updated_at", lease_seconds=240,
@@ -167,14 +243,17 @@ def work(seconds=TICK):
 
 
 def pending():
-    return bool(db.q("SELECT 1 FROM audits WHERE status IN ('queued','running') LIMIT 1", one=True) or
+    return bool(db.q("""SELECT 1 FROM audits WHERE status IN ('queued','running')
+                        AND (batch_id IS NULL OR batch_id IN (SELECT id FROM batches WHERE status='running')) LIMIT 1""", one=True) or
                 db.q("SELECT 1 FROM strategy_content WHERE status IN ('queued','running') LIMIT 1", one=True))
 
 
-def kick(base_url=None):
-    """Serverless only: start a tick in another request without waiting for it."""
+def kick(base_url=None, times=1):
+    """Serverless only: start tick(s) in other requests without waiting for them (bulk runs start several in parallel)."""
     if not SERVERLESS:
         return
+    for _ in range(max(1, times) - 1):
+        threading.Thread(target=kick, args=(base_url, 1), daemon=True).start()
     base = (base_url or os.environ.get("PUBLIC_URL") or
             ("https://" + os.environ["VERCEL_PROJECT_PRODUCTION_URL"] if os.environ.get("VERCEL_PROJECT_PRODUCTION_URL") else "") or
             ("https://" + os.environ["VERCEL_URL"] if os.environ.get("VERCEL_URL") else "")).rstrip("/")

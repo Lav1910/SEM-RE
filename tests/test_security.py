@@ -1,4 +1,6 @@
 """Security checks: who can sign in, what each role can do, and the website-fetch guard."""
+import os as _os, tempfile as _tf
+_os.environ.setdefault("HBM_KV_DIR", _tf.mkdtemp(prefix="hbm-kv-test-"))  # keep tests away from the real spend/health files
 import base64
 import json
 import os
