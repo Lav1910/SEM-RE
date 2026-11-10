@@ -185,3 +185,40 @@
 
 /* close the export menu when clicking elsewhere */
 document.addEventListener('click', function (e) { document.querySelectorAll('details.exp[open]').forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute('open'); }); });
+
+/* change 37: instant info tooltips. Hover, keyboard focus or tap any (i); the bubble flips to stay on screen. */
+(function () {
+  var bubble = null, owner = null, touch = false;
+  document.addEventListener('pointerdown', function (e) { touch = e.pointerType === 'touch'; }, true);  // a tap also fires hover and focus
+  function upgrade(root) {  // older icons used a title="" (slow, never shows on phones): move it to data-tip
+    (root || document).querySelectorAll('.info[title]').forEach(function (el) {
+      el.dataset.tip = el.getAttribute('title'); el.removeAttribute('title');
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+      el.setAttribute('role', 'button'); el.setAttribute('aria-label', 'What this means: ' + el.dataset.tip);
+    });
+  }
+  function hide() { if (bubble) { bubble.classList.remove('on'); } owner = null; }
+  function show(el) {
+    if (!el.dataset.tip) return;
+    if (!bubble) { bubble = document.createElement('div'); bubble.className = 'tip-bubble'; bubble.setAttribute('role', 'tooltip'); document.body.appendChild(bubble); }
+    owner = el; bubble.textContent = el.dataset.tip; bubble.classList.remove('below'); bubble.classList.add('on');
+    var r = el.getBoundingClientRect(), b = bubble.getBoundingClientRect(), gap = 10;
+    var top = r.top - b.height - gap, left = r.left + r.width / 2 - b.width / 2;
+    if (top < 8) { top = r.bottom + gap; bubble.classList.add('below'); }
+    left = Math.max(8, Math.min(left, window.innerWidth - b.width - 8));
+    bubble.style.top = (top + window.scrollY) + 'px'; bubble.style.left = (left + window.scrollX) + 'px';
+    bubble.style.setProperty('--ax', (r.left + r.width / 2 - left) + 'px');
+  }
+  document.addEventListener('mouseover', function (e) { if (touch) return; var el = e.target.closest && e.target.closest('.info'); if (el) show(el); });
+  document.addEventListener('mouseout', function (e) { if (touch) return; var el = e.target.closest && e.target.closest('.info'); if (el && !el.contains(e.relatedTarget)) hide(); });
+  document.addEventListener('focusin', function (e) { if (!touch && e.target.classList && e.target.classList.contains('info')) show(e.target); });
+  document.addEventListener('focusout', function (e) { if (!touch && e.target.classList && e.target.classList.contains('info')) hide(); });
+  document.addEventListener('click', function (e) {  // phones: tap to show, tap anywhere else to close
+    var el = e.target.closest && e.target.closest('.info');
+    if (el) { e.preventDefault(); e.stopPropagation(); if (owner === el && touch) hide(); else show(el); } else if (owner) hide();
+  }, true);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+  window.addEventListener('scroll', hide, {passive: true});
+  window.addEventListener('resize', hide);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { upgrade(); }); else upgrade();
+})();

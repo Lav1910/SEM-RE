@@ -202,6 +202,16 @@ def duration(secs):
 
 
 app.jinja_env.filters["dur"] = duration
+
+
+def tip(text):
+    """change 37: a small (i) that explains a number instantly on hover, tap or keyboard focus (see app.js)."""
+    from markupsafe import Markup, escape
+    t = escape(text)
+    return Markup(f'<span class="info" tabindex="0" role="button" aria-label="What this means: {t}" data-tip="{t}">i</span>')
+
+
+app.jinja_env.globals["tip"] = tip
 app.jinja_env.filters["datefmt"] = lambda ts: dates.date_time(ts) if ts else "—"
 app.jinja_env.globals["engine_labels"] = engines.ENGINE_LABELS
 

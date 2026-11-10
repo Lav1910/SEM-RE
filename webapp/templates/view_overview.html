@@ -4,7 +4,7 @@
 {% set prev = V.trend[-2].score if V.trend|length > 1 else none %}
 <div class="ov-top">
   <section class="panel gauge-panel">
-    <div class="panel-h"><h2>AI Visibility</h2><span class="info" title="Share of AI answers to local buyer questions that name the builder, weighted by each question's search demand. Brand-name questions don't count.">i</span></div>
+    <div class="panel-h"><h2>AI Visibility</h2>{{ tip("How often AI recommends this builder, from 0 to 100. It's the share of AI answers to local buyer questions that name them, giving more weight to questions people search for more. Questions that already include the builder's name don't count.") }}</div>
     <div class="gauge2 band-{{ V.band|lower }}" data-score="{{ s if s is not none else '' }}">
       <div class="gauge-glow" aria-hidden="true"></div>
       <svg viewBox="0 0 240 214" role="img" aria-label="AI visibility score {{ s if s is not none else 'not measured' }} out of 100">
@@ -34,18 +34,18 @@
       <div class="range" data-range><button data-r="1">1M</button><button class="on" data-r="6">6M</button><button data-r="12">All time</button></div>
     </div>
     <div class="metric-row" data-metrics="main">
-      <div class="metric"><span><i class="dot" style="background:#5B5FD9"></i>Mentions <em class="info" title="AI answers that name the builder (this audit).">i</em></span><b>{{ V.mentions if V.measured_any else '—' }}</b></div>
-      <div class="metric"><span><i class="dot" style="background:#18C3A4"></i>Citations <em class="info" title="AI answers that link to the builder's website (this audit).">i</em></span><b>{{ V.citations if V.measured_any else '—' }}</b></div>
-      <div class="metric"><span><i class="dot" style="background:#B37FEB"></i>Cited Pages <em class="info" title="Distinct pages on the builder's site that AI answers cite (this audit).">i</em></span><b>{{ V.cited_pages if V.measured_any else '—' }}</b></div>
+      <div class="metric"><span><i class="dot" style="background:#5B5FD9"></i>Mentions {{ tip("How many AI answers named this builder. For example, 5 means 5 separate answers recommended them.") }}</span><b>{{ V.mentions if V.measured_any else '—' }}</b></div>
+      <div class="metric"><span><i class="dot" style="background:#18C3A4"></i>Citations {{ tip("How many AI answers linked to the builder's website as a source. Being cited is a strong trust signal for AI.") }}</span><b>{{ V.citations if V.measured_any else '—' }}</b></div>
+      <div class="metric"><span><i class="dot" style="background:#B37FEB"></i>Cited Pages {{ tip("How many different pages on the builder's website AI used as a source. More pages cited means AI trusts more of the site.") }}</span><b>{{ V.cited_pages if V.measured_any else '—' }}</b></div>
       {% set semh = (A.semrush or {}).get('history') or [] %}
-      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>AI Overviews <em class="info" title="Searches where a Google AI Overview cites the site, latest month, from Semrush.">i</em></span><b>{{ semh[-1].aio_cited if semh else '—' }}</b></div>
+      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>AI Overviews {{ tip("Google searches where Google's AI summary at the top of the results cites this website, in the latest month." ~ ('' if V.clean else ' Source: Semrush.')) }}</span><b>{{ semh[-1].aio_cited if semh else '—' }}</b></div>
     </div>
     <div class="metric-row" data-metrics="audience" hidden>
-      <div class="metric"><span><i class="dot" style="background:#5B5FD9"></i>Monthly Audience <em class="info" title="Monthly Google searches behind the questions where AI names the builder.">i</em></span><b>{{ '{:,}'.format(V.audience) if V.measured_any else '—' }}</b></div>
-      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>Searches showing an AI Overview <em class="info" title="Of the searches the site ranks for, how many show a Google AI Overview (Semrush).">i</em></span><b>{{ '{:,}'.format(semh[-1].aio_keywords) if semh else '—' }}</b></div>
+      <div class="metric"><span><i class="dot" style="background:#5B5FD9"></i>Monthly Audience {{ tip("How many people search each month for the questions where AI names this builder. It shows how much demand those recommendations reach.") }}</span><b>{{ '{:,}'.format(V.audience) if V.measured_any else '—' }}</b></div>
+      <div class="metric"><span><i class="dot dash" style="background:#0FB2B5"></i>Searches showing an AI Overview {{ tip("Of the Google searches this website appears for, how many now show Google's AI summary at the top." ~ ('' if V.clean else ' Source: Semrush.')) }}</span><b>{{ '{:,}'.format(semh[-1].aio_keywords) if semh else '—' }}</b></div>
     </div>
     <div class="metric-row" data-metrics="vis" hidden>
-      <div class="metric"><span><i class="dot" style="background:#0A686A"></i>AI Visibility score <em class="info" title="0–100 score for each audit of this builder.">i</em></span><b>{{ s if s is not none else '—' }}</b></div>
+      <div class="metric"><span><i class="dot" style="background:#0A686A"></i>AI Visibility score {{ tip("The 0 to 100 AI Visibility score from each audit of this builder, so you can see the trend over time.") }}</span><b>{{ s if s is not none else '—' }}</b></div>
     </div>
     <div class="chart" id="trend-chart" aria-label="Trend chart"></div>
     <p class="small muted chart-note" id="chart-note">Dashed line: Google AI Overview history from Semrush. Solid lines: HBM audits, one point per month; they grow each time this builder is audited again.</p>
@@ -55,9 +55,9 @@
 
 <div class="ov-mid">
   <section class="panel">
-    <div class="panel-h"><h2>Distribution by AI platform</h2>
+    <div class="panel-h"><h2>Distribution by AI platform {{ tip("How this builder does on each AI platform, side by side.") }}</h2>
       <div class="seg" data-tabs="dist"><button class="seg-item on" data-tab="m">Mentions</button><button class="seg-item" data-tab="p">Cited Pages</button></div></div>
-    <div class="dist-row dist-head"><span>Platform</span><span></span><span class="r">Share</span><span class="r" title="AI visibility score on this platform">Score</span><span class="r">Count</span></div>
+    <div class="dist-row dist-head"><span>Platform</span><span></span><span class="r">Share {{ tip("This platform's part of all the builder's mentions (or cited pages). The shares add up to 100%.") }}</span><span class="r">Score {{ tip("The 0 to 100 AI Visibility score on this platform alone.") }}</span><span class="r">Count {{ tip("The number of answers on this platform that named the builder (or the number of the builder's pages it cited).") }}</span></div>
     {% for key in ('m', 'p') %}
     <div class="dist" data-pane="dist-{{ key }}" {% if key == 'p' %}hidden{% endif %}>
       {% for d in V.dist %}
@@ -75,7 +75,7 @@
     {% endfor %}
   </section>
   <section class="panel">
-    <div class="panel-h"><h2>Mentions by area</h2></div>
+    <div class="panel-h"><h2>Mentions by area {{ tip("Where the builder gets named: each city's share of all their mentions, and how many answers there named them.") }}</h2></div>
     {% if V.by_area %}
       <div class="stackbar">{% for r in V.by_area %}<i style="width:{{ r.pct }}%;background:var(--a{{ loop.index0 % 5 }})"></i>{% endfor %}</div>
       <table class="t"><thead><tr><th>Area</th><th></th><th class="r">Mentions</th></tr></thead><tbody>
@@ -134,7 +134,7 @@
 </div>
 
 <section class="panel" data-pane="ts-topics">
-  <div class="panel-h"><h2>Your Performing Topics <span class="muted">({{ V.topics|length }})</span></h2></div>
+  <div class="panel-h"><h2>Your Performing Topics <span class="muted">({{ V.topics|length }})</span> {{ tip("Buyer questions where AI already names this builder. These are strengths to protect.") }}</h2></div>
   {% if V.topics %}
   <div class="tw"><table class="t"><thead><tr><th>Topic</th><th class="r">Visibility</th><th class="r">Your Mentions</th><th class="r">Search Volume</th><th class="r">Difficulty</th><th>Intent</th><th>Named by</th></tr></thead><tbody>
     {% for r in V.topics %}<tr><td><b>{{ r.topic }}</b><small class="muted">{{ r.keyword }}</small></td><td class="r tnum">{{ r.visibility }}</td><td class="r tnum">{{ r.mentions }} <small class="muted">of {{ r.answers }}</small></td>
@@ -143,7 +143,7 @@
   {% else %}<div class="empty">{{ 'No AI answer named this builder for any question.' if V.measured_any else 'Topics appear once AI platforms are connected.' }}</div>{% endif %}
 </section>
 <section class="panel" data-pane="ts-opps" hidden>
-  <div class="panel-h"><h2>Topic Opportunities <span class="muted">({{ V.opportunities|length }})</span></h2><span class="small muted">Questions where AI names competitors but not this builder</span></div>
+  <div class="panel-h"><h2>Topic Opportunities <span class="muted">({{ V.opportunities|length }})</span> {{ tip("Buyer questions where AI recommends competitors but not this builder. The biggest openings to win.") }}</h2><span class="small muted">Questions where AI names competitors but not this builder</span></div>
   {% if V.opportunities %}
   <div class="tw"><table class="t"><thead><tr><th>Topic</th>{% for c in V.chosen %}<th class="r">{{ c }}</th>{% endfor %}<th class="r">Search Volume</th><th class="r">Difficulty</th><th>Intent</th></tr></thead><tbody>
     {% for r in V.opportunities %}<tr><td><b>{{ r.topic }}</b><small class="muted">{{ r.keyword }}</small></td>
@@ -156,15 +156,15 @@
   {% else %}<div class="empty">{{ 'The selected competitors were not named where this builder was missing.' if V.measured_any else 'Opportunities appear once AI platforms are connected.' }}</div>{% endif %}
 </section>
 <section class="panel" data-pane="ts-sources" hidden>
-  <div class="panel-h"><h2>Cited Sources <span class="muted">({{ V.cited_sources|length }})</span></h2><span class="small muted">Sites cited in answers that name this builder</span></div>
+  <div class="panel-h"><h2>Cited Sources <span class="muted">({{ V.cited_sources|length }})</span> {{ tip("Websites AI used as sources in answers that named this builder, such as directories, review sites and news.") }}</h2><span class="small muted">Sites cited in answers that name this builder</span></div>
   {% set rows = V.cited_sources %}{% set mode = 'cited' %}{% include "_sources_rows.html" %}
 </section>
 <section class="panel" data-pane="ts-srcopps" hidden>
-  <div class="panel-h"><h2>Source Opportunities <span class="muted">({{ V.source_opportunities|length }})</span></h2><span class="small muted">Sites AI cites when it names other builders, not this one</span></div>
+  <div class="panel-h"><h2>Source Opportunities <span class="muted">({{ V.source_opportunities|length }})</span> {{ tip("Websites AI relies on when it recommends other builders. Getting listed or mentioned on them helps this builder show up too.") }}</h2><span class="small muted">Sites AI cites when it names other builders, not this one</span></div>
   {% set rows = V.source_opportunities %}{% set mode = 'opp' %}{% include "_sources_rows.html" %}
 </section>
 <section class="panel" data-pane="ts-pages" hidden>
-  <div class="panel-h"><h2>Cited Pages <span class="muted">({{ V.pages|length }})</span></h2><span class="small muted">Pages on {{ a.domain }} that AI answers link to</span></div>
+  <div class="panel-h"><h2>Cited Pages <span class="muted">({{ V.pages|length }})</span> {{ tip("Pages on the builder's own website that AI answers linked to.") }}</h2><span class="small muted">Pages on {{ a.domain }} that AI answers link to</span></div>
   {% if V.pages %}<table class="t"><thead><tr><th>Page</th><th class="r">Answers citing it</th></tr></thead><tbody>
     {% for p in V.pages %}<tr><td><a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.path }}</a></td><td class="r tnum">{{ p.count }}</td></tr>{% endfor %}</tbody></table>
   {% else %}<div class="empty">{{ 'No AI answer linked to this site.' if V.measured_any else 'Cited pages appear once AI platforms are connected.' }}</div>{% endif %}
