@@ -1,0 +1,25 @@
+{% extends "client_base.html" %}
+{% block view %}{% set S = V.S %}
+<section class="panel strat-head">
+  <div>
+    <div class="eyebrow-sm">Technical fixes</div>
+    <h2 style="margin:4px 0 6px">{{ S.fixes|length }} fix{{ 'es' if S.fixes|length != 1 }} for {{ A.profile.domain }}</h2>
+    <p class="small muted" style="margin:0">Things on the website that make it harder for AI tools to read and trust it.</p>
+  </div>
+</section>
+{% for f in S.fixes %}
+<section class="panel fix task">
+  <div class="sc-top"><span class="imp imp-{{ f.impact|lower }}">{{ f.impact }} impact</span><span class="eff">{{ f.effort }} effort</span></div>
+  <h3>{{ f.title }}</h3>
+  <p class="sc-why">{{ f.why }}</p>
+  {% if client_full %}
+  <p class="sc-how"><b>Fix:</b> {{ f.how }}</p>
+  {% if f.snippet %}<div class="snip"><div class="snip-h"><span class="small muted">Ready to paste</span><button class="link-btn" type="button" data-copy="snip-{{ loop.index }}">Copy</button></div>
+    <textarea id="snip-{{ loop.index }}" readonly rows="{{ [f.snippet.count('\n') + 1, 14]|min }}">{{ f.snippet }}</textarea></div>{% endif %}
+  {% else %}{% with lock_text = "The fix and ready-to-paste code are included when Home Builder Marketers does this for you." %}{% include "_client_lock.html" %}{% endwith %}{% endif %}
+</section>
+{% else %}
+<div class="empty">{% if A.profile.site_blocked %}The website couldn't be checked in this audit.{% else %}Every website check passed. Nothing to fix.{% endif %}</div>
+{% endfor %}
+{% endblock %}
+{% block scripts %}{% include "_client_strategy_js.html" %}{% endblock %}

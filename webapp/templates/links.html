@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Client links{% endblock %}
+{% block body %}
+{# change 41: every client link sent, how often it was opened, when, and where clients spend their time #}
+<div class="crumbs"><a href="{{ url_for('dashboard') }}">Audits</a> <span>›</span> Client links</div>
+<section class="card">
+  <div class="status-row"><h2 style="margin:0">Client links {{ tip("Every interactive link sent to a prospect: how often they opened it, when, how long they stayed and what they looked at most. Visits from signed-in HBM teammates don't count.") }}</h2>
+    <div class="tabs" style="margin:0"><a href="{{ url_for('dashboard', scope='mine') }}">Mine</a><a href="{{ url_for('dashboard', scope='team') }}">Whole team</a><a class="on" href="{{ url_for('links_home') }}">Client links</a></div>
+  </div>
+  <div class="links-bar">
+    <div class="seg">{% for k, lab in (('all','All'), ('active','Active'), ('opened','Opened'), ('unopened','Not opened yet')) %}<a class="seg-item {{ 'on' if show == k }}" href="{{ url_for('links_home', show=k, sort=sort) }}">{{ lab }}</a>{% endfor %}</div>
+    <label class="ctl ctl-select"><span class="sr-only">Sort</span>
+      <select onchange="location='{{ url_for('links_home', show=show) }}' + '&sort=' + this.value">
+        {% for k, lab in (('recent','Last opened'), ('views','Most views'), ('time','Most time spent')) %}<option value="{{ k }}" {{ 'selected' if sort == k }}>{{ lab }}</option>{% endfor %}
+      </select></label>
+  </div>
+  {% if rows %}
+  <div class="tw"><table>
+    <thead><tr><th>Builder</th><th>Sent</th>{% if see_all %}<th>Sent by</th>{% endif %}<th class="r">Views</th><th>Last opened</th><th class="r">Time spent</th><th>Most viewed</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}{% set a = r.a %}
+      <tr class="link-row" onclick="location='{{ url_for('links_detail', aid=a.id) }}'">
+        <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.domain }}</small></td>
+        <td class="muted" style="white-space:nowrap">{{ a.client_created_at|ago }}</td>
+        {% if see_all %}<td>{{ a.sender or '—' }}</td>{% endif %}
+        <td class="r tnum"><b>{{ r.views }}</b></td>
+        <td style="white-space:nowrap">{{ r.last|ago if r.last else '—' }}</td>
+        <td class="r tnum">{{ r.seconds|dur if r.seconds else '—' }}</td>
+        <td>{{ r.top or '—' }}</td>
+        <td>{% if r.status == 'active' %}<span class="pill p-good">Active · {{ r.days_left }} day{{ 's' if r.days_left != 1 }} left</span>{% elif r.status == 'expired' %}<span class="pill p-mute">Expired</span>{% else %}<span class="pill p-mute">Turned off</span>{% endif %}</td>
+        <td class="r"><a class="btn btn-ghost btn-small" href="{{ url_for('links_detail', aid=a.id) }}">Details</a></td>
+      </tr>
+    {% endfor %}
+    </tbody></table></div>
+  {% else %}
+    <p class="muted" style="margin:12px 0 0">{{ 'No client links yet. Open a finished audit and click Client link to send one.' if show == 'all' else 'Nothing here with this filter.' }}</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -15,6 +15,7 @@ import secrets
 import sys
 import time
 import urllib.parse
+from markupsafe import escape
 import uuid
 
 from flask import (Flask, abort, flash, g, jsonify, redirect, render_template, request, send_file, session, url_for)
@@ -1079,7 +1080,7 @@ def rerun(aid):
 
 
 # ---------------- client link (change 31) ----------------
-CLIENT_VIEWS = ("overview", "competitors")
+CLIENT_VIEWS = ("overview", "competitors", "strategy", "content", "fixes")  # change 42: Strategy tabs too
 CLIENT_DAYS = int(os.environ.get("HBM_CLIENT_LINK_DAYS", "30"))
 
 
@@ -1098,13 +1099,21 @@ def _client_info(a):
     if not a["client_token"] or (a["client_expires"] or 0) < time.time():
         return None
     return {"url": url_for("client_view", token=a["client_token"], view="overview", _external=True),
-            "views": a["client_views"] or 0, "last": a["client_last_view"], "expires": a["client_expires"]}
+            "views": a["client_views"] or 0, "last": a["client_last_view"], "expires": a["client_expires"],
+            "full": bool(a["client_full"])}
+
+
+def _link_json(info):
+    if not info:
+        return None
+    exp = datetime.date.fromtimestamp(info["expires"])
+    return dict(info, expires_label=f"{exp:%b} {exp.day}", last_label=ago(info["last"]) if info["last"] else None)
 
 
 @app.route("/audits/<aid>/client-link", methods=["POST"])
 @login_required
 def client_link(aid):
-    """Create (or reuse), renew or turn off the client's interactive link for a finished audit."""
+    """Create (or reuse), renew, switch Preview/Full or turn off the client's interactive link for a finished audit."""
     if not auth.can(g.user, "share"):
         abort(403)
     a = get_audit(aid)
@@ -1115,38 +1124,93 @@ def client_link(aid):
         db.x("UPDATE audits SET client_token=NULL, client_expires=NULL WHERE id=?", (aid,))
         security_event("client_link_off", g.user["email"], aid)
         info = None
+    elif act in ("full", "preview"):  # change 42: what the client sees on the Strategy tabs
+        db.x("UPDATE audits SET client_full=? WHERE id=?", (1 if act == "full" else 0, aid))
+        info = _client_info(get_audit(aid))
     else:
         if act == "new" or not _client_info(a):
-            db.x("UPDATE audits SET client_token=?, client_expires=?, client_views=0, client_last_view=NULL WHERE id=?",
-                 (secrets.token_urlsafe(24), time.time() + CLIENT_DAYS * 86400, aid))
+            db.x("""UPDATE audits SET client_token=?, client_expires=?, client_views=0, client_last_view=NULL, client_by=?,
+                    client_created_at=COALESCE(client_created_at, ?), client_alerted_at=NULL WHERE id=?""",
+                 (secrets.token_urlsafe(24), time.time() + CLIENT_DAYS * 86400, g.user["id"], time.time(), aid))
             security_event("client_link_created", g.user["email"], aid)
         from . import todo
         todo.mark_exported(g.user["id"], a, "client")  # sending the link counts like exporting a PDF
         info = _client_info(get_audit(aid))
     if request.headers.get("Accept", "").startswith("application/json"):
-        return jsonify({"link": info and dict(info, expires_label=f'{datetime.date.fromtimestamp(info["expires"]):%b} {datetime.date.fromtimestamp(info["expires"]).day}',
-                                              last_label=ago(info["last"]) if info["last"] else None)})
+        return jsonify({"link": _link_json(info)})
     flash(("Client link ready: " + info["url"]) if info else "Client link turned off.", "good")
     return redirect(url_for("audit_view", aid=aid, view="overview"))
+
+
+def _client_audit(token):
+    a = db.q("SELECT * FROM audits WHERE client_token=? AND status='done'", (token,), one=True) if len(token or "") >= 20 else None
+    return a if a and (a["client_expires"] or 0) >= time.time() else None
+
+
+def _team_viewer():
+    """change 41: a signed-in HBM teammate testing the link isn't counted as the client."""
+    uid = session.get("uid")
+    return bool(uid and db.q("SELECT 1 FROM users WHERE id=? AND active=1", (uid,), one=True))
+
+
+def _device():
+    ua = request.headers.get("User-Agent", "")
+    if re.search(r"iPad|Tablet", ua):
+        return "Tablet"
+    return "Phone" if re.search(r"Mobi|iPhone|Android", ua) else "Desktop"
+
+
+def _alert_owner(a):
+    """change 41: email whoever sent the link when the client first opens it, then at most once a day."""
+    if a["client_alerted_at"] and time.time() - a["client_alerted_at"] < 86400:
+        return
+    u = db.q("SELECT email, name FROM users WHERE id=?", (a["client_by"] or a["user_id"],), one=True)
+    if not u or not mailer.configured():
+        return
+    db.x("UPDATE audits SET client_alerted_at=? WHERE id=?", (time.time(), a["id"]))
+    name = a["builder_name"] or a["domain"]
+    first = not (a["client_views"] or 0)
+    link = (PUBLIC_URL or request.host_url.rstrip("/")) + url_for("links_detail", aid=a["id"])
+    subject = f"{name} {'just opened' if first else 'is back on'} their AI visibility report"
+    text = (f"{name} {'opened their AI visibility report for the first time' if first else 'opened their AI visibility report again'} "
+            f"({_device().lower()}). See what they looked at: {link}")
+    try:
+        mailer.send(u["email"], subject, text, f"<p>{escape(text)}</p><p><a href=\"{escape(link)}\">Open client activity</a></p>")
+    except Exception:
+        pass
 
 
 @app.route("/c/<token>")
 @app.route("/c/<token>/<view>")
 def client_view(token, view="overview"):
-    """The client's interactive page: Visibility Overview and Competitor Research only, no sign-in, read-only."""
+    """The client's interactive page: no sign-in, read-only."""
     if view not in CLIENT_VIEWS:
         abort(404)
-    a = db.q("SELECT * FROM audits WHERE client_token=? AND status='done'", (token,), one=True) if len(token) >= 20 else None
-    if not a or (a["client_expires"] or 0) < time.time():
+    a = _client_audit(token)
+    if not a:
         return render_template("client_expired.html"), 404
     A = store.load_json(a["id"])
     if A is None:
         abort(404)
+    team = _team_viewer()
     seen = session.get("cv", {})
-    if time.time() - seen.get(token, 0) > 1800:  # count a visit, not every click
+    mine = seen.get(token) if isinstance(seen.get(token), dict) else None
+    if not team and (not mine or time.time() - mine.get("t", 0) > 1800):  # a new visit (30 min apart), not every click
+        h = request.headers
+        db.x("""INSERT INTO client_visits (audit_id, token, started_at, last_at, device, city, region, country, sections, actions)
+                VALUES (?,?,?,?,?,?,?,?, '{}', '[]')""",
+             (a["id"], token, time.time(), time.time(), _device(), urllib.parse.unquote(h.get("X-Vercel-IP-City", ""))[:60] or None,
+              h.get("X-Vercel-IP-Country-Region", "")[:10] or None, h.get("X-Vercel-IP-Country", "")[:4] or None))
+        vid = db.q("SELECT MAX(id) AS id FROM client_visits WHERE audit_id=? AND token=?", (a["id"], token), one=True)["id"]
+        _alert_owner(a)
         db.x("UPDATE audits SET client_views=COALESCE(client_views, 0)+1, client_last_view=? WHERE id=?", (time.time(), a["id"]))
-        seen[token] = time.time()
-        session["cv"] = {k: v for k, v in seen.items() if time.time() - v < 86400}
+        mine = {"t": time.time(), "v": vid}
+    elif mine and not team:
+        mine["t"] = time.time()
+        db.x("UPDATE client_visits SET pages=pages+1, last_at=? WHERE id=?", (time.time(), mine.get("v")))
+    if mine:
+        seen[token] = mine
+        session["cv"] = {k: v for k, v in seen.items() if isinstance(v, dict) and time.time() - v.get("t", 0) < 86400}
     g.user, g.client_token = None, token  # a teammate opening it sees exactly what the client sees
     platform = request.args.get("platform", "all")
     if platform != "all" and platform not in views.measured_engines(A):
@@ -1158,13 +1222,129 @@ def client_view(token, view="overview"):
     V["chart"] = views.chart(A, hist)
     V["score_all"] = V["score"] if not area else views.build(A, platform, clean=True)["score"]
     V["area_scores"] = _area_scores(a, A, platform, True) if len(V["areas"]) > 1 else {}
+    if view in VIEWS_STRATEGY:
+        V["S"] = _strategy_ctx(a, A)
+    owner = db.q("SELECT name, email FROM users WHERE id=?", (a["client_by"] or a["user_id"],), one=True)
     exp = datetime.date.fromtimestamp(a["client_expires"])
-    resp = app.make_response(render_template(f"view_{view}.html", base_tpl="client_base.html", a=a, A=A, V=V, view=view,
+    tpl = f"client_{view}.html" if view in VIEWS_STRATEGY else f"view_{view}.html"  # change 42: read-only Strategy tabs
+    resp = app.make_response(render_template(tpl, base_tpl="client_base.html", a=a, A=A, V=V, view=view,
                                              views_nav=VIEWS, platform=platform, others=[], loom="", share=None,
-                                             now_ts=time.time(), exp_date=f"{exp:%b} {exp.day}"))
+                                             now_ts=time.time(), exp_date=f"{exp:%b} {exp.day}", client_full=bool(a["client_full"]),
+                                             contact=owner, track=not team))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     resp.headers["Referrer-Policy"] = "no-referrer"
     return resp
+
+
+@app.route("/c/<token>/ping", methods=["POST"])
+def client_ping(token):
+    """change 41: the client page reports time per section and clicks (no personal data)."""
+    a = _client_audit(token)
+    mine = session.get("cv", {}).get(token)
+    if not a or not isinstance(mine, dict) or not mine.get("v") or _team_viewer():
+        return ("", 204)
+    try:
+        d = json.loads(request.form.get("d", "{}"))
+    except ValueError:
+        return ("", 204)
+    v = db.q("SELECT * FROM client_visits WHERE id=? AND audit_id=?", (mine["v"], a["id"]), one=True)
+    if not v:
+        return ("", 204)
+    secs = json.loads(v["sections"] or "{}")
+    for name, t in list((d.get("s") or {}).items())[:40]:
+        name = str(name)[:60]
+        if isinstance(t, (int, float)) and 0 < t <= 600:
+            secs[name] = round(secs.get(name, 0) + t, 1)
+    acts = json.loads(v["actions"] or "[]")
+    for x in (d.get("a") or [])[:50]:
+        if isinstance(x, dict) and x.get("k"):
+            acts.append({"k": str(x["k"])[:30], "d": str(x.get("d", ""))[:80], "t": int(time.time())})
+    total = int(min(sum(secs.values()), 6 * 3600))
+    db.x("UPDATE client_visits SET sections=?, actions=?, seconds=?, last_at=? WHERE id=?",
+         (json.dumps(secs), json.dumps(acts[-300:]), total, time.time(), v["id"]))
+    return ("", 204)
+
+
+# ---------------- client link tracking (change 41) ----------------
+def _visit_rows(aid):
+    out = []
+    for v in db.q("SELECT * FROM client_visits WHERE audit_id=? ORDER BY started_at DESC", (aid,)):
+        r = dict(v)
+        r["sections"] = json.loads(v["sections"] or "{}")
+        r["actions"] = json.loads(v["actions"] or "[]")
+        out.append(r)
+    return out
+
+
+def _link_summary(aid):
+    visits = _visit_rows(aid)
+    secs = collections.Counter()
+    for v in visits:
+        secs.update(v["sections"])
+    return {"visits": visits, "seconds": sum(v["seconds"] for v in visits), "sections": secs.most_common(),
+            "top": secs.most_common(1)[0][0] if secs else None}
+
+
+@app.route("/links")
+@login_required
+def links_home():
+    """Audits › Client links: every link sent, how often it was opened, when, and where clients spend their time."""
+    if not auth.can(g.user, "share"):
+        abort(403)
+    see_all = auth.can(g.user, "admin")
+    where, args = ("", ()) if see_all else ("AND a.client_by=?", (g.user["id"],))
+    rows = []
+    for a in db.q(f"""SELECT a.*, u.name AS sender FROM audits a LEFT JOIN users u ON u.id=a.client_by
+                      WHERE a.client_created_at IS NOT NULL {where} ORDER BY a.client_created_at DESC LIMIT 300""", args):
+        s = _link_summary(a["id"])
+        status = "off" if not a["client_token"] else ("expired" if (a["client_expires"] or 0) < time.time() else "active")
+        rows.append({"a": a, "views": len(s["visits"]), "last": s["visits"][0]["started_at"] if s["visits"] else None,
+                     "seconds": s["seconds"], "top": s["top"], "status": status,
+                     "days_left": max(0, int(((a["client_expires"] or 0) - time.time()) // 86400) + 1) if status == "active" else None})
+    show = request.args.get("show", "all")
+    if show == "active":
+        rows = [r for r in rows if r["status"] == "active"]
+    elif show == "opened":
+        rows = [r for r in rows if r["views"]]
+    elif show == "unopened":
+        rows = [r for r in rows if not r["views"]]
+    sort = request.args.get("sort", "recent")
+    key = {"views": lambda r: -r["views"], "time": lambda r: -r["seconds"],
+           "recent": lambda r: -(r["last"] or 0)}.get(sort, lambda r: -(r["last"] or 0))
+    rows.sort(key=key)
+    return render_template("links.html", rows=rows, show=show, sort=sort, see_all=see_all)
+
+
+@app.route("/links/<aid>")
+@login_required
+def links_detail(aid):
+    if not auth.can(g.user, "share"):
+        abort(403)
+    a = get_audit(aid)
+    if not a["client_created_at"]:
+        abort(404)
+    s = _link_summary(aid)
+    days = collections.OrderedDict()
+    for i in range(13, -1, -1):  # views per day, last 14 days
+        d = datetime.date.today() - datetime.timedelta(days=i)
+        days[d] = 0
+    for v in s["visits"]:
+        d = datetime.date.fromtimestamp(v["started_at"])
+        if d in days:
+            days[d] += 1
+    acts = collections.Counter()
+    for v in s["visits"]:
+        for x in v["actions"]:
+            acts[(x["k"], x["d"])] += 1
+    sender = db.q("SELECT name FROM users WHERE id=?", (a["client_by"],), one=True) if a["client_by"] else None
+    return render_template("link_detail.html", a=a, s=s, days=list(days.items()), acts=acts.most_common(20),
+                           client=_client_info(a), sender=sender, max_day=max(days.values()) or 1,
+                           max_sec=(s["sections"][0][1] if s["sections"] else 1) or 1)
+
+
+app.jinja_env.globals["links_new"] = lambda: (db.q("""SELECT COUNT(DISTINCT v.audit_id) AS n FROM client_visits v JOIN audits a ON a.id=v.audit_id
+    WHERE v.started_at>? AND (? OR a.client_by=?)""", (time.time() - 86400, 1 if auth.can(g.user, "admin") else 0, g.user["id"]), one=True)["n"]
+    if getattr(g, "user", None) else 0)
 
 
 @app.route("/audits/<aid>/share", methods=["POST"])

@@ -50,7 +50,7 @@ class ClientLink(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         return r.get_json()["link"]
 
-    def test_client_sees_two_tabs_only(self):
+    def test_client_sees_only_client_tabs(self):
         link = self.make_link()
         path = link["url"].split("localhost", 1)[-1]
         anon = self.app.test_client()
@@ -59,7 +59,8 @@ class ClientLink(unittest.TestCase):
         html = r.get_data(as_text=True)
         self.assertIn("Visibility Overview", html)
         self.assertIn("Competitor Research", html)
-        for hidden in ("Prompt Research", "Run again", "Export to PDF", "Strategy", "Send feedback", "Site Audit", "rail-item"):
+        self.assertIn("Strategy Plan", html)  # change 42: the Strategy tabs are on the client link too
+        for hidden in ("Prompt Research", "Run again", "Export to PDF", "Generate all", "Send feedback", "Site Audit", "rail-item"):
             self.assertNotIn(hidden, html)
         self.assertEqual(r.headers["X-Robots-Tag"], "noindex, nofollow")
         self.assertEqual(anon.get(path.replace("/overview", "/competitors")).status_code, 200)

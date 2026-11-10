@@ -52,7 +52,8 @@ def _rows(uid, when, show):
     if since:
         sql += " AND created_at>=?"; args.append(since)
     rows = [dict(r) for r in db.q(sql + " ORDER BY created_at, id", args)]
-    audits = db.q("SELECT id, domain, created_at, builder_name, score FROM audits WHERE user_id=? AND status='done' ORDER BY created_at DESC", (uid,))
+    audits = db.q("""SELECT id, domain, created_at, builder_name, score, client_views, client_last_view FROM audits
+                     WHERE user_id=? AND status='done' ORDER BY created_at DESC""", (uid,))
     latest = {}
     for a in audits:
         latest.setdefault(_root(a["domain"]), a)
@@ -159,6 +160,48 @@ def todo_clear():
     db.x("UPDATE todos SET cleared=1 WHERE user_id=? AND status='done' AND cleared=0", (g.user["id"],))
     flash("Cleared the completed prospects.", "good")
     return redirect(url_for("todo_home"))
+
+
+@app.route("/todo/bulk", methods=["POST"])
+@login_required
+def todo_bulk():
+    """change 43: act on many prospects at once (only rows on your own list)."""
+    act = request.form.get("action")
+    ids = [int(x) for x in request.form.getlist("ids") if x.isdigit()][:MAX_ROWS]
+    rows = [r for r in (db.q("SELECT * FROM todos WHERE id=? AND user_id=? AND cleared=0", (i, g.user["id"]), one=True) for i in ids) if r]
+    if not rows or act not in ("done", "todo", "remove", "quick"):
+        flash("Select one or more prospects first.", "bad")
+        return redirect(request.referrer or url_for("todo_home"))
+    n = len(rows)
+    if act == "done":
+        for r in rows:
+            if r["status"] != "done":
+                db.x("UPDATE todos SET status='done', done_via='manual', done_at=? WHERE id=?", (time.time(), r["id"]))
+        flash(f"Marked {n} prospect{'s' if n != 1 else ''} done.", "good")
+    elif act == "todo":
+        for r in rows:
+            db.x("UPDATE todos SET status='todo', done_via=NULL, done_at=NULL WHERE id=?", (r["id"],))
+        flash(f"Moved {n} prospect{'s' if n != 1 else ''} back to To do.", "good")
+    elif act == "remove":
+        for r in rows:
+            db.x("DELETE FROM todos WHERE id=?", (r["id"],))
+        flash(f"Removed {n} prospect{'s' if n != 1 else ''} from your list.", "good")
+    else:  # Quick audits for every selected builder, through the same queue as Bulk
+        started = 0
+        for r in rows:
+            if db.q("SELECT 1 FROM audits WHERE user_id=? AND domain=? AND status IN ('queued','running')", (g.user["id"], r["domain"]), one=True):
+                continue
+            sc = scopes.make(r["url"], "root")
+            aid = uuid.uuid4().hex[:12]
+            db.x("""INSERT INTO audits (id, user_id, url, domain, scope, test_mode, depth, status, stage, progress, share_token, created_at)
+                    VALUES (?,?,?,?, 'root', 1, 'quick', 'queued', 'Waiting to start', 0, ?, ?)""",
+                 (aid, g.user["id"], r["url"], sc["domain"], secrets.token_urlsafe(18), time.time() + started * 0.001))
+            db.x("UPDATE todos SET audit_id=? WHERE id=?", (aid, r["id"]))
+            started += 1
+        if started:
+            jobs.kick(PUBLIC_URL or request.host_url, times=min(started, jobs.BULK_PARALLEL))
+        flash(f"Started {started} Quick audit{'s' if started != 1 else ''}." + (f" {n - started} already running." if n - started else ""), "good")
+    return redirect(request.referrer or url_for("todo_home"))
 
 
 @app.route("/todo/<int:tid>/run", methods=["POST"])

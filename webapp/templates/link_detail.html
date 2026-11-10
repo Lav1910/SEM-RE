@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Client activity: {{ a.builder_name or a.domain }}{% endblock %}
+{% block body %}
+{# change 41: one client link in detail #}
+<div class="crumbs"><a href="{{ url_for('dashboard') }}">Audits</a> <span>›</span> <a href="{{ url_for('links_home') }}">Client links</a> <span>›</span> {{ a.builder_name or a.domain }}</div>
+<div class="stack">
+  <section class="card">
+    <div class="status-row">
+      <div><h1 class="page-title" style="margin:0">{{ a.builder_name or a.domain }}</h1>
+        <p class="small muted" style="margin:2px 0 0">{{ a.domain }} · sent {{ a.client_created_at|ago }}{% if sender %} by {{ sender.name }}{% endif %} ·
+          {% if client %}<b>active</b>, expires {{ client.expires|datefmt }} · {{ 'Full access' if client.full else 'Preview' }}{% elif a.client_token %}expired{% else %}turned off{% endif %}</p></div>
+      <div class="row-actions">
+        <a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=a.id, view='overview') }}">Open audit</a>
+        {% if client %}<button class="btn btn-primary btn-small" type="button" data-copy="{{ client.url }}">Copy link</button>{% endif %}
+      </div>
+    </div>
+    <div class="ld-stats">
+      <div><span>Views</span><b>{{ s.visits|length }}</b></div>
+      <div><span>Time spent</span><b>{{ s.seconds|dur if s.seconds else '—' }}</b></div>
+      <div><span>Average visit</span><b>{{ ((s.seconds / s.visits|length)|dur) if s.visits else '—' }}</b></div>
+      <div><span>First opened</span><b>{{ s.visits[-1].started_at|ago if s.visits else '—' }}</b></div>
+      <div><span>Last opened</span><b>{{ s.visits[0].started_at|ago if s.visits else '—' }}</b></div>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2 style="margin:0 0 10px">Views over the last 14 days {{ tip("One bar per day: how many separate visits the client made. A visit is a session; clicks within 30 minutes count once.") }}</h2>
+      <div class="ld-days">{% for d, n in days %}<div title="{{ d.strftime('%b') }} {{ d.day }}: {{ n }} visit{{ 's' if n != 1 }}"><i style="height:{{ (100 * n / max_day)|round|int }}%"></i><span>{{ d.day }}</span></div>{% endfor %}</div>
+    </section>
+    <section class="card">
+      <h2 style="margin:0 0 10px">Where they spend their time {{ tip("Time spent with each part of the report on screen, while the page was actually in front. Ranked from most to least.") }}</h2>
+      {% for name, sec in s.sections[:10] %}
+      <div class="ld-sec"><span>{{ name }}</span><b class="tnum">{{ sec|dur }}</b><div class="ld-bar"><i style="width:{{ (100 * sec / max_sec)|round|int }}%"></i></div></div>
+      {% else %}<p class="muted" style="margin:0">Nothing yet. This fills in once the client opens the link.</p>{% endfor %}
+    </section>
+  </div>
+
+  <section class="card">
+    <h2 style="margin:0 0 10px">What they clicked {{ tip("Tabs, AI platforms and cities they switched to, competitors they compared, info icons they read and anything they copied.") }}</h2>
+    {% if acts %}<div class="ld-acts">{% for (k, d), n in acts %}<span class="ld-act"><b>{{ {'tab':'Opened','platform':'Switched to','area':'City tab','compare':'Compared','tip':'Read info','copy':'Copied','contact':'Clicked','section':'Viewed'}.get(k, k) }}</b> {{ d }}{% if n > 1 %} <em>×{{ n }}</em>{% endif %}</span>{% endfor %}</div>
+    {% else %}<p class="muted" style="margin:0">No clicks recorded yet.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2 style="margin:0 0 10px">Every visit</h2>
+    {% if s.visits %}
+    <div class="tw"><table>
+      <thead><tr><th>When</th><th>Device</th><th>Where</th><th class="r">Time</th><th class="r">Pages</th><th>Spent most time on</th></tr></thead>
+      <tbody>{% for v in s.visits %}{% set top = (v.sections|dictsort(by='value', reverse=true))[:1] %}
+        <tr><td style="white-space:nowrap">{{ v.started_at|datefmt }}</td><td>{{ v.device or '—' }}</td>
+          <td>{{ ([v.city, v.region] | select | join(', ')) or v.country or '—' }}</td>
+          <td class="r tnum">{{ v.seconds|dur if v.seconds else '<1m' }}</td><td class="r tnum">{{ v.pages }}</td>
+          <td>{{ top[0][0] if top else '—' }}</td></tr>{% endfor %}</tbody></table></div>
+    {% else %}<p class="muted" style="margin:0">Not opened yet. You'll get an email the moment they do.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var t = b.dataset.copy, done = function () { b.textContent = '✓ Copied'; setTimeout(function () { b.textContent = 'Copy link'; }, 2000); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done); else { var i = document.createElement('input'); i.value = t; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); done(); }
+  });
+});
+</script>
+{% endblock %}

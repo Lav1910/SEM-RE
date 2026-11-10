@@ -52,7 +52,7 @@
 
   <section class="card">
     <div class="status-row"><h2 style="margin:0">Audits</h2>
-      {% if can('team_audits') %}<div class="tabs" style="margin:0"><a href="{{ url_for('dashboard', scope='mine', q=hist.q or None) }}" class="{{ 'on' if scope != 'team' }}">Mine</a><a href="{{ url_for('dashboard', scope='team', q=hist.q or None) }}" class="{{ 'on' if scope == 'team' }}">Whole team</a></div>{% endif %}
+      {% if can('team_audits') %}<div class="tabs" style="margin:0"><a href="{{ url_for('dashboard', scope='mine', q=hist.q or None) }}" class="{{ 'on' if scope != 'team' }}">Mine</a><a href="{{ url_for('dashboard', scope='team', q=hist.q or None) }}" class="{{ 'on' if scope == 'team' }}">Whole team</a>{% if can('share') %}<a href="{{ url_for('links_home') }}">Client links{% set n = links_new() %}{% if n %} <span class="tab-badge" title="Links opened in the last 24 hours">{{ n }}</span>{% endif %}</a>{% endif %}</div>{% endif %}
     </div>
     {# change 25: search, a summary of what's listed, and 25 per page #}
     <form class="hist-tools" method="get" action="{{ url_for('dashboard') }}" role="search">
@@ -76,7 +76,7 @@
         <tr>
           <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.market or a.url }}</small></td>
           <td>{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad"{% if can('admin') %} title="{{ a.error }}"{% endif %}>Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
-              {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif depth_of(a) != 'full' %}<span class="pill p-mute">{{ DEPTH_INFO[depth_of(a)].label }}</span>{% endif %}</td>
+              {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif depth_of(a) != 'full' %}<span class="pill p-mute">{{ DEPTH_INFO[depth_of(a)].label }}</span>{% endif %}{% if a.client_views %}<a class="pill p-info" href="{{ url_for('links_detail', aid=a.id) }}" title="The client opened their link {{ a.client_views }} time{{ 's' if a.client_views != 1 }}">Opened {{ a.client_views }}×</a>{% endif %}</td>
           <td class="r">{% if a.score is not none %}<span class="score-badge {{ 'sb-low' if a.score < 35 else ('sb-mid' if a.score < 70 else 'sb-great') }}">{{ a.score }}</span>{% else %}—{% endif %}</td>
           <td class="r">{% if a.answers %}{{ a.mentioned }} of {{ a.answers }}{% else %}—{% endif %}</td>
           <td class="r">{% if a.pack_of %}{{ a.pack }} of {{ a.pack_of }}{% else %}—{% endif %}</td>

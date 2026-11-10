@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS todos (
   created_at {real} NOT NULL, done_at {real}
 );
 CREATE INDEX IF NOT EXISTS todos_user ON todos(user_id, cleared, created_at);
+CREATE TABLE IF NOT EXISTS client_visits (
+  id {pk}, audit_id TEXT NOT NULL, token TEXT, started_at {real} NOT NULL, last_at {real} NOT NULL, seconds INTEGER NOT NULL DEFAULT 0,
+  device TEXT, city TEXT, region TEXT, country TEXT, sections TEXT, actions TEXT, pages INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS client_visits_audit ON client_visits(audit_id, started_at);
 CREATE TABLE IF NOT EXISTS audit_files (
   audit_id TEXT NOT NULL, name TEXT NOT NULL, content {blob} NOT NULL, updated_at {real} NOT NULL,
   PRIMARY KEY (audit_id, name)
@@ -102,7 +107,8 @@ LATER_COLUMNS = {
     "audits": [("activity", "TEXT"), ("engines", "TEXT"), ("scope", "TEXT"), ("locations", "TEXT"), ("phase", "TEXT"),
                ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("batch_id", "TEXT"), ("summary", "TEXT"),
                ("cost_usd", "REAL"), ("client_token", "TEXT"), ("client_expires", "REAL"), ("client_views", "INTEGER NOT NULL DEFAULT 0"),
-               ("client_last_view", "REAL"), ("depth", "TEXT")],
+               ("client_last_view", "REAL"), ("depth", "TEXT"), ("client_by", "INTEGER"), ("client_created_at", "REAL"),
+               ("client_full", "INTEGER NOT NULL DEFAULT 0"), ("client_alerted_at", "REAL")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
               ("last_login", "REAL"), ("avatar_at", "REAL")],
     "strategy_content": [("lease_until", "REAL")],
