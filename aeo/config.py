@@ -27,6 +27,7 @@ SETTINGS = {
     "HTTP_TIMEOUT": int(os.environ.get("HBM_HTTP_TIMEOUT", "120")),
     "WORKERS": int(os.environ.get("HBM_WORKERS", "8")),
     "DATA_WAIT": int(os.environ.get("HBM_DATA_WAIT", "30")),  # change 29: seconds to wait for Semrush / DataWise search data
+    "HEDGE_AFTER": int(os.environ.get("HBM_HEDGE_AFTER", "35")),  # change 34: re-ask a straggling answer after this many seconds (0 = off)
     "PER_PLATFORM": int(os.environ.get("HBM_PER_PLATFORM", "25")),  # change 29: questions asked at once on each platform
     "MAX_LOCATIONS": int(os.environ.get("HBM_MAX_LOCATIONS", "5")),  # main market + up to 4 more cities per audit
 }

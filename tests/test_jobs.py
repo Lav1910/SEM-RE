@@ -1,6 +1,7 @@
 """The job runner: an audit advances in steps across several ticks (as on Vercel) and finishes with its files saved."""
 import os as _os, tempfile as _tf
-_os.environ.setdefault("HBM_KV_DIR", _tf.mkdtemp(prefix="hbm-kv-test-"))  # keep tests away from the real spend/health files
+_os.environ.setdefault("HBM_KV_DIR", _tf.mkdtemp(prefix="hbm-kv-test-"))
+_os.environ.setdefault("HBM_PREWARM_PDFS", "0")  # no PDF engine runs in tests  # keep tests away from the real spend/health files
 import os
 import sys
 import tempfile

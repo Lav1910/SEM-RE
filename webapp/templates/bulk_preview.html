@@ -11,7 +11,7 @@
   function upd() {
     var k = skip.checked ? 'new' : 'all', n = +btn.dataset[k];
     btn.textContent = 'Start bulk analysis (' + n + ' site' + (n === 1 ? '' : 's') + ')'; btn.disabled = !n;
-    ['quick', 'full'].forEach(function (d) { document.querySelector('[data-est="' + d + '"]').textContent = EST[k][d]; });
+    ['quick'].forEach(function (d) { document.querySelector('[data-est="' + d + '"]').textContent = EST[k][d]; });
   }
   skip.addEventListener('change', upd);
 })();
@@ -33,8 +33,7 @@
         <div class="depth">
           <label class="depth-opt"><input type="radio" name="depth" value="quick" checked><span><b>Quick</b> · main city, fewer questions<br>
             <small><span data-est="quick">About {{ est_new.quick.minutes|mins if counts.recent else est.quick.minutes|mins }}{% if can('see_costs') %} · about ${{ '%.2f'|format(est_new.quick.cost if counts.recent else est.quick.cost) }}{% endif %}</span>. Best for cold prospect lists.</small></span></label>
-          <label class="depth-opt"><input type="radio" name="depth" value="full"><span><b>Full</b> · every service city, like a normal audit<br>
-            <small><span data-est="full">About {{ est_new.full.minutes|mins if counts.recent else est.full.minutes|mins }}{% if can('see_costs') %} · about ${{ '%.2f'|format(est_new.full.cost if counts.recent else est.full.cost) }}{% endif %}</span>.</small></span></label>
+          <p class="small muted" style="margin:6px 0 0">Bulk runs <b>Quick</b> audits to keep big lists affordable. Open any builder afterwards and use <b>Run again as Standard or Full</b> for a deeper look.</p>
         </div></div>
       {% if counts.recent %}<label class="chk"><input id="skip_recent" type="checkbox" name="skip_recent" value="1" checked> Skip the {{ counts.recent }} builder{{ 's' if counts.recent != 1 }} audited in the last 30 days</label>{% endif %}
       <div class="bulk-start-foot"><a class="btn btn-ghost" href="{{ url_for('bulk_home') }}">Back</a>

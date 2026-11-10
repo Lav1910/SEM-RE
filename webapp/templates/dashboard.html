@@ -27,7 +27,14 @@
         </div>
         <span class="loc-note small muted"></span>
         <input type="hidden" id="city" name="city"><input type="hidden" id="state" name="state">
-        <label class="chk"><input id="test_mode" type="checkbox" name="test_mode" value="1"> Quick test (fewer questions, lower cost)</label>
+        {# change 36: audit type #}
+        <div class="depth-pick" role="radiogroup" aria-label="Audit type">
+          {% for k in ('quick', 'standard', 'full') %}{% set d = depths[k] %}
+          <label class="dp-opt"><input type="radio" name="depth" value="{{ k }}" {{ 'checked' if k == 'standard' }}
+            data-est="About {{ '%d' % (d.secs // 60) ~ ' min' if d.secs >= 90 else ('1 min' if d.secs >= 50 else d.secs ~ ' sec') }}{% if can('see_costs') %} · about ${{ '%.2f'|format(d.cost) }}{% endif %} · {{ d.what }}"><span>{{ d.label }}</span></label>
+          {% endfor %}
+        </div>
+        <span class="dp-est small muted" aria-live="polite"></span>
       </div>
     </form>
     <div class="status-row" style="margin-top:16px">
@@ -69,7 +76,7 @@
         <tr>
           <td><b>{{ a.builder_name or a.domain }}</b><small>{{ a.market or a.url }}</small></td>
           <td>{% if a.status == 'done' %}<span class="pill p-good">Ready</span>{% elif a.status == 'failed' %}<span class="pill p-bad"{% if can('admin') %} title="{{ a.error }}"{% endif %}>Failed</span>{% elif a.status == 'running' %}<span class="pill p-info">Running {{ a.progress }}%</span>{% else %}<span class="pill p-mute">Queued</span>{% endif %}
-              {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif a.test_mode %}<span class="pill p-mute">Test</span>{% endif %}</td>
+              {% if a.batch_id %}<a class="pill p-info" href="{{ url_for('bulk_run', bid=a.batch_id) }}">Bulk</a>{% elif depth_of(a) != 'full' %}<span class="pill p-mute">{{ DEPTH_INFO[depth_of(a)].label }}</span>{% endif %}</td>
           <td class="r">{% if a.score is not none %}<span class="score-badge {{ 'sb-low' if a.score < 35 else ('sb-mid' if a.score < 70 else 'sb-great') }}">{{ a.score }}</span>{% else %}—{% endif %}</td>
           <td class="r">{% if a.answers %}{{ a.mentioned }} of {{ a.answers }}{% else %}—{% endif %}</td>
           <td class="r">{% if a.pack_of %}{{ a.pack }} of {{ a.pack_of }}{% else %}—{% endif %}</td>
@@ -101,4 +108,14 @@
     {% endif %}
   </section>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {  // change 36: show time (and cost for admins) for the chosen audit type
+  var out = document.querySelector('.dp-est'); if (!out) return;
+  function upd() { var r = document.querySelector('.depth-pick input:checked'); out.textContent = r ? r.dataset.est : ''; }
+  document.querySelectorAll('.depth-pick input').forEach(function (r) { r.addEventListener('change', upd); });
+  upd();
+})();
+</script>
 {% endblock %}

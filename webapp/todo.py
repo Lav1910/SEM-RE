@@ -174,9 +174,10 @@ def todo_run(tid):
         return redirect(url_for("todo_home"))
     sc = scopes.make(t["url"], "root")
     aid = uuid.uuid4().hex[:12]
-    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, test_mode, status, stage, progress, share_token, created_at)
-            VALUES (?,?,?,?, 'root', ?, 'queued', 'Waiting to start', 0, ?, ?)""",
-         (aid, g.user["id"], t["url"], sc["domain"], 1 if request.form.get("depth") != "full" else 0, secrets.token_urlsafe(18), time.time()))
+    depth = "full" if request.form.get("depth") == "full" else "quick"
+    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, test_mode, depth, status, stage, progress, share_token, created_at)
+            VALUES (?,?,?,?, 'root', ?, ?, 'queued', 'Waiting to start', 0, ?, ?)""",
+         (aid, g.user["id"], t["url"], sc["domain"], 1 if depth == "quick" else 0, depth, secrets.token_urlsafe(18), time.time()))
     db.x("UPDATE todos SET audit_id=? WHERE id=?", (aid, tid))
     jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=aid))

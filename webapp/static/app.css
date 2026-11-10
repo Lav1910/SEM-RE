@@ -849,3 +849,19 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
   .client-hero-bar .ctl-form, .client-hero-bar .ctl { width:100%; }
 }
 .client-foot { margin:26px 0 8px; text-align:center; }
+
+/* ===== change 36: audit type toggle and "Run again as" menu ===== */
+.depth-pick { display:inline-flex; gap:4px; padding:4px; background:#EEF5F5; border-radius:12px; }
+.dp-opt { position:relative; margin:0; }
+.dp-opt input { position:absolute; opacity:0; inset:0; cursor:pointer; }
+.dp-opt span { display:block; padding:7px 14px; border-radius:9px; font-size:13.5px; font-weight:500; color:var(--ink2); cursor:pointer; }
+.dp-opt input:checked + span { background:#fff; color:var(--teal); font-weight:600; box-shadow:0 1px 2px rgba(12,51,53,.12); }
+.dp-opt input:focus-visible + span { outline:2px solid var(--teal-b); outline-offset:1px; }
+.rerun { position:relative; }
+.rerun > summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
+.rerun > summary::-webkit-details-marker { display:none; }
+.rerun-menu { position:absolute; right:0; top:calc(100% + 6px); z-index:30; background:#fff; border:1px solid var(--line); border-radius:12px;
+  box-shadow:0 12px 32px rgba(12,51,53,.14); padding:6px; width:280px; display:grid; gap:2px; margin:0; }
+.rerun-menu button { display:grid; gap:2px; text-align:left; background:none; border:0; padding:9px 11px; border-radius:9px; cursor:pointer; font:inherit; color:inherit; }
+.rerun-menu button:hover { background:#F2F8F8; }
+.rerun-menu b { font-weight:600; font-size:14px; } .rerun-menu span { font-size:12.5px; color:var(--muted); }

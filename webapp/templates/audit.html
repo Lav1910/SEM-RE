@@ -31,7 +31,7 @@
         <span class="run-pulse" aria-hidden="true"></span>
         <div><div class="eyebrow-sm">AI visibility audit in progress</div>
           <h1 class="page-title" style="margin:2px 0 2px">{{ a.builder_name or a.domain }}</h1>
-          <p class="small muted" style="margin:0">{{ a.url }} · started by {{ a.owner }}{% if a.test_mode %} · quick test, 6 questions{% endif %}</p></div>
+          <p class="small muted" style="margin:0">{{ a.url }} · started by {{ a.owner }}{% if depth_of(a) != 'full' %} · {{ DEPTH_INFO[depth_of(a)].label }} audit{% endif %}</p></div>
       </div>
       <div class="run-meta">
         <div><span class="label">Elapsed</span><b id="elapsed">0:00</b></div>
@@ -87,7 +87,7 @@
 
   <section class="run-cover">
     <div class="cover-tile"><span class="label">AI platforms</span><div class="logo-row">{% for en in engine_labels %}{{ platform_logo(en, 22) }}{% endfor %}</div></div>
-    <div class="cover-tile"><span class="label">Buyer questions</span><b>{{ 6 if a.test_mode else 14 }}</b><span class="small muted">asked on every platform</span></div>
+    <div class="cover-tile"><span class="label">Buyer questions</span><b>{{ {'quick': 6, 'standard': 12, 'full': 14}[depth_of(a)] }}{{ '+' if depth_of(a) == 'full' }}</b><span class="small muted">asked on every platform</span></div>
     <div class="cover-tile"><span class="label">Website checks</span><b>10</b><span class="small muted">markup, reviews, crawlers, pages</span></div>
     <div class="cover-tile"><span class="label">Google data</span><b>3</b><span class="small muted">Maps pack, Business Profile, demand</span></div>
   </section>

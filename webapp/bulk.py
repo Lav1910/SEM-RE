@@ -22,8 +22,8 @@ from . import auth, db, jobs, status
 from .app import PUBLIC_URL, app, normalize_url, permission_required, security_event
 
 BULK_MAX = int(os.environ.get("BULK_MAX", "100"))
-MINUTES = {"quick": 1.5, "full": 3.5}           # typical minutes per audit, per parallel slot
-QUESTIONS = {"quick": 7, "full": 26}            # questions asked per audit (for the cost estimate)
+MINUTES = {"quick": 1.2, "full": 2.0}           # typical minutes per audit, per parallel slot
+QUESTIONS = {"quick": 6, "full": 26}            # questions asked per audit (for the cost estimate)
 COLS = {"url": ("website", "url", "domain", "site", "web", "homepage"), "name": ("builder", "name", "company", "business"),
         "city": ("city", "town"), "state": ("state", "st", "region"), "notes": ("notes", "note", "comments")}
 
@@ -170,7 +170,7 @@ def bulk_start():
         rows = json.loads(request.form.get("rows") or "[]")
     except ValueError:
         abort(400)
-    depth = "full" if request.form.get("depth") == "full" else "quick"
+    depth = "quick"  # change 35: Bulk always runs Quick audits (no brand questions, no re-asks), to keep big lists cheap
     skip_recent = bool(request.form.get("skip_recent"))
     rows = check_rows([{"url": str(r.get("url", ""))[:300], "name": str(r.get("name", ""))[:120], "city": str(r.get("city", ""))[:60],
                         "state": str(r.get("state", ""))[:30], "notes": str(r.get("notes", ""))[:300]} for r in rows if isinstance(r, dict)])
@@ -194,8 +194,8 @@ def bulk_start():
     for i, r in enumerate(rows):
         st = r["state"].strip()
         st_name = next((n for n, c in STATE_CODES.items() if c == st.upper() or n.lower() == st.lower()), None) if st else None
-        db.x("""INSERT INTO audits (id, user_id, url, domain, scope, city, state, test_mode, status, stage, progress, share_token,
-                created_at, batch_id) VALUES (?,?,?,?, 'root', ?, ?, ?, 'queued', 'Waiting to start', 0, ?, ?, ?)""",
+        db.x("""INSERT INTO audits (id, user_id, url, domain, scope, city, state, test_mode, depth, status, stage, progress, share_token,
+                created_at, batch_id) VALUES (?,?,?,?, 'root', ?, ?, ?, 'quick', 'queued', 'Waiting to start', 0, ?, ?, ?)""",
              (uuid.uuid4().hex[:12], g.user["id"], r["norm"], r["domain"], r["city"] or None, st_name if r["city"] else None,
               1 if depth == "quick" else 0, secrets.token_urlsafe(18), now + i * 0.001, bid))
     security_event("bulk_started", g.user["email"], f"{len(rows)} sites, {depth}")

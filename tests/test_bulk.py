@@ -92,7 +92,8 @@ class BulkFlow(unittest.TestCase):
         db = self.db
         self.db.x("UPDATE audits SET status='failed' WHERE status IN ('queued','running')")  # clean slate
         c = self.client("bulkboss@homebuildermarketers.com")
-        bid = self._start(c, [f"p{i}-homes.com" for i in range(5)]).headers["Location"].rsplit("/", 1)[-1]
+        n = jobs.BULK_PARALLEL + 2  # more sites than may run at once
+        bid = self._start(c, [f"p{i}-homes.com" for i in range(n)]).headers["Location"].rsplit("/", 1)[-1]
         uid = db.q("SELECT id FROM users WHERE email='bulkboss@homebuildermarketers.com'", one=True)["id"]
         sid = "s" + os.urandom(5).hex()
         db.x("""INSERT INTO audits (id, user_id, url, test_mode, status, progress, created_at) VALUES (?, ?, 'https://s.com/', 1,
@@ -101,11 +102,11 @@ class BulkFlow(unittest.TestCase):
         self.assertEqual(first["id"], sid)  # a single audit goes ahead of the older bulk ones
         db.x("UPDATE audits SET status='done', lease_until=NULL WHERE id=?", (sid,))
         got = []
-        for _ in range(5):
+        for _ in range(n):
             r = jobs._claim_audit(60)
             if r:
                 db.x("UPDATE audits SET status='running' WHERE id=?", (r["id"],)); got.append(r["id"])
-        self.assertEqual(len(got), jobs.BULK_PARALLEL)  # never more than 3 bulk audits at once
+        self.assertEqual(len(got), jobs.BULK_PARALLEL)  # never more than BULK_PARALLEL (6) bulk audits at once
         db.x("UPDATE audits SET lease_until=NULL, status='queued' WHERE batch_id=?", (bid,))
         db.x("UPDATE batches SET status='paused' WHERE id=?", (bid,))
         self.assertIsNone(jobs._claim_audit(60))   # paused batches wait
