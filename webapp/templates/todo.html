@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}To-do{% endblock %}
+{% block body %}
+{% set pct = (100 * counts.done / (counts.total or 1))|round|int %}
+<div class="stack">
+  <section class="todo-hero">
+    <div class="todo-pad">
+      <div class="todo-pad-top"><span class="todo-pin"></span><span class="todo-pin"></span><span class="todo-pin"></span></div>
+      <div class="eyebrow-sm">{{ 'Your prospects' if mine else owner.name ~ "'s prospects" }}</div>
+      <h1>To-do</h1>
+      <p class="sub" style="margin:0 0 14px">Paste today's builders. Each one is ticked off automatically when you export its PDF (Full report or Overview only).</p>
+      {% if mine %}
+      <form class="todo-add" method="post" action="{{ url_for('todo_add') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <textarea id="paste" name="paste" rows="4" placeholder="justindoylehomes.com&#10;fischerhomes.com&#10;…or paste rows from a spreadsheet"></textarea>
+        <div class="todo-add-foot">
+          <label class="todo-file"><input id="csv" type="file" name="csv" accept=".csv,text/csv,.txt"><span data-file-label>Upload a CSV instead</span></label>
+          <button class="btn btn-primary" type="submit">Add to my list</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+    <div class="todo-stats">
+      <div class="todo-ring" style="--p:{{ pct }}"><b>{{ counts.done }}</b><small>of {{ counts.total }} done</small></div>
+      <ul>
+        <li><i class="ts-todo"></i>{{ counts.total - counts.done - counts.audited }} to do</li>
+        <li><i class="ts-aud"></i>{{ counts.audited }} audited, PDF not sent yet</li>
+        <li><i class="ts-done"></i>{{ counts.done }} done</li>
+      </ul>
+      {% if people %}
+      <form method="get" class="todo-who"><label class="ctl ctl-select ctl-sm"><span class="sr-only">Whose list</span>
+        <select name="user" onchange="this.form.submit()">{% for p in people %}<option value="{{ p.id }}" {{ 'selected' if p.id == owner.id }}>{{ p.name }}{{ ' (you)' if p.id == g.user.id }}</option>{% endfor %}</select></label>
+        <input type="hidden" name="when" value="{{ when }}"></form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="todo-bar">
+      <div class="seg">{% for k, lab in (('today', 'Today'), ('week', 'This week'), ('all', 'All')) %}<a class="seg-item {{ 'on' if when == k }}" href="{{ url_for('todo_home', when=k, show=show, user=owner.id if not mine else None) }}">{{ lab }}</a>{% endfor %}</div>
+      <div class="seg">{% for k, lab in (('all', 'All'), ('todo', 'Still to do'), ('done', 'Done')) %}<a class="seg-item {{ 'on' if show == k }}" href="{{ url_for('todo_home', when=when, show=k, user=owner.id if not mine else None) }}">{{ lab }}</a>{% endfor %}</div>
+      <div class="todo-bar-r">
+        <div class="bar todo-progress"><i style="width:{{ pct }}%"></i></div>
+        {% if mine and counts.done %}<form method="post" action="{{ url_for('todo_clear') }}" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn" type="submit">Clear completed</button></form>{% endif %}
+      </div>
+    </div>
+    {% if rows %}
+    <div class="tw"><table class="todo-table">
+      <thead><tr><th style="width:44px"></th><th>Prospect</th><th>Status</th><th>Added</th><th class="r">Actions</th></tr></thead>
+      <tbody>
+      {% for r in rows %}{% set st = r.status_view %}
+        <tr class="todo-row t-{{ st }}">
+          <td>{% if mine %}<form method="post" action="{{ url_for('todo_toggle', tid=r.id) }}" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+            <button class="todo-check {{ 'on' if st == 'done' }}" type="submit" aria-label="{{ 'Mark as not done' if st == 'done' else 'Mark as done' }}" title="{{ 'Mark as not done' if st == 'done' else 'Tick off by hand' }}">✓</button></form>
+            {% else %}<span class="todo-check {{ 'on' if st == 'done' }}">✓</span>{% endif %}</td>
+          <td><b class="todo-name">{{ r.name or (r.audit.builder_name if r.audit and r.audit.builder_name else r.domain) }}</b>
+            <small>{{ r.domain }}{% if r.notes %} · {{ r.notes }}{% endif %}</small></td>
+          <td>{% if st == 'done' %}<span class="pill p-good">✓ Done</span><small>{{ {'full':'Full report PDF','overview':'Overview PDF','manual':'Ticked by hand'}.get(r.done_via, 'Done') }} · {{ r.done_at|ago }}</small>
+              {% elif st == 'audited' %}<span class="pill p-warn">◐ Audited</span><small>Export a PDF to tick it off{% if r.audit.score is not none %} · score {{ r.audit.score }}{% endif %}</small>
+              {% elif r.running %}<span class="pill p-info">Running</span><small>Audit in progress</small>
+              {% else %}<span class="pill p-mute">○ To do</span>{% endif %}</td>
+          <td class="small muted">{{ r.created_at|ago }}</td>
+          <td class="r"><div class="todo-acts">
+            {% if r.audit %}<a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=r.audit.id, view='overview') }}">Open audit</a>{% endif %}
+            {% if mine and st != 'done' and not r.running %}
+            <form method="post" action="{{ url_for('todo_run', tid=r.id) }}" class="todo-run"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+              <button class="btn {{ 'btn-ghost' if r.audit else 'btn-primary' }} btn-small" name="depth" value="full" type="submit">{{ 'Re-run' if r.audit else 'Run audit' }}</button>
+              <button class="link-btn small" name="depth" value="quick" type="submit" title="Fewer questions, lower cost">Quick</button></form>
+            {% endif %}
+            {% if mine %}<form method="post" action="{{ url_for('todo_delete', tid=r.id) }}" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="todo-x" type="submit" aria-label="Remove from list" title="Remove">×</button></form>{% endif %}
+          </div></td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}
+    <div class="empty">{% if counts.total %}Nothing in this view.{% else %}Your list is empty. Paste the builders you plan to approach{{ ' today' if when == 'today' }} above.{% endif %}</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () { var i = document.getElementById('csv'), l = document.querySelector('[data-file-label]'); if (!i) return;
+  i.addEventListener('change', function () { l.textContent = i.files[0] ? '✓ ' + i.files[0].name : 'Upload a CSV instead'; }); })();
+</script>
+{% endblock %}

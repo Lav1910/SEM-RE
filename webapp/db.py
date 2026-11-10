@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS batches (
   status TEXT NOT NULL DEFAULT 'running', total INTEGER NOT NULL DEFAULT 0, created_at {real} NOT NULL, finished_at {real},
   notified INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS todos (
+  id {pk}, user_id INTEGER NOT NULL REFERENCES users(id), domain TEXT NOT NULL, url TEXT NOT NULL, name TEXT, notes TEXT,
+  status TEXT NOT NULL DEFAULT 'todo', audit_id TEXT, done_via TEXT, cleared INTEGER NOT NULL DEFAULT 0,
+  created_at {real} NOT NULL, done_at {real}
+);
+CREATE INDEX IF NOT EXISTS todos_user ON todos(user_id, cleared, created_at);
 CREATE TABLE IF NOT EXISTS audit_files (
   audit_id TEXT NOT NULL, name TEXT NOT NULL, content {blob} NOT NULL, updated_at {real} NOT NULL,
   PRIMARY KEY (audit_id, name)
@@ -188,7 +194,7 @@ def x(sql, args=()):
 
 def _has_serial(sql):
     t = sql.split("INTO", 1)[1].strip().split()[0].lower() if "INTO" in sql.upper() else ""
-    return t in ("users", "login_codes", "security_log", "feedback")
+    return t in ("users", "login_codes", "security_log", "feedback", "todos")
 
 
 def upsert(table, data, keys):
