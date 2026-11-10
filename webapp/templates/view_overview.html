@@ -85,6 +85,48 @@
   </section>
 </div>
 
+{# change 40: search demand, the size of the prize #}
+{% set D = V.demand %}
+{% if D and D.has %}
+<section class="panel demand">
+  <div class="panel-h"><h2>Search demand {{ tip("How many people search Google each month for the buyer questions in this audit. People ask AI tools the same kinds of questions, so this shows how much demand is at stake." ~ ('' if V.clean else ' Volumes come from Semrush, DataWise or DataForSEO.')) }}</h2>
+    <span class="small muted">Monthly searches for {{ D.questions }} local buyer question{{ 's' if D.questions != 1 }}{% if V.area %} in {{ V.area }}{% endif %}</span></div>
+  <div class="dm-top">
+    <div class="dm-big"><b>{{ '{:,}'.format(D.total) }}</b><span>people search for these questions <b>every month</b></span></div>
+    <div class="dm-split">
+      <div class="dm-bar" role="img" aria-label="{{ D.pct }}% of the search demand goes to this builder in AI answers">
+        <i class="dm-won" style="width:{{ D.pct }}%"></i><i class="dm-lost" style="width:{{ 100 - D.pct }}%"></i></div>
+      <div class="dm-legend">
+        <span><i class="dm-dot won"></i>AI recommends {{ A.profile.name }} <b>{{ '{:,}'.format(D.named) }}/mo</b></span>
+        <span><i class="dm-dot lost"></i>AI recommends competitors instead <b>{{ '{:,}'.format(D.missed) }}/mo</b> <em class="dm-opp">the opportunity</em></span>
+      </div>
+      <p class="dm-line">AI named <b>{{ A.profile.name }}</b> for <b>{{ D.pct }}%</b> of this search demand.{% if D.pct < 100 %} <b>{{ 100 - D.pct }}%</b> is going to competitors.{% endif %}</p>
+    </div>
+  </div>
+  <div class="dm-grid{{ ' dm-one' if not D.by_area }}">
+    <div>
+      <h3 class="dm-h">Biggest questions {{ tip("The buyer questions with the most monthly searches, and whether AI named this builder for them.") }}</h3>
+      <table class="t dm-t"><thead><tr><th>Question</th><th class="r">Searches/mo</th><th>AI</th></tr></thead><tbody>
+      {% for r in D.top %}
+        <tr><td><b>{{ r.prompt }}</b><small class="muted">{{ r.area }}</small></td>
+          <td class="r tnum">{{ '{:,}'.format(r.volume) }}</td>
+          <td>{% if r.named %}<span class="pill p-good">Named</span>{% else %}<span class="pill p-bad">Not named</span>{% if r.instead %}<small class="muted">AI named {{ r.instead|join(', ') }}</small>{% endif %}{% endif %}</td></tr>
+      {% endfor %}
+      </tbody></table>
+    </div>
+    {% if D.by_area %}{% set mx = D.by_area[0].volume or 1 %}
+    <div>
+      <h3 class="dm-h">By city {{ tip("Monthly searches for each city's questions, and how much of it AI sends to this builder (the dark part of each bar).") }}</h3>
+      {% for r in D.by_area %}
+      <div class="dm-city"><span>{{ r.area }}</span><b class="tnum">{{ '{:,}'.format(r.volume) }}</b>
+        <div class="dm-cbar"><i style="width:{{ (100 * r.volume / mx)|round|int }}%"><em style="width:{{ (100 * r.named / (r.volume or 1))|round|int }}%"></em></i></div></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
 {% if V.recommendations %}
 <section class="panel next2" id="whats-next">
   <div class="next2-h"><h2>What's next?</h2><button class="next2-toggle" type="button" aria-expanded="true"><span>Collapse</span>

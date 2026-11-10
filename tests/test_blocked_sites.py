@@ -31,6 +31,7 @@ class BlockedSite(unittest.TestCase):
             mock.patch.object(site, "lookup_market", return_value=(None, None, None)),  # change 30 is tested on its own
             mock.patch.object(site, "sitemap_urls", return_value=[]),
             mock.patch.object(datawise, "available", return_value=False),
+                        mock.patch("aeo.dfs_volume.available", return_value=False),  # no real DataForSEO calls in tests
             mock.patch.object(locations, "find", side_effect=lambda p, m: [{"label": f"{m['city']}, {m['state_code']}", "main": True}]),
         ]
         for p in self.patches:

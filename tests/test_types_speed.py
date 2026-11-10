@@ -70,6 +70,7 @@ class HeadStartAndBrand(unittest.TestCase):
                         mock.patch.object(site, "fetch", side_effect=lambda url, timeout=25: (403, "text/html", "", url)),
                         mock.patch.object(site, "read_site", side_effect=slow_read),
                         mock.patch.object(datawise, "available", return_value=False),
+                        mock.patch("aeo.dfs_volume.available", return_value=False),  # no real DataForSEO calls in tests
                         mock.patch.object(locations, "find", side_effect=lambda p, m: [{"label": f"{m['city']}, {m['state_code']}", "main": True}])]
         for p in self.patches:
             p.start()
@@ -175,6 +176,27 @@ class TypesBulkCache(unittest.TestCase):
             r = self.client("tyrep").get(f"/audits/{aid}/export-overview.pdf")
             self.assertEqual(r.data, b"%PDF-1.4 fake")
             self.assertEqual(m.call_count, 2)  # export used the ready file, no new PDF made
+
+
+@unittest.skipUnless(os.path.exists(SAMPLE), "needs a sample audit (set HBM_SAMPLE_AUDIT)")
+class SearchDemand(unittest.TestCase):
+    """change 40: the size of the prize, right after the platform and area cards."""
+    def test_demand_figures(self):
+        from webapp import views
+        A = json.load(open(SAMPLE))
+        V = views.build(A)
+        D = V["demand"]
+        self.assertTrue(D["has"])
+        self.assertEqual(D["named"] + D["missed"], D["total"])
+        self.assertEqual(D["named"], min(V["audience"], D["total"]))
+        self.assertLessEqual(len(D["top"]), 5)
+        self.assertEqual([r["volume"] for r in D["top"]], sorted([r["volume"] for r in D["top"]], reverse=True))
+
+    def test_volumes_from_dataforseo_never_raise(self):
+        from aeo import dfs_volume
+        with mock.patch.object(dfs_volume, "available", return_value=True), \
+                mock.patch("urllib.request.urlopen", side_effect=OSError("down")):
+            self.assertEqual(dfs_volume.volumes(["a b c"]), {})
 
 
 if __name__ == "__main__":
