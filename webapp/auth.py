@@ -5,12 +5,13 @@ Who can get in
 - Google sign-in (recommended): set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Google is asked to show only accounts
   in the HBM Google Workspace (hd=...), and the returned token is checked again here (audience, issuer, expiry,
   nonce, verified email, workspace domain).
-- A first Google sign-in by someone new creates a *pending* account that an admin approves (and gives a role) on the
-  Admin page. Emails listed in ADMIN_EMAILS are approved as admins automatically (bootstraps the first admin).
+- Anyone with an HBM address can sign in straight away (no admin step): a first Google sign-in, or a first correct
+  emailed code, creates a Sales account. Admins can change roles or deactivate anyone; deactivated people stay blocked.
+  Emails listed in ADMIN_EMAILS become admins automatically (bootstraps the first admin).
 - Email + password, always available. Passwords are hashed with PBKDF2-SHA256 (600,000 rounds).
 - One-time sign-in code or link by email, always available: a 6-digit code and a single-use link (15 minutes, 5 tries).
-  It also lets someone set a password the first time, or reset a forgotten one. Codes go only to existing, approved
-  accounts; an admin adds people on the Admin page (email only, no password needed).
+  It also lets someone set a password the first time, or reset a forgotten one. Codes go to any HBM address that isn't
+  deactivated; a new address gets a hidden, unverified account (pending=2) that only becomes real once the code is used.
 
 Roles (see PERMISSIONS): admin sees and manages everything; sales runs audits, uses every audit, Strategy and Loom
 screen, exports and share links, but not the Admin page, spending figures or raw audit data.

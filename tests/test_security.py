@@ -148,14 +148,56 @@ class WebApp(unittest.TestCase):
         r = c3.post("/login", data={"csrf": "t", "email": "rep@homebuildermarketers.com", "password": "correct-horse-battery"})
         self.assertEqual(r.status_code, 302); self.assertNotIn("/login", r.headers["Location"])
 
-    def test_code_not_sent_to_unknown_or_outside(self):
+    def test_code_not_sent_outside_or_to_deactivated(self):
         c = self.app.test_client()
         with c.session_transaction() as s:
             s["csrf"] = "t"
+        if not self.db.q("SELECT 1 FROM users WHERE email='gone@homebuildermarketers.com'", one=True):
+            self.db.x("INSERT INTO users (email, name, password_hash, is_admin, role, active, created_at) VALUES (?,?,?,?,?,?,?)",
+                      ("gone@homebuildermarketers.com", "Gone", "!", 0, "sales", 0, time.time()))
         with mock.patch("webapp.mailer.sign_in_email") as m:
-            c.post("/login/code", data={"csrf": "t", "email": "stranger@homebuildermarketers.com"})
             c.post("/login/code", data={"csrf": "t", "email": "x@gmail.com"})
+            c.post("/login/code", data={"csrf": "t", "email": "gone@homebuildermarketers.com"})
             self.assertFalse(m.called)
+        self.assertIsNone(self.db.q("SELECT 1 FROM users WHERE email='x@gmail.com'", one=True))
+
+    def test_new_hbm_address_signs_up_by_code(self):
+        """Change 23: an HBM address nobody added can sign in straight away, as Sales, once it proves the inbox."""
+        email = f"new{int(time.time() * 1000)}@homebuildermarketers.com"
+        c = self.app.test_client()
+        with c.session_transaction() as s:
+            s["csrf"] = "t"
+        sent = {}
+        with mock.patch("webapp.mailer.sign_in_email", side_effect=lambda to, name, code, link, m: sent.update(code=code)):
+            c.post("/login/code", data={"csrf": "t", "email": email})
+        self.assertRegex(sent["code"], r"^\d{6}$")
+        u = self.db.q("SELECT * FROM users WHERE email=?", (email,), one=True)
+        self.assertEqual((u["pending"], u["role"], u["is_admin"]), (2, "sales", 0))  # not real until the code is used
+        team = lambda: self.client("boss@homebuildermarketers.com").get("/admin").get_data(as_text=True).split("Security log")[0]  # noqa: E731
+        self.assertNotIn(email, team())
+        r = c.post("/login/verify", data={"csrf": "t", "code": sent["code"]})
+        self.assertIn("/account", r.headers["Location"])  # signed in, asked to set a password
+        u = self.db.q("SELECT * FROM users WHERE email=?", (email,), one=True)
+        self.assertEqual((u["pending"], u["active"], u["role"]), (0, 1, "sales"))
+        self.assertEqual(c.get("/admin").status_code, 403)  # Sales, not admin
+        self.assertIn(email, team())
+
+    def test_new_hbm_google_account_straight_in(self):
+        from webapp import auth as authmod
+        email = f"g{int(time.time() * 1000)}@homebuildermarketers.com"
+        c = self.app.test_client()
+        with mock.patch.object(authmod, "google_enabled", return_value=True), \
+                mock.patch.object(authmod, "google_finish", return_value={"email": email, "name": "Conor Test", "sub": "sub-" + email}):
+            r = c.get("/auth/google/callback?code=x&state=y")
+        self.assertEqual(r.status_code, 302); self.assertNotIn("/login", r.headers["Location"])
+        u = self.db.q("SELECT * FROM users WHERE email=?", (email,), one=True)
+        self.assertEqual((u["pending"], u["active"], u["role"], u["name"]), (0, 1, "sales", "Conor Test"))
+        # a deactivated person stays out
+        self.db.x("UPDATE users SET active=0 WHERE id=?", (u["id"],))
+        with mock.patch.object(authmod, "google_enabled", return_value=True), \
+                mock.patch.object(authmod, "google_finish", return_value={"email": email, "name": "Conor Test", "sub": "sub-" + email}):
+            r = self.app.test_client().get("/auth/google/callback?code=x&state=y")
+        self.assertIn("/login", r.headers["Location"])
 
     def test_sign_in_link_single_use(self):
         self.db.x("DELETE FROM security_log WHERE email='boss@homebuildermarketers.com'")  # earlier runs count toward the limit

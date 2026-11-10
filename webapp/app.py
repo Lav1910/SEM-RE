@@ -256,6 +256,31 @@ def _base_url():
     return PUBLIC_URL or request.host_url.rstrip("/")
 
 
+def _name_from_email(email):
+    return " ".join(p.capitalize() for p in email.split("@")[0].replace("_", ".").replace("-", ".").split(".") if p) or email
+
+
+def _self_signup_user(email):
+    """Change 23: anyone with an HBM address can sign in without an admin adding them first.
+    Returns the account to send a code to, creating a not-yet-verified one (pending=2, hidden from the Admin list)
+    for a new address. Deactivated accounts get nothing."""
+    u = db.q("SELECT * FROM users WHERE email=?", (email,), one=True)
+    if u:
+        return u if u["active"] else None
+    db.x("""INSERT INTO users (email, name, password_hash, is_admin, role, pending, created_at) VALUES (?,?, '!', 0, 'sales', 2, ?)""",
+         (email, _name_from_email(email), time.time()))
+    return db.q("SELECT * FROM users WHERE email=?", (email,), one=True)
+
+
+def _activate_self_signup(u, how):
+    """After a correct code or link: a new or waiting account becomes a normal Sales account."""
+    if u["pending"]:
+        db.x("UPDATE users SET pending=0 WHERE id=?", (u["id"],))
+        security_event("account_created", u["email"], f"self sign-up ({how})", u["id"])
+        u = db.q("SELECT * FROM users WHERE id=?", (u["id"],), one=True)
+    return u
+
+
 @app.route("/login/code", methods=["POST"])
 def login_code():
     """Email a one-time sign-in code + link. Same answer whether or not the address has an account."""
@@ -270,7 +295,7 @@ def login_code():
         security_event("code_blocked", email, "too many code requests")
         flash("Too many codes requested. Wait 15 minutes and try again.", "bad")
         return redirect(url_for("login", next=nxt))
-    u = db.q("SELECT * FROM users WHERE email=? AND active=1 AND pending=0", (email,), one=True)
+    u = _self_signup_user(email)
     if u:
         code, token = auth.new_code(db, u, app.secret_key, client_ip())
         try:
@@ -281,9 +306,9 @@ def login_code():
             flash("The sign-in email couldn't be sent. Ask an admin to check the email settings.", "bad")
             return redirect(url_for("login", next=nxt))
     else:
-        security_event("code_unknown_email", email)
+        security_event("code_unknown_email", email, "deactivated account")
     session["code_email"], session["next"] = email, nxt
-    flash(f"If {email} has an account, a 6-digit code is on its way. It expires in {auth.CODE_MINUTES} minutes.", "good")
+    flash(f"A 6-digit code is on its way to {email}. It expires in {auth.CODE_MINUTES} minutes.", "good")
     return redirect(url_for("login_verify"))
 
 
@@ -296,8 +321,9 @@ def login_verify():
         if db.recent_count("login_failed", time.time() - WINDOW, ip=client_ip()) >= 8:
             flash("Too many attempts. Wait 15 minutes and try again.", "bad")
             return render_template("login_code.html", email=email), 429
-        u = db.q("SELECT * FROM users WHERE email=? AND active=1 AND pending=0", (email,), one=True)
+        u = db.q("SELECT * FROM users WHERE email=? AND active=1", (email,), one=True)
         if u and auth.check_code(db, u, request.form.get("code", "").replace(" ", ""), app.secret_key):
+            u = _activate_self_signup(u, "email code")
             session.pop("code_email", None)
             nxt = session.get("next", "/")
             _start_session(u, "email code")
@@ -311,7 +337,9 @@ def login_verify():
 @app.route("/login/link/<token>")
 def login_link(token):
     uid = auth.check_link(db, token, app.secret_key)
-    u = db.q("SELECT * FROM users WHERE id=? AND active=1 AND pending=0", (uid,), one=True) if uid else None
+    u = db.q("SELECT * FROM users WHERE id=? AND active=1", (uid,), one=True) if uid else None
+    if u and auth.allowed_email(u["email"]):
+        u = _activate_self_signup(u, "email link")
     if not u or not auth.allowed_email(u["email"]):
         security_event("login_failed", None, "expired or used sign-in link")
         flash("That sign-in link has expired or was already used. Request a new code.", "bad")
@@ -345,9 +373,9 @@ def google_callback():
         is_admin = info["email"] in auth.ADMIN_EMAILS
         db.x("""INSERT INTO users (email, name, password_hash, is_admin, role, google_sub, pending, created_at)
                 VALUES (?,?, '!', ?, ?, ?, ?, ?)""",
-             (info["email"], info["name"], 1 if is_admin else 0, "admin" if is_admin else "sales", info["sub"], 0 if is_admin else 1, time.time()))
+             (info["email"], info["name"], 1 if is_admin else 0, "admin" if is_admin else "sales", info["sub"], 0, time.time()))
         u = db.q("SELECT * FROM users WHERE email=?", (info["email"],), one=True)
-        security_event("account_created", info["email"], "admin (ADMIN_EMAILS)" if is_admin else "pending approval", u["id"])
+        security_event("account_created", info["email"], "admin (ADMIN_EMAILS)" if is_admin else "self sign-up (Google)", u["id"])
     elif u["google_sub"] and info["sub"] and u["google_sub"] != info["sub"]:
         security_event("login_failed", info["email"], "google account id changed")
         flash("This Google account doesn't match the one on file. Ask an admin.", "bad")
@@ -357,6 +385,9 @@ def google_callback():
             db.x("UPDATE users SET google_sub=? WHERE id=?", (info["sub"], u["id"]))
         if info["email"] in auth.ADMIN_EMAILS and (u["pending"] or not u["is_admin"]):
             db.x("UPDATE users SET pending=0, is_admin=1, role='admin', active=1 WHERE id=?", (u["id"],))
+        elif u["pending"] and u["active"]:  # was waiting for approval, or started an email sign-up: Google confirms it's theirs
+            db.x("UPDATE users SET pending=0, name=CASE WHEN pending=2 THEN ? ELSE name END WHERE id=?", (info["name"], u["id"]))
+            security_event("account_created", info["email"], "self sign-up (Google)", u["id"])
         u = db.q("SELECT * FROM users WHERE id=?", (u["id"],), one=True)
     if u["pending"]:
         return render_template("pending.html", email=info["email"]), 403
@@ -961,7 +992,7 @@ def admin():
         return redirect(url_for("admin"))
     users = db.q("""SELECT u.*, (SELECT COUNT(*) FROM audits a WHERE a.user_id=u.id AND a.created_at>?) AS month_n,
                     (SELECT COUNT(*) FROM audits a WHERE a.user_id=u.id AND a.created_at>?) AS day_n
-                    FROM users u ORDER BY u.pending DESC, u.active DESC, u.name""", (time.time() - 30 * 86400, time.time() - 86400))
+                    FROM users u WHERE u.pending != 2 ORDER BY u.pending DESC, u.active DESC, u.name""", (time.time() - 30 * 86400, time.time() - 86400))
     live = status.current()
     platforms = [(engines.ENGINE_LABELS[en], live[en]["state"], live[en]["label"]) for en in engines.ENGINES]
     platforms += [("Semrush", "good" if semrush.available() else "off", "Connected" if semrush.available() else "Not connected"),

@@ -7,8 +7,8 @@
   - A code request emails a 6-digit code and a single-use link.
   - Both are stored only as HMAC-SHA256 hashes, expire after 15 minutes, and stop working after 5 wrong tries or once a
     newer code is sent.
-  - Codes are sent only to existing, approved, HBM accounts. The page answers the same way whether or not the address
-    has an account.
+  - Codes are sent to any HBM address that isn't deactivated. A new address gets a hidden, unverified account that
+    only becomes a real (Sales) account once the code or link is used, so only someone who can open that HBM inbox gets in.
   - Requests are limited to 3 per address and 10 per IP every 15 minutes.
   - After signing in with a code, a person can set or reset their password without the old one (for 15 minutes).
 - **Google sign-in (optional)** (OpenID Connect, authorization code flow) runs as follows:
@@ -18,8 +18,10 @@
   - The token is taken directly from Google's token endpoint over TLS (OIDC Core 3.1.3.7).
   - A changed Google account ID for a known email is refused.
   - Set the consent screen to **Internal** so Google enforces the Workspace as well.
-- **Who has an account:** admins add people (email, name, role). A first Google sign-in by someone not yet added
-  creates a pending account with no access until an admin approves it. `ADMIN_EMAILS` creates the first admin at startup.
+- **Who has an account:** anyone with an HBM address can sign in without being added first. A first Google sign-in, or a
+  first correct emailed code, creates a **Sales** account (logged as "self sign-up" in the security log). Admins can
+  still add people ahead of time, change roles, and **deactivate** anyone; deactivated people can't sign in by any
+  method. `ADMIN_EMAILS` creates the first admin at startup.
 - **Roles:** Admin and Sales, defined in `webapp/auth.py` (`PERMISSIONS`) and enforced on the server:
   - Admin-only routes return 403 to Sales.
   - Cost figures and raw data are hidden from Sales.
