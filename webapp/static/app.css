@@ -899,3 +899,32 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 .cl-pop > b { font-size:14px; font-weight:600; }
 .cl-on { display:grid; gap:6px; margin-top:4px; } .cl-on[hidden], .cl-none[hidden] { display:none; }
 .cl-none { margin:4px 0 0; }
+
+/* ===== change 40: search demand card ===== */
+.demand { margin-top:16px; }
+.dm-top { display:grid; grid-template-columns:minmax(220px, 300px) 1fr; gap:26px; align-items:center; padding:6px 0 18px; border-bottom:1px solid var(--line); }
+.dm-big b { display:block; font-size:44px; line-height:1; font-weight:600; color:var(--teal); font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+.dm-big span { display:block; margin-top:8px; color:var(--ink2); font-size:14px; } .dm-big span b { display:inline; font-size:inherit; color:inherit; }
+.dm-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:#EEF3F3; }
+.dm-bar .dm-won { background:linear-gradient(90deg, #2FB57F, #36C08B); } .dm-bar .dm-lost { background:linear-gradient(90deg, #F2B547, #F0A13A); }
+.dm-legend { display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:13.5px; color:var(--ink2); }
+.dm-legend span { display:inline-flex; align-items:center; gap:7px; } .dm-legend b { color:var(--ink); font-variant-numeric:tabular-nums; }
+.dm-dot { width:10px; height:10px; border-radius:3px; display:inline-block; } .dm-dot.won { background:#36C08B; } .dm-dot.lost { background:#F0A13A; }
+.dm-opp { font-style:normal; font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:#B26A00; background:#FFF3DC; padding:2px 7px; border-radius:999px; }
+.dm-line { margin:10px 0 0; font-size:14px; color:var(--ink2); }
+.dm-grid { display:grid; grid-template-columns:minmax(0, 1.6fr) minmax(0, 1fr); gap:26px; padding-top:16px; } .dm-grid.dm-one { grid-template-columns:1fr; }
+.dm-h { margin:0 0 8px; font-size:14px; font-weight:600; display:flex; align-items:center; }
+.dm-t td small { display:block; margin-top:2px; }
+.dm-city { display:grid; grid-template-columns:1fr auto; gap:4px 10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+.dm-cbar { grid-column:1 / -1; height:8px; background:#EEF3F3; border-radius:999px; overflow:hidden; }
+.dm-cbar i { display:block; height:100%; background:#BFE3E3; border-radius:999px; } .dm-cbar em { display:block; height:100%; background:var(--teal); border-radius:999px; }
+@media (max-width: 900px) { .dm-top, .dm-grid { grid-template-columns:1fr; } .dm-big b { font-size:38px; } }
+@media (max-width: 640px) {  /* change 40: the question list stacks on phones */
+  .dm-t thead { display:none; }
+  .dm-t, .dm-t tbody { display:block; }
+  .dm-t tr { display:grid; grid-template-columns:auto 1fr; gap:6px 10px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
+  .dm-t td { display:block; padding:0; border:0; text-align:left; }
+  .dm-t td:first-child { grid-column:1 / -1; }
+  .dm-t td.r::after { content:" searches/mo"; color:var(--muted); font-size:12px; }
+  .dm-legend { display:grid; gap:8px; }
+}

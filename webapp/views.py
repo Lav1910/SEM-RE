@@ -111,6 +111,30 @@ def build(A, platform="all", history=None, vs=None, area=None, clean=False):
     # Semrush "Monthly Audience": search demand behind the questions where the builder is named
     named_q = {a["question_id"] for a in ok if mentioned(a)}
     audience = sum(qs[i].get("volume") or 0 for i in named_q)
+    # change 40: the search demand behind these questions, and how much of it AI sends to this builder
+    measured_q = {a["question_id"] for a in ok}
+    vol_q = [i for i in measured_q if qs[i].get("volume")]
+    d_total = sum(qs[i]["volume"] for i in vol_q)
+    instead = collections.defaultdict(collections.Counter)
+    for a in ok:
+        if not mentioned(a):
+            for n in (cells[(a["question_id"], a["engine"])].get("competitors") or []):
+                if "." not in n:
+                    instead[a["question_id"]][n] += 1
+    d_top = []
+    for i in sorted(vol_q, key=lambda i: -qs[i]["volume"])[:5]:
+        d_top.append({"prompt": qs[i]["prompt"], "keyword": qs[i].get("keyword"), "volume": qs[i]["volume"], "named": i in named_q,
+                      "area": area_label(qs[i], M), "instead": [n for n, _ in instead[i].most_common(2)]})
+    d_area = collections.OrderedDict()
+    for i in vol_q:
+        ar = area_label(qs[i], M)
+        d_area.setdefault(ar, {"area": ar, "volume": 0, "named": 0})
+        d_area[ar]["volume"] += qs[i]["volume"]
+        d_area[ar]["named"] += qs[i]["volume"] if i in named_q else 0
+    demand = {"has": d_total > 0, "total": d_total, "named": min(audience, d_total), "missed": max(0, d_total - audience),
+              "pct": round(100 * min(audience, d_total) / d_total) if d_total else 0, "top": d_top,
+              "by_area": sorted(d_area.values(), key=lambda r: -r["volume"]) if len(d_area) > 1 else [],
+              "questions": len(vol_q)}
 
     # ---- distribution by LLM ----
     dist = []
@@ -254,7 +278,7 @@ def build(A, platform="all", history=None, vs=None, area=None, clean=False):
         "mentions": mentions, "citations": citations, "cited_pages": len(my_pages), "answers": len(ok),
         "dist": dist, "by_area": by_area, "topics": topics, "opportunities": opportunities,
         "cited_sources": src_rows("cited"), "source_opportunities": src_rows("opp"), "pages": pages,
-        "audience": audience, "chosen": chosen, "detected": detected, "gauge": gauge,
+        "audience": audience, "demand": demand, "chosen": chosen, "detected": detected, "gauge": gauge,
         "datawise": A.get("datawise"), "gbp": A["profile"].get("gbp"), "scope": sc,
         "areas": areas_for(A), "area": area, "questions_n": len(allq),
         "competitors": competitors, "pack": pack, "prompts": prompts, "trend": trend,

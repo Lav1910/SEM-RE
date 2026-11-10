@@ -163,6 +163,8 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     pool = ThreadPoolExecutor(max_workers=2)  # Semrush and DataWise run side by side
     f_sem = pool.submit(semrush.context, scope.semrush_target(sc), kws) if (use_semrush and semrush.available()) else None
     f_dw = pool.submit(datawise.early, profile, market, kws) if datawise.available() else None
+    from aeo import dfs_volume  # change 40: search volumes from DataForSEO when Semrush isn't connected
+    f_dfs = pool.submit(dfs_volume.volumes, kws) if (dfs_volume.available() and not (use_semrush and semrush.available())) else None
     wait_until = time.time() + config.SETTINGS["DATA_WAIT"]  # change 29: a slow data source can't hold the audit up
 
     def _within(f, label):
@@ -174,10 +176,14 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
             log(f"  {label} skipped: {'took too long' if type(ex).__name__ == 'TimeoutError' else ex}")
             return None
     sem, dw = _within(f_sem, "Semrush"), _within(f_dw, "DataWise")
+    dfs_vols = _within(f_dfs, "DataForSEO volumes") or {}
     pool.shutdown(wait=False)
     for err in (sem or {}).get("errors", []):
         log(f"  Semrush warning: {err}")
     vols = dict((sem or {}).get("volumes", {}))
+    for k, v in dfs_vols.items():
+        if vols.get(k) is None:
+            vols[k] = v
     if dw is not None:
         for k, m in dw["keywords"].items():
             if vols.get(k) is None and m.get("volume") is not None:
