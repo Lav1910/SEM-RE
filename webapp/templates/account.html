@@ -8,10 +8,6 @@
     <h1>Settings</h1>
     <p>Your profile, how you sign in, your security and your AI connections.</p>
   </div>
-  <div class="acct-chip">
-    {% if u.avatar_at %}<img class="acct-av" src="{{ url_for('avatar', uid=u.id, v=u.avatar_at|int) }}" alt="">{% else %}<span class="acct-av acct-av-letter">{{ u.name[:1]|upper }}</span>{% endif %}
-    <div><b>{{ u.name }}</b><span>{{ role_label(u) }} · <i class="dot-live"></i> Active</span></div>
-  </div>
 </section>
 
 <div class="acct-grid">
