@@ -27,7 +27,11 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_at {real} NOT NULL,
-  role TEXT NOT NULL DEFAULT 'sales', google_sub TEXT, pending INTEGER NOT NULL DEFAULT 0, last_login {real}
+  role TEXT NOT NULL DEFAULT 'sales', google_sub TEXT, pending INTEGER NOT NULL DEFAULT 0, last_login {real},
+  avatar_at {real}
+);
+CREATE TABLE IF NOT EXISTS user_avatars (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id), content {blob} NOT NULL, mime TEXT NOT NULL, updated_at {real} NOT NULL
 );
 CREATE TABLE IF NOT EXISTS audits (
   id TEXT PRIMARY KEY,
@@ -92,7 +96,7 @@ LATER_COLUMNS = {
     "audits": [("activity", "TEXT"), ("engines", "TEXT"), ("scope", "TEXT"), ("locations", "TEXT"), ("phase", "TEXT"),
                ("lease_until", "REAL"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("batch_id", "TEXT"), ("summary", "TEXT")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
-              ("last_login", "REAL")],
+              ("last_login", "REAL"), ("avatar_at", "REAL")],
     "strategy_content": [("lease_until", "REAL")],
 }
 

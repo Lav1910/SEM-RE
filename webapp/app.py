@@ -385,6 +385,7 @@ def account():
         new = request.form.get("new", "")
         if has_pw and not via_code and not check_password_hash(g.user["password_hash"], request.form.get("current", "")):
             flash("Your current password is wrong. Forgot it? Sign out and sign in with an emailed code.", "bad")
+            return redirect(url_for("account", tab="security"))
         elif len(new) < 12:
             flash("Use at least 12 characters for the password.", "bad")
         elif new != request.form.get("confirm", new):
@@ -394,8 +395,63 @@ def account():
             security_event("password_set" if not has_pw else "password_changed", g.user["email"], "after email code" if via_code else None)
             session.pop("code_login_t", None)
             flash("Password saved. Next time, sign in with your email and this password, or with an emailed code.", "good")
-            return redirect(url_for("dashboard"))
-    return render_template("account.html", has_pw=has_pw, via_code=via_code, setup=request.args.get("setup"))
+            return redirect(url_for("account", tab="security"))
+    tab = "security" if request.method == "POST" or request.args.get("tab") == "security" or request.args.get("setup") else "profile"
+    return render_template("account.html", has_pw=has_pw, via_code=via_code, setup=request.args.get("setup"), tab=tab,
+                           google=auth.google_enabled())
+
+
+IMAGE_TYPES = {b"\x89PNG": "image/png", b"\xff\xd8\xff": "image/jpeg", b"RIFF": "image/webp"}
+
+
+def _image_mime(data):
+    for sig, mime in IMAGE_TYPES.items():
+        if data.startswith(sig) and (mime != "image/webp" or data[8:12] == b"WEBP"):
+            return mime
+    return None
+
+
+@app.route("/account/profile", methods=["POST"])
+@login_required
+def account_profile():
+    if request.form.get("remove_photo"):
+        db.x("DELETE FROM user_avatars WHERE user_id=?", (g.user["id"],))
+        db.x("UPDATE users SET avatar_at=NULL WHERE id=?", (g.user["id"],))
+        flash("Photo removed.", "good")
+        return redirect(url_for("account"))
+    f = request.files.get("photo")
+    if f and f.filename:
+        data = f.read(2 * 1024 * 1024 + 1)
+        mime = _image_mime(data)
+        if len(data) > 2 * 1024 * 1024:
+            flash("That photo is over 2 MB. Choose a smaller one.", "bad")
+        elif not mime:
+            flash("Use a JPG, PNG or WebP photo.", "bad")
+        else:
+            now = time.time()
+            db.upsert("user_avatars", {"user_id": g.user["id"], "content": data, "mime": mime, "updated_at": now}, ("user_id",))
+            db.x("UPDATE users SET avatar_at=? WHERE id=?", (now, g.user["id"]))
+            flash("Photo updated.", "good")
+        return redirect(url_for("account"))
+    name = " ".join((request.form.get("name") or "").split())
+    if not 2 <= len(name) <= 100:
+        flash("Use between 2 and 100 characters for your name.", "bad")
+    else:
+        db.x("UPDATE users SET name=? WHERE id=?", (name, g.user["id"]))
+        flash("Profile saved.", "good")
+    return redirect(url_for("account"))
+
+
+@app.route("/avatar/<int:uid>")
+@login_required
+def avatar(uid):
+    r = db.q("SELECT content, mime FROM user_avatars WHERE user_id=?", (uid,), one=True)
+    if not r:
+        abort(404)
+    resp = app.response_class(bytes(r["content"]), mimetype=r["mime"])
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    resp.headers["Content-Security-Policy"] = "default-src 'none'"
+    return resp
 
 
 # ---------------- salesperson screens ----------------
@@ -647,6 +703,67 @@ def strategy_export(aid, fmt):
 VIEWS_STRATEGY = ("strategy", "content", "fixes")
 
 
+def _history(a, A, platform="all"):
+    """Earlier audits of the same builder, one point per day: the trend line (Semrush: Main Metrics over time)."""
+    hist = []
+    for h in db.q("SELECT * FROM audits WHERE domain=? AND status='done' AND created_at<=? ORDER BY created_at",
+                  (a["domain"], a["created_at"])):
+        HA = A if h["id"] == a["id"] else store.load_json(h["id"])
+        if HA:
+            hv = views.build(HA, platform)
+            if not hv["measured_any"]:  # an audit run before any AI platform was connected isn't a real zero
+                continue
+            day = dates.month_day(h["created_at"])
+            if hist and hist[-1]["date"] == day:  # several runs on one day: keep the latest
+                hist.pop()
+            hist.append({"date": day, "month": datetime.datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m"), "mentions": hv["mentions"],
+                         "citations": hv["citations"], "pages": hv["cited_pages"], "score": hv["score"] or 0,
+                         "audience": hv["audience"], "id": h["id"]})
+    return hist
+
+
+def _report_html(a, A):
+    """The full HBM report, built fresh so page 1 matches the Visibility Overview (with this builder's history)."""
+    from aeo import render
+    hist = _history(a, A)
+    return render.render(A, {"V": views.build(A, "all", hist), "chart": views.chart(A, hist)})
+
+
+def _pdf_response(aid, html, cache_name, download_name):
+    import hashlib
+    key = hashlib.sha256(html.encode("utf-8")).hexdigest()
+    data = store.get_bytes(aid, cache_name) if store.get_text(aid, cache_name + ".key") == key else None
+    if data is None:
+        data = pdf.make_pdf(html)
+        if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
+            return _print_page(html)
+        store.put(aid, cache_name, data)
+        store.put(aid, cache_name + ".key", key)
+    return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=True, download_name=download_name)
+
+
+@app.route("/audits/<aid>/export-overview.pdf")
+@login_required
+def export_overview(aid):
+    """One page: just the Visibility Overview, matching the screen's platform and area filters."""
+    from aeo import render
+    a = get_audit(aid)
+    if a["status"] != "done":
+        abort(404)
+    A = store.load_json(aid)
+    if A is None:
+        abort(404)
+    platform = request.args.get("platform", "all")
+    platform = platform if platform in engines.ENGINES else "all"
+    area = request.args.get("area") or None
+    hist = _history(a, A, platform)
+    ov = {"V": views.build(A, platform, hist, None, area), "chart": views.chart(A, hist)}
+    label = " · ".join(x for x in (area, engines.ENGINE_LABELS.get(platform) + " only" if platform != "all" else None) if x) or None
+    html = render.overview_html(A, ov, label)
+    name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
+    return _pdf_response(aid, html, "overview.pdf", f"{name}-AI-Visibility-Overview-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
+
+
 @app.route("/audits/<aid>/<view>")
 @login_required
 def audit_view(aid, view):
@@ -661,21 +778,7 @@ def audit_view(aid, view):
     platform = request.args.get("platform", "all")
     if platform != "all" and platform not in engines.ENGINES:
         platform = "all"
-    # earlier audits of the same builder give the trend line (Semrush: Main Metrics over time)
-    hist = []
-    for h in db.q("SELECT * FROM audits WHERE domain=? AND status='done' AND created_at<=? ORDER BY created_at",
-                  (a["domain"], a["created_at"])):
-        HA = A if h["id"] == aid else store.load_json(h["id"])
-        if HA:
-            hv = views.build(HA, platform)
-            if not hv["measured_any"]:  # an audit run before any AI platform was connected isn't a real zero
-                continue
-            day = dates.month_day(h["created_at"])
-            if hist and hist[-1]["date"] == day:  # several runs on one day: keep the latest
-                hist.pop()
-            hist.append({"date": day, "month": datetime.datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m"), "mentions": hv["mentions"],
-                         "citations": hv["citations"], "pages": hv["cited_pages"], "score": hv["score"] or 0,
-                         "audience": hv["audience"], "id": h["id"]})
+    hist = _history(a, A, platform)
     vs = [v for v in request.args.getlist("vs") if v]
     area = request.args.get("area") or None
     V = views.build(A, platform, hist, vs, area)
@@ -697,18 +800,13 @@ def export_pdf(aid):
     a = get_audit(aid)
     if a["status"] != "done":
         abort(404)
-    html = store.get_text(aid, "report.html")
-    if html is None:
+    A = store.load_json(aid)
+    if A is None:
         abort(404)
-    data = store.get_bytes(aid, "report.pdf")
-    if data is None or (store.updated_at(aid, "report.pdf") or 0) < (store.updated_at(aid, "report.html") or 0):
-        data = pdf.make_pdf(html)
-        if data is None:  # no PDF engine on this host: open the print-ready page (Save as PDF in the print dialog)
-            return _print_page(html)
-        store.put(aid, "report.pdf", data)
+    html = _report_html(a, A)
     name = re.sub(r"[^A-Za-z0-9]+", "-", a["builder_name"] or a["domain"]).strip("-")
-    return send_file(io.BytesIO(data), mimetype="application/pdf", as_attachment=True,
-                     download_name=f"{name}-AI-Visibility-Audit-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
+    return _pdf_response(aid, html, "report.pdf",
+                         f"{name}-AI-Visibility-Audit-{datetime.date.fromtimestamp(a['created_at']).isoformat()}.pdf")
 
 
 @app.route("/api/audits/<aid>")
@@ -750,10 +848,10 @@ def jobs_tick():
 @login_required
 def audit_report(aid):
     a = get_audit(aid)
-    html = store.get_text(aid, "report.html") if a["status"] == "done" else None
-    if html is None:
+    A = store.load_json(aid) if a["status"] == "done" else None
+    if A is None:
         abort(404)
-    return app.response_class(html, mimetype="text/html")
+    return app.response_class(_report_html(a, A), mimetype="text/html")
 
 
 @app.route("/audits/<aid>/data.json")
@@ -793,10 +891,10 @@ def share_toggle(aid):
 @app.route("/r/<token>")
 def shared_report(token):
     a = db.q("SELECT * FROM audits WHERE share_token=? AND status='done'", (token,), one=True)
-    html = store.get_text(a["id"], "report.html") if a else None
-    if html is None:
+    A = store.load_json(a["id"]) if a else None
+    if A is None:
         abort(404)
-    return app.response_class(html, mimetype="text/html")
+    return app.response_class(_report_html(a, A), mimetype="text/html")
 
 
 @app.route("/logo.webp")

@@ -20,16 +20,14 @@
   <a class="rail-item {{ 'on' if request.endpoint and request.endpoint.startswith('bulk') }}" href="{{ url_for('bulk_home') }}" aria-label="Bulk analysis">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="14" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="3" y="14" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M17.5 14v7M14 17.5h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Bulk</span></a>
   {% endif %}
-  {% if can('admin') %}
-  <a class="rail-item {{ 'on' if request.endpoint == 'admin' }}" href="{{ url_for('admin') }}" aria-label="Admin">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Admin</span></a>
-  {% endif %}
   <div class="rail-bottom">
-    <a class="rail-item {{ 'on' if request.endpoint == 'account' }}" href="{{ url_for('account') }}" title="{{ g.user.name }}">
-      <span class="avatar">{{ g.user.name[:1]|upper }}</span><span>Account</span></a>
-    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
-      <button class="rail-item" type="submit" aria-label="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Sign out</span></button></form>
-  </div>
+    <a class="rail-item {{ 'on' if request.endpoint == 'account' }}" href="{{ url_for('account') }}" title="{{ g.user.name }} · Account and sign out">
+      {% if g.user.avatar_at %}<img class="avatar avatar-img" src="{{ url_for('avatar', uid=g.user.id, v=g.user.avatar_at|int) }}" alt="">{% else %}<span class="avatar">{{ g.user.name[:1]|upper }}</span>{% endif %}<span>Account</span></a>
+    {% if can('admin') %}
+    <a class="rail-item {{ 'on' if request.endpoint == 'admin' }}" href="{{ url_for('admin') }}" aria-label="Admin">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Admin</span></a>
+    {% endif %}
+    </div>
 </aside>
 {% endif %}
 <div class="shell">
