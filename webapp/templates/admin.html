@@ -61,11 +61,11 @@
       </tbody></table></div>
     <details class="perm-help"><summary class="small">What each role can do</summary>
       <ul class="small">
-        <li><b>Admin:</b> everything, including this page (team, roles, approvals, spending cap, platform status, security log), cost figures and raw audit data.</li>
+        <li><b>Admin:</b> everything, including this page (team, roles, spending cap, platform status, security log), cost figures and raw audit data.</li>
         <li><b>Sales:</b> run audits, open every audit screen (overview, competitors, prompts, site audit, strategy, content generator, fixes), PDF exports, share links, Loom talking points and feedback. No Admin page, spending figures or raw data.</li>
       </ul></details>
     <h2 style="margin-top:22px">Add a team member</h2>
-    <p class="small muted" style="margin:-4px 0 10px">Only @{{ auth_info.domain }} addresses. Leave the password blank and they'll sign in with an emailed code, then set their own password.{% if auth_info.google %} Google sign-in also works (new Google sign-ins wait for approval).{% endif %}</p>
+    <p class="small muted" style="margin:-4px 0 10px">Adding people is optional: anyone with an @{{ auth_info.domain }} address can sign in on their own (emailed code{% if auth_info.google %} or Google{% endif %}) and starts as Sales. Add them here to set their name or make them an Admin ahead of time. Leave the password blank and they'll sign in with an emailed code, then set their own password.</p>
     <form method="post" class="new-audit" style="grid-template-columns:repeat(3, minmax(0,1fr)) auto">
       <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add_user">
       <label><span class="label">Name</span><input id="new_name" type="text" name="name" required></label>

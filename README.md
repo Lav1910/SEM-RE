@@ -110,26 +110,27 @@ Locally, without SMTP settings, the code is printed in the server log instead.
 | Run audits, watch them run, see every audit screen (overview, competitors, prompts, site audit) | ✅ | ✅ |
 | Strategy plan, content generator, technical fixes, PDF exports, share links, Loom notes, feedback | ✅ | ✅ |
 | See the whole team's audits | ✅ | ✅ |
-| Admin page: approve or reject people, change roles, deactivate, spending cap, platform status, feedback, security log | ✅ | — |
+| Admin page: add people, change roles, deactivate, spending cap, platform status, feedback, security log | ✅ | — |
 | Cost figures and raw audit data (JSON) | ✅ | — |
 
 The permissions are defined in one place, `webapp/auth.py` → `PERMISSIONS`, so they're easy to change.
 
-**How people get in:**
-1. An admin opens **Admin → Team → Add a team member**: work email, name and role. A password is optional.
-2. The new person opens the app, types their email and clicks **Email me a sign-in code**.
+**How people get in:** anyone with an @homebuildermarketers.com address can sign in straight away. No admin step is
+needed, and they start as **Sales** (an admin can promote or deactivate them on the Admin page).
+1. Optionally, an admin adds them ahead of time in **Admin → Team → Add a team member** (to set a name or the Admin role).
+2. The person opens the app, types their email and clicks **Email me a sign-in code**.
 3. They enter the 6-digit code, or click the link in the email. Then they can set a password for next time.
 4. From then on they can always sign in with **email + password** or with an **emailed code**. A forgotten password
    is just "Email me a sign-in code", then a new password.
 
-If Google sign-in is turned on, a new person can also click **Sign in with Google**. They wait for an admin to
-approve them, and people listed in `ADMIN_EMAILS` skip that step.
+If Google sign-in is turned on, they can also just click **Sign in with Google** and pick their HBM account.
+People listed in `ADMIN_EMAILS` become admins automatically.
 
 ## 5. Security
 
 See [SECURITY.md](SECURITY.md) for the full list. In short:
 - Only HBM addresses can sign in: email + password, a one-time emailed code or link (single use, 15 minutes, 5 tries), or optionally Google.
-- Codes go only to accounts an admin has added. New Google sign-ins need approval.
+- Any HBM address can sign in without an admin adding it first (as Sales). Deactivated people stay blocked.
 - CSRF protection on every form.
 - Secure, HttpOnly session cookies; a strict Content-Security-Policy, HSTS and anti-framing headers.
 - Login rate limits per IP and per email.
