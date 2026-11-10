@@ -14,17 +14,18 @@
     <div><h1>AI Visibility Audits</h1><p class="sub" style="margin:0">Sign in with your @{{ domain }} account.</p></div>
     {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}" style="margin:0">{{ m }}</div>{% endfor %}{% endwith %}
     <input type="hidden" name="csrf" value="{{ session.csrf }}">
-    <label><span class="label">Work email</span><input id="email" type="email" name="email" autocomplete="username" required autofocus placeholder="you@{{ domain }}"></label>
+    {% if google %}
+    <a class="btn btn-google" href="{{ url_for('google_login', next=request.args.get('next')) }}">
+      <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.3.8-4.7l-7.8-6C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>
+      Sign in with Google</a>
+    <div class="or"><span>or use your email</span></div>
+    {% endif %}
+    <label><span class="label">Work email</span><input id="email" type="email" name="email" autocomplete="username" required{% if not google %} autofocus{% endif %} placeholder="you@{{ domain }}"></label>
     <label><span class="label">Password</span><input id="password" type="password" name="password" autocomplete="current-password"></label>
     <button class="btn btn-primary" type="submit">Sign in</button>
     <div class="or"><span>or</span></div>
     <button class="btn btn-ghost" type="submit" formaction="{{ url_for('login_code', next=request.args.get('next')) }}" formnovalidate>Email me a sign-in code</button>
     <p class="small muted" style="margin:0">First time, or forgot your password? Get a one-time code by email. It signs you in and lets you set a password.</p>
-    {% if google %}
-    <a class="btn btn-google" href="{{ url_for('google_login', next=request.args.get('next')) }}">
-      <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.3.8-4.7l-7.8-6C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>
-      Sign in with Google</a>
-    {% endif %}
     <p class="small muted" style="margin:0">No account? Ask your HBM admin to add you.</p>
   </form>
 </div>
