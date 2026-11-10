@@ -1,22 +1,67 @@
 <script>
 (function () {
   var csrf = '{{ session.csrf }}';
-  /* lane filter on the plan */
+  /* filters: lane tabs (Strategy Plan) and status buttons (both pages) work together */
+  var laneSel = 'all', statSel = 'all';
+  try { statSel = localStorage.getItem('hbm-status-filter') || 'all'; } catch (e) {}
+  function applyFilters() {
+    var box = document.querySelector('[data-status-filter]'); if (!box) return;
+    var cards = document.querySelectorAll(box.dataset.statusFilter), shown = 0;
+    cards.forEach(function (c) {
+      var ok = (laneSel === 'all' || !c.dataset.lane || c.dataset.lane === laneSel) && (statSel === 'all' || c.dataset.status === statSel);
+      c.hidden = !ok; if (ok) shown++;
+    });
+    box.querySelectorAll('[data-f]').forEach(function (b) { b.classList.toggle('on', b.dataset.f === statSel); });
+    var empty = box.nextElementSibling; if (empty && empty.classList.contains('sf-empty')) empty.hidden = shown > 0;
+  }
+  function recount() {
+    var box = document.querySelector('[data-status-filter]'); if (!box) return;
+    var cards = Array.prototype.slice.call(document.querySelectorAll(box.dataset.statusFilter));
+    var n = {all: cards.length, todo: 0, doing: 0, done: 0};
+    cards.forEach(function (c) { n[c.dataset.status] = (n[c.dataset.status] || 0) + 1; });
+    Object.keys(n).forEach(function (k) { var el = box.querySelector('[data-count="' + k + '"]'); if (el) el.textContent = n[k]; });
+    var pct = function (k) { return n.all ? Math.round(100 * n[k] / n.all) : 0; };
+    box.querySelector('.b-done').style.width = pct('done') + '%';
+    box.querySelector('.b-doing').style.width = pct('doing') + '%';
+    box.querySelector('[data-sum]').textContent = n.done + ' of ' + n.all + ' done';
+    var ring = document.querySelector('.sp-ring');
+    if (ring) { ring.style.setProperty('--p', pct('done')); ring.querySelector('b').textContent = n.done; }
+  }
   document.querySelectorAll('.lane-tabs [data-tab]').forEach(function (b) {
     b.addEventListener('click', function () {
       document.querySelectorAll('.lane-tabs [data-tab]').forEach(function (o) { o.classList.toggle('on', o === b); });
-      document.querySelectorAll('.strat-card').forEach(function (c) { c.hidden = b.dataset.tab !== 'all' && c.dataset.lane !== b.dataset.tab; });
+      laneSel = b.dataset.tab; applyFilters();
     });
   });
-  /* status saves as soon as it changes */
-  document.querySelectorAll('select[data-autosave]').forEach(function (s) {
-    s.addEventListener('change', function () {
-      var f = s.form, card = f.closest('.strat-card, .fix');
-      fetch(f.action, {method: 'POST', body: new FormData(f), headers: {'X-Requested-With': 'fetch'}, credentials: 'same-origin'}).then(function () {
-        if (card) card.className = card.className.replace(/\bst-\w+/, 'st-' + s.value);
-      });
+  document.querySelectorAll('[data-status-filter] [data-f]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      statSel = b.dataset.f; try { localStorage.setItem('hbm-status-filter', statSel); } catch (e) {}
+      applyFilters();
     });
   });
+  var LAB = {todo: '○ To do', doing: '◐ In progress', done: '✓ Done'}, VERB = {todo: 'Set to do', doing: 'Started', done: 'Done'};
+  document.querySelectorAll('[data-status-form]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = e.submitter || document.activeElement; if (!btn || !btn.value) return;
+      var st = btn.value, card = f.closest('.task'), prev = card.dataset.status;
+      if (st === prev) return;
+      var setUI = function (v) {
+        card.dataset.status = v;
+        card.className = card.className.replace(/\bst-\w+/, 'st-' + v);
+        f.querySelectorAll('.stat-btn').forEach(function (b) { var on = b.value === v; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+        var badge = card.querySelector('[data-badge]'); if (badge) badge.textContent = LAB[v];
+        recount(); applyFilters();
+      };
+      setUI(st);  // show it straight away; undo if saving fails
+      var fd = new FormData(f); fd.set('status', st);
+      fetch(f.action, {method: 'POST', body: fd, headers: {'X-Requested-With': 'fetch'}, credentials: 'same-origin'})
+        .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+        .then(function (d) { f.querySelector('[data-stamp]').textContent = VERB[st] + (d.who ? ' by ' + d.who : '') + ' · just now'; })
+        .catch(function () { setUI(prev); f.querySelector('[data-stamp]').textContent = 'Couldn’t save. Try again.'; });
+    });
+  });
+  applyFilters();
   /* content generator */
   var writer = document.getElementById('writer');
   function pieces() { return Array.prototype.slice.call(document.querySelectorAll('.piece')); }

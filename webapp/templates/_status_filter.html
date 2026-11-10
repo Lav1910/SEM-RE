@@ -1,0 +1,10 @@
+{# Filter row. Needs: counts {todo, doing, done}, total, target (CSS selector of the cards). #}
+<div class="stat-filter" data-status-filter="{{ target }}" role="tablist" aria-label="Filter by status">
+  <button type="button" class="sf-btn on" data-f="all">All <b data-count="all">{{ total }}</b></button>
+  <button type="button" class="sf-btn sf-todo" data-f="todo">○ To do <b data-count="todo">{{ counts.todo }}</b></button>
+  <button type="button" class="sf-btn sf-doing" data-f="doing">◐ In progress <b data-count="doing">{{ counts.doing }}</b></button>
+  <button type="button" class="sf-btn sf-done" data-f="done">✓ Done <b data-count="done">{{ counts.done }}</b></button>
+  <span class="sf-bar" aria-hidden="true"><i class="b-done" style="width:{{ (100 * counts.done / (total or 1))|round|int }}%"></i><i class="b-doing" style="width:{{ (100 * counts.doing / (total or 1))|round|int }}%"></i></span>
+  <span class="sf-sum small muted" data-sum>{{ counts.done }} of {{ total }} done</span>
+</div>
+<p class="sf-empty empty" hidden>Nothing here with this status.</p>

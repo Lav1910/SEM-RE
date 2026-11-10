@@ -1,0 +1,10 @@
+{# Status buttons for one task. Needs: item_id, cur (todo|doing|done), stamp (or none). #}
+<form class="stat" method="post" action="{{ url_for('strategy_item', aid=a.id) }}" data-status-form>
+  <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="item" value="{{ item_id }}">
+  <span class="stat-note small muted" data-stamp>{% if stamp and stamp.t %}{{ {'todo':'Set to do','doing':'Started','done':'Done'}[cur] }}{% if stamp.who %} by {{ stamp.who }}{% endif %} · {{ stamp.t|ago }}{% endif %}</span>
+  <div class="stat-seg" role="radiogroup" aria-label="Status">
+    {% for v, lab, ico in (('todo', 'To do', '○'), ('doing', 'In progress', '◐'), ('done', 'Done', '✓')) %}
+    <button type="submit" name="status" value="{{ v }}" class="stat-btn s-{{ v }} {{ 'on' if cur == v }}" role="radio" aria-checked="{{ 'true' if cur == v else 'false' }}"><span aria-hidden="true">{{ ico }}</span> {{ lab }}</button>
+    {% endfor %}
+  </div>
+</form>

@@ -7,15 +7,12 @@
     <p class="small muted" style="margin:0">From the site checks. Snippets use the builder's real name, phone, address and service areas; fill any [confirm] items before publishing.</p>
   </div>
 </section>
+{% if S.fixes %}{% with counts = S.fix_counts, total = S.fixes|length, target = '.fix' %}{% include "_status_filter.html" %}{% endwith %}{% endif %}
 {% for f in S.fixes %}
-<section class="panel fix st-{{ f.status }}">
+<section class="panel fix task st-{{ f.status }}" data-status="{{ f.status }}">
   <div class="sc-top">
     <span class="imp imp-{{ f.impact|lower }}">{{ f.impact }} impact</span><span class="eff">{{ f.effort }} effort</span>
-    <form class="sc-status" method="post" action="{{ url_for('strategy_item', aid=a.id) }}">
-      <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="item" value="fix_{{ f.key }}">
-      <label class="ctl ctl-select ctl-sm"><span class="sr-only">Status</span><select name="status" data-autosave>
-        {% for v, lab in (('todo', 'To do'), ('doing', 'In progress'), ('done', 'Done')) %}<option value="{{ v }}" {{ 'selected' if f.status == v }}>{{ lab }}</option>{% endfor %}
-      </select></label></form>
+    <span class="st-badge" data-badge>{{ {'todo':'○ To do','doing':'◐ In progress','done':'✓ Done'}[f.status] }}</span>
   </div>
   <h3>{{ f.title }}</h3>
   <p class="sc-why">{{ f.why }}</p>
@@ -23,7 +20,10 @@
   {% if f.snippet %}
   <div class="snip"><div class="snip-h"><span class="small muted">Ready to paste</span><button class="link-btn" type="button" data-copy="snip-{{ loop.index }}">Copy</button></div>
     <textarea id="snip-{{ loop.index }}" readonly rows="{{ [f.snippet.count('\n') + 1, 14]|min }}">{{ f.snippet }}</textarea></div>{% endif %}
-  {% if f.gen %}<a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=a.id, view='content') }}#gen-{{ f.gen }}">Open in Content Generator</a>{% endif %}
+  <div class="task-foot">
+    {% if f.gen %}<a class="btn btn-ghost btn-small" href="{{ url_for('audit_view', aid=a.id, view='content') }}#gen-{{ f.gen }}">Open in Content Generator</a>{% else %}<span></span>{% endif %}
+    {% with item_id = 'fix_' ~ f.key, cur = f.status, stamp = f.stamp %}{% include "_status_ctl.html" %}{% endwith %}
+  </div>
 </section>
 {% else %}
 <div class="empty">Every site check passed. Nothing to fix.</div>
