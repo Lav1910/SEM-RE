@@ -46,23 +46,32 @@
         {% for k in ('quick', 'standard', 'full') %}<button type="submit" name="depth" value="{{ k }}"><b>Run again as {{ DEPTH_INFO[k].label }}</b><span>{{ DEPTH_INFO[k].what }}</span></button>{% endfor %}
       </form>
     </details>
-    <details class="exp">
-      <summary class="btn btn-ghost btn-small"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Export to PDF<span class="exp-caret" aria-hidden="true"></span></summary>
-      <div class="exp-menu">
-        <a href="{{ url_for('export_pdf', aid=a.id) }}"><b>Full report</b><span>Every section, HBM-branded · 8 pages</span></a>
-        <a href="{{ url_for('export_overview', aid=a.id, platform=platform if platform != 'all' else None, area=V.area if V and V.area else None) }}"><b>Overview only</b><span>1 page{% if V and (V.area or platform != 'all') %} · this filtered view{% else %} · gauge, graph, platforms, what's next{% endif %}</span></a>
-        {% if can('share') %}{# change 31: an interactive link for the client #}
-        <div class="exp-client" data-url="{{ url_for('client_link', aid=a.id) }}" data-csrf="{{ session.csrf }}">
-          <button type="button" class="exp-client-btn" data-act="create"><b>Client link</b><span>Interactive overview and competitors · for the client</span></button>
-          <div class="exp-client-info" {% if not client %}hidden{% endif %}>
+    {% if can('share') %}{# change 39: the client link has its own button: one click creates and copies it #}
+    <div class="cl" data-url="{{ url_for('client_link', aid=a.id) }}" data-csrf="{{ session.csrf }}">
+      <button type="button" class="btn btn-ghost btn-small cl-main" data-act="create" title="Create (or reuse) the client's interactive link and copy it">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="cl-label">Client link</span><span class="cl-count" {% if not (client and client.views) %}hidden{% endif %} title="Times the client opened it">{{ client.views if client else 0 }}</span></button>
+      <details class="cl-more">
+        <summary class="btn btn-ghost btn-small cl-caret" aria-label="Client link options"><span class="exp-caret" aria-hidden="true"></span></summary>
+        <div class="cl-pop">
+          <b>Client link</b><span class="small muted">Interactive Visibility Overview and Competitor Research for the client. No sign-in.</span>
+          <div class="cl-on" {% if not client %}hidden{% endif %}>
             <input class="exp-client-url" type="text" readonly value="{{ client.url if client else '' }}" aria-label="Client link">
             <span class="small muted" data-stats>{% if client %}{{ ('Opened ' ~ client.views ~ ' time' ~ ('s' if client.views != 1 else '') ~ ' · last ' ~ (client.last|ago)) if client.views else 'Not opened yet' }} · expires {{ client.expires|datefmt }}{% endif %}</span>
             <div class="exp-client-acts"><button type="button" class="link-btn small" data-act="copy">Copy</button>
               <button type="button" class="link-btn small" data-act="new">New link</button>
               <button type="button" class="link-btn small" data-act="off">Turn off</button></div>
           </div>
+          <p class="cl-none small muted" {% if client %}hidden{% endif %}>No active link. Click <b>Client link</b> to create one; it's copied straight away.</p>
         </div>
-        {% endif %}
+      </details>
+    </div>
+    {% endif %}
+    <details class="exp">
+      <summary class="btn btn-ghost btn-small"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Export to PDF<span class="exp-caret" aria-hidden="true"></span></summary>
+      <div class="exp-menu">
+        <a href="{{ url_for('export_pdf', aid=a.id) }}"><b>Full report</b><span>Every section, HBM-branded · 8 pages</span></a>
+        <a href="{{ url_for('export_overview', aid=a.id, platform=platform if platform != 'all' else None, area=V.area if V and V.area else None) }}"><b>Overview only</b><span>1 page{% if V and (V.area or platform != 'all') %} · this filtered view{% else %} · gauge, graph, platforms, what's next{% endif %}</span></a>
       </div>
     </details>
   </div>
@@ -131,15 +140,24 @@
 {% block view %}{% endblock %}
 {% include "_feedback.html" %}
 <script>
-(function () {  // change 31: create, copy, renew or turn off the client link without leaving the page
-  var box = document.querySelector('.exp-client'); if (!box) return;
-  var info = box.querySelector('.exp-client-info'), input = box.querySelector('.exp-client-url'), stats = box.querySelector('[data-stats]');
+(function () {  // change 39: one click creates and copies the client link; the arrow opens copy / new link / turn off
+  var box = document.querySelector('.cl'); if (!box) return;
+  var main = box.querySelector('.cl-main'), label = box.querySelector('.cl-label'), count = box.querySelector('.cl-count');
+  var on = box.querySelector('.cl-on'), none = box.querySelector('.cl-none'), input = box.querySelector('.exp-client-url'), stats = box.querySelector('[data-stats]');
+  var timer;
+  function flash(text) { clearTimeout(timer); label.textContent = text; main.classList.add('done'); timer = setTimeout(function () { label.textContent = 'Client link'; main.classList.remove('done'); }, 2200); }
   function copy() {
     if (!input.value) return;
-    input.select();
-    var done = function () { stats.dataset.prev = stats.dataset.prev || stats.textContent; stats.textContent = 'Copied. Paste it into your email.'; };
-    if (navigator.clipboard) navigator.clipboard.writeText(input.value).then(done, function () { document.execCommand('copy'); done(); });
-    else { document.execCommand('copy'); done(); }
+    var ok = function () { flash('✓ Link copied'); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(input.value).then(ok, function () { input.select(); document.execCommand('copy'); ok(); });
+    else { input.select(); document.execCommand('copy'); ok(); }
+  }
+  function paint(l) {
+    on.hidden = !l; none.hidden = !!l;
+    if (!l) { input.value = ''; count.hidden = true; return; }
+    input.value = l.url;
+    stats.textContent = (l.views ? 'Opened ' + l.views + ' time' + (l.views === 1 ? '' : 's') + ' · last ' + l.last_label : 'Not opened yet') + ' · expires ' + l.expires_label;
+    count.textContent = l.views; count.hidden = !l.views;
   }
   box.addEventListener('click', function (ev) {
     var b = ev.target.closest('[data-act]'); if (!b) return;
@@ -147,17 +165,14 @@
     if (act === 'copy') { copy(); return; }
     if (act === 'off' && !confirm('Turn off this client link? Anyone with it will see "link expired".')) return;
     var fd = new FormData(); fd.append('csrf', box.dataset.csrf); fd.append('action', act);
+    main.disabled = true;
     fetch(box.dataset.url, {method: 'POST', body: fd, headers: {'Accept': 'application/json'}, credentials: 'same-origin'})
       .then(function (r) { return r.json(); })
-      .then(function (d) {
-        var l = d.link;
-        if (!l) { info.hidden = true; input.value = ''; return; }
-        info.hidden = false; input.value = l.url;
-        stats.textContent = (l.views ? 'Opened ' + l.views + ' time' + (l.views === 1 ? '' : 's') + ' · last ' + l.last_label : 'Not opened yet') + ' · expires ' + l.expires_label;
-        copy();
-      })
-      .catch(function () { stats.textContent = 'Something went wrong. Try again.'; info.hidden = false; });
+      .then(function (d) { paint(d.link); if (d.link) copy(); else flash('Link turned off'); })
+      .catch(function () { flash('Try again'); })
+      .then(function () { main.disabled = false; });
   });
+  document.addEventListener('click', function (e) { var m = box.querySelector('.cl-more'); if (m.open && !m.contains(e.target)) m.open = false; });
 })();
 </script>
 {% endblock %}
