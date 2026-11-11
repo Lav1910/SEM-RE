@@ -151,6 +151,14 @@ class OAuth(Base):
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         return r.get_json()
 
+    def handed_back(self, r):
+        import html as _html
+        body = r.get_data(as_text=True)
+        refresh = _html.unescape(re.search(r'http-equiv="refresh" content="0;url=([^"]+)"', body).group(1))
+        link = _html.unescape(re.search(r'<a class="btn btn-primary" href="([^"]+)"', body).group(1))
+        self.assertEqual(refresh, link)
+        return link
+
     def authorize(self, client, who="mcrep", uri=None):
         verifier = secrets.token_urlsafe(48)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
@@ -160,10 +168,14 @@ class OAuth(Base):
         web = self.web(who)
         page = web.get("/oauth/authorize?" + urllib.parse.urlencode(q))
         self.assertEqual(page.status_code, 200, page.get_data(as_text=True)[:300])
-        self.assertIn("form-action 'self' https://claude.ai", page.headers["Content-Security-Policy"])
+        self.assertIn("form-action 'self';", page.headers["Content-Security-Policy"])  # the form only posts here
         r = web.post("/oauth/authorize", data=dict(q, csrf="t", decision="allow"))
-        self.assertEqual(r.status_code, 302)
-        loc = urllib.parse.urlsplit(r.headers["Location"])
+        # not a redirect: browsers apply form-action to every hop after a form post, and AI apps hop again
+        # (www.cursor.com -> cursor.com froze the Allow button). A page sends the browser on instead.
+        self.assertEqual(r.status_code, 200)
+        target = self.handed_back(r)
+        self.assertTrue(target.startswith(q["redirect_uri"] + "?"))
+        loc = urllib.parse.urlsplit(target)
         params = dict(urllib.parse.parse_qsl(loc.query))
         self.assertEqual(params["state"], "xyz")
         return params["code"], verifier, q
@@ -227,7 +239,13 @@ class OAuth(Base):
         q = {"response_type": "code", "client_id": client["client_id"], "redirect_uri": "http://localhost:50111/callback",
              "code_challenge": "a" * 43, "code_challenge_method": "S256", "state": "s"}
         r = self.web("mcrep").post("/oauth/authorize", data=dict(q, csrf="t", decision="deny"))
-        self.assertTrue(r.headers["Location"].startswith("http://localhost:50111/callback?error=access_denied"))
+        self.assertTrue(self.handed_back(r).startswith("http://localhost:50111/callback?error=access_denied"))
+
+    def test_cursor_web_callback_hops_are_not_blocked(self):
+        """Ash's freeze: Cursor's callback www.cursor.com 308-redirects to cursor.com."""
+        client = self.register("Cursor", ("https://www.cursor.com/agents/mcp/oauth/callback",))
+        code, verifier, q = self.authorize(client)
+        self.assertTrue(code)
 
     def test_app_name_cant_inject_script(self):
         client = self.register(name="Evil');alert(1);('")

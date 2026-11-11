@@ -121,8 +121,6 @@ def headers(resp):
     else:
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Content-Security-Policy"] = CSP
-        if g.get("form_action_extra"):  # change 50: the Allow button on the AI sign-in page returns to the AI app
-            resp.headers["Content-Security-Policy"] = CSP.replace("form-action 'self'", "form-action 'self' " + g.form_action_extra)
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     if (g.get("user") or request.path.startswith("/c/")) and resp.mimetype == "text/html":
         resp.headers["Cache-Control"] = "no-store"
