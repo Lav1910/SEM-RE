@@ -223,20 +223,23 @@ def oauth_register():
 
 
 # ---------------------------------------------------------------- OAuth: the sign-in / Allow page
-def _back(uri, params):
+def _back_url(uri, params):
     p = urllib.parse.urlsplit(uri)
     q = urllib.parse.parse_qsl(p.query, keep_blank_values=True) + [(k, v) for k, v in params.items() if v is not None]
-    return redirect(urllib.parse.urlunsplit((p.scheme, p.netloc, p.path, urllib.parse.urlencode(q), "")), code=302)
+    return urllib.parse.urlunsplit((p.scheme, p.netloc, p.path, urllib.parse.urlencode(q), ""))
 
 
-def _form_target(uri):
-    """CSP source that lets the Allow form's redirect reach the AI app."""
-    p = urllib.parse.urlsplit(uri)
-    if _loopback(uri):
-        return f"http://{p.hostname}:*"
-    if p.scheme == "https":
-        return f"https://{p.netloc}"
-    return p.scheme + ":"
+def _back(uri, params):
+    return redirect(_back_url(uri, params), code=302)
+
+
+def _hand_back(client, uri, params, ok):
+    """After Allow or Cancel: a short page that sends the browser on to the AI app. Not a redirect from the form post:
+    browsers apply the form's CSP (form-action) to every redirect that follows, and AI apps often hop again
+    (www.cursor.com -> cursor.com, or on to an app link), which froze the Allow button."""
+    resp = render_template("oauth_consent.html", done=True, ok=ok, client=client, target=_back_url(uri, params),
+                           app_host=urllib.parse.urlsplit(uri).netloc or uri.split(":")[0])
+    return _no_store(app.make_response(resp))
 
 
 @app.route("/oauth/authorize", methods=["GET", "POST"])
@@ -262,13 +265,12 @@ def oauth_authorize():
     if request.method == "POST":  # CSRF is checked for every form post (app.load_user)
         if P.get("decision") != "allow":
             security_event("oauth_denied", g.user["email"], client["name"])
-            return _back(uri, {"error": "access_denied", "state": state})
+            return _hand_back(client, uri, {"error": "access_denied", "state": state}, False)
         code = secrets.token_urlsafe(32)
         db.x("INSERT INTO oauth_codes (code_hash, client_id, user_id, redirect_uri, challenge, scope, expires, used) VALUES (?,?,?,?,?,?,?,0)",
              (_h(code), client["client_id"], g.user["id"], uri, challenge, SCOPE, time.time() + CODE_TTL))
         security_event("oauth_allowed", g.user["email"], client["name"])
-        return _back(uri, {"code": code, "state": state, "iss": base_url()})
-    g.form_action_extra = _form_target(uri)
+        return _hand_back(client, uri, {"code": code, "state": state, "iss": base_url()}, True)
     fields = {k: P.get(k) for k in ("client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method",
                                      "state", "scope", "resource") if P.get(k) is not None}
     if "redirect_uri" not in fields:
