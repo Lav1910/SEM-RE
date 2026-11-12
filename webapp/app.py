@@ -736,7 +736,8 @@ def api_locations():
         if not prof["homepage_status"] or prof["homepage_status"] >= 400:
             return jsonify(dict(meta, error="Couldn't load that website.", locations=[]))
         f_biz = pool.submit(business.cached, prof, domain)  # change 53: the Services dropdown, read alongside the cities
-        mk = site.market_from(prof)
+        preset = locmod.preset_for(domain)  # change 56: HBM measures San Diego plus the US home-building hubs
+        mk = site.market_from(prof, preset["city"], preset["state_code"]) if preset else site.market_from(prof)
         biz = None
         try:
             biz = _biz_json(f_biz.result(timeout=45))

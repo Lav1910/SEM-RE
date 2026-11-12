@@ -119,7 +119,38 @@ def validate(cands, market, provider="gemini"):
 
 
 def find(profile, market):
-    return validate(candidates(profile, market), market)
+    found = validate(candidates(profile, market), market)
+    preset = preset_for(profile.get("domain"))
+    if preset:  # change 56: a business with a set list of cities measures those, after its main market
+        have = {l["label"].lower() for l in found}
+        found += [l for l in (typed(h, "home-building hub") for h in preset["hubs"]) if l and l["label"].lower() not in have]
+    return found
+
+
+# change 56: businesses whose website names no single city get a fixed main market and a list of cities to measure.
+# HBM serves builders nationally: San Diego is home, plus the US metros where the most new homes are built.
+PRESETS = {
+    "homebuildermarketers.com": {"city": "San Diego", "state_code": "CA",
+                                 "hubs": ["Dallas, TX", "Houston, TX", "Austin, TX", "Phoenix, AZ", "Atlanta, GA", "Charlotte, NC",
+                                          "Raleigh, NC", "Nashville, TN", "Orlando, FL", "Tampa, FL", "Las Vegas, NV", "Denver, CO"]},
+}
+
+
+def preset_for(domain):
+    d = (domain or "").lower()
+    d = d[4:] if d.startswith("www.") else d
+    return PRESETS.get(d)
+
+
+def typed(label, source="entered"):
+    """A place written as "Mason, OH"."""
+    m = re.match(r"^\s*([A-Za-z .'-]+?),\s*([A-Za-z]{2})\s*$", label or "")
+    if not m or m.group(2).upper() not in STATE_NAMES:
+        return None
+    st = m.group(2).upper()
+    name = " ".join(w.capitalize() for w in m.group(1).split())
+    return {"label": f"{name}, {st}", "name": name, "city": name, "state": STATE_NAMES[st], "state_code": st,
+            "kind": "city", "main": False, "sources": [source]}
 
 
 def market_for(loc):

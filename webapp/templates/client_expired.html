@@ -12,7 +12,7 @@
 <body>
 <div class="login-shell">
   <div class="login-card stack">
-    <img class="login-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
+    {% from "_wordmark.html" import wordmark %}{{ wordmark(light=True, big=True, cls='login-wm') }}
     <div><h1>This link has expired</h1>
       <p class="sub" style="margin:0">The AI visibility report link is no longer active. Ask your Home Builder Marketers contact for a new one.</p></div>
   </div>

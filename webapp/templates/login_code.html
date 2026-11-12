@@ -11,7 +11,7 @@
 <body>
 <div class="login-shell">
   <form class="login-card stack" method="post">
-    <img class="login-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
+    {% from "_wordmark.html" import wordmark %}{{ wordmark(light=True, big=True, cls='login-wm') }}
     <div><h1>Check your email</h1><p class="sub" style="margin:0">Enter the 6-digit code sent to <b>{{ email }}</b>, or click the link in the email.</p></div>
     {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}" style="margin:0">{{ m }}</div>{% endfor %}{% endwith %}
     <input type="hidden" name="csrf" value="{{ session.csrf }}">
