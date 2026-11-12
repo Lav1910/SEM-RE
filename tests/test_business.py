@@ -200,6 +200,20 @@ class Dashboard(unittest.TestCase):
         login = self.app.test_client().get("/login").get_data(as_text=True)
         self.assertIn("wm-light", login); self.assertNotIn("hbm-logo.png", login); self.assertIn("Syncopate", login)
 
+    def test_old_address_redirects_to_the_new_one(self):
+        from webapp import app as appmod
+        c = self.app.test_client()
+        with mock.patch.object(appmod, "PUBLIC_URL", "https://aeosnapshot.homebuildermarketers.com"):
+            r = c.get("/c/abc123?x=1", base_url="https://hbm-ai-visibility.vercel.app")
+            self.assertEqual(r.status_code, 308)
+            self.assertEqual(r.headers["Location"], "https://aeosnapshot.homebuildermarketers.com/c/abc123?x=1")
+            self.assertEqual(c.get("/login", base_url="https://hbm-ai-visibility.vercel.app").headers["Location"],
+                             "https://aeosnapshot.homebuildermarketers.com/login")
+            self.assertNotEqual(c.post("/mcp", base_url="https://hbm-ai-visibility.vercel.app", json={}).status_code, 308)  # agents keep working
+            self.assertNotEqual(c.get("/.well-known/oauth-protected-resource", base_url="https://hbm-ai-visibility.vercel.app").status_code, 308)
+            self.assertEqual(c.get("/login", base_url="https://aeosnapshot.homebuildermarketers.com").status_code, 200)
+            self.assertEqual(c.get("/login", base_url="https://hbm-ai-visibility-git-x.vercel.app").status_code, 200)  # previews untouched
+
     def test_favicon(self):
         r = self.app.test_client().get("/favicon.ico")
         self.assertEqual(r.status_code, 200)

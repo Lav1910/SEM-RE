@@ -84,6 +84,20 @@ def latest_audit():
 API_PATHS = ("/mcp", "/oauth/token", "/oauth/register", "/oauth/revoke", "/.well-known/")
 
 
+OLD_HOSTS = {h.strip().lower() for h in os.environ.get("HBM_OLD_HOSTS", "hbm-ai-visibility.vercel.app").split(",") if h.strip()}
+
+
+@app.before_request
+def to_public_host():
+    """The app moved to PUBLIC_URL (aeosnapshot.homebuildermarketers.com): pages opened on the old production address
+    (old client links, bookmarks) go to the same page there. AI agents, OAuth and the job runner keep working on the old
+    address until they're reconnected; preview deployments are left alone."""
+    if not PUBLIC_URL or request.host.lower() not in OLD_HOSTS or request.path.startswith(API_PATHS + ("/api/",)):
+        return None
+    target = PUBLIC_URL + request.full_path.rstrip("?") if request.query_string else PUBLIC_URL + request.path
+    return redirect(target, code=308)
+
+
 @app.before_request
 def load_user():
     g.user = None
