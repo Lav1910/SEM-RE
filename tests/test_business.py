@@ -195,7 +195,8 @@ class Dashboard(unittest.TestCase):
 
     def test_wordmark_everywhere(self):
         html = self.client().get("/").get_data(as_text=True)
-        self.assertIn('class="wm-t"', html); self.assertNotIn("hbm-logo.png", html)
+        self.assertIn('class="wm-t"', html)
+        self.assertEqual(html.count("hbm-logo.png"), 1)  # the HBM logo stays in the far-left rail only
         login = self.app.test_client().get("/login").get_data(as_text=True)
         self.assertIn("wm-light", login); self.assertNotIn("hbm-logo.png", login); self.assertIn("Syncopate", login)
 

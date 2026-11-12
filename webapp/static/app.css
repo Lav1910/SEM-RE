@@ -1155,5 +1155,4 @@ html.wm-first .wm-t { -webkit-mask-image:linear-gradient(90deg, #000 0%, #000 46
 .login-card .wm.login-wm { padding:6px 0 4px; }
 .client-hero-top .wm.client-wm { padding:0; flex:none; align-self:center; }
 .client-hero-top .wm.client-wm .wm-t { font-size:16px; }
-.rail-logo .rail-icon { display:block; width:40px; height:40px; margin:0 auto; border-radius:11px; box-shadow:0 2px 8px rgba(0,0,0,.25); }
 @media (max-width: 640px) { .client-hero-top .wm.client-wm .wm-t { font-size:13px; } }
