@@ -4,7 +4,7 @@
   <div>
     <div class="eyebrow-sm">AEO strategy for {{ A.profile.name }}</div>
     <h2 style="margin:4px 0 6px">{{ S['items']|length }} deliverables to raise AI visibility</h2>
-    <p class="small muted" style="margin:0">Ranked by expected visibility gain, from this audit's answers and site checks. Status is saved for this builder, so next month's audit shows what's done.</p>
+    <p class="small muted" style="margin:0">Ranked by expected visibility gain, from this audit's answers and site checks. Status is saved for this {{ biz(A).noun }}, so next month's audit shows what's done.</p>
   </div>
   <div class="strat-progress">
     <div class="sp-ring" style="--p:{{ (100 * S.done_n / (S['items']|length or 1))|round|int }}"><b>{{ S.done_n }}</b><small>of {{ S['items']|length }} done</small></div>

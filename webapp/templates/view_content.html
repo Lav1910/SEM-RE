@@ -4,7 +4,7 @@
   <div>
     <div class="eyebrow-sm">Content Generator</div>
     <h2 style="margin:4px 0 6px">Ready-to-publish content for {{ A.profile.name }}</h2>
-    <p class="small muted" style="margin:0">Written only from facts on the builder's site, Google profile and this audit. Anything the builder must supply is highlighted as <mark class="confirm">[confirm: …]</mark>.</p>
+    <p class="small muted" style="margin:0">Written only from facts on the {{ biz(A).noun }}'s site, Google profile and this audit. Anything the {{ biz(A).noun }} must supply is highlighted as <mark class="confirm">[confirm: …]</mark>.</p>
   </div>
   <form class="gen-all" method="post" action="{{ url_for('strategy_generate', aid=a.id) }}">
     <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="kind" value="all">

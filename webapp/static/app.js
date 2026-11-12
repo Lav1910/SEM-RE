@@ -140,17 +140,68 @@
     s.textContent = main ? 'Main' : (sources && sources.length ? sources[0] : '');
     l.appendChild(cb); l.appendChild(t); l.appendChild(s); list.appendChild(l);
   }
+  /* change 53: Services dropdown, filled from the same website scan */
+  var sDd = form.querySelector('.svc-dd'), sBtn = form.querySelector('.svc-btn'), sText = form.querySelector('.svc-btn-text'),
+      sPanel = form.querySelector('.svc-panel'), sList = form.querySelector('.svc-list'), sAll = form.querySelector('.svc-all'),
+      sNote = form.querySelector('.svc-note'), sCustom = form.querySelector('.svc-custom'), sAdd = form.querySelector('.svc-add-name');
+  var sLabel = '';
+  function sBoxes() { return Array.prototype.slice.call(sList.querySelectorAll('input[name=svc]')); }
+  function sSummarize() {
+    var bs = sBoxes(), on = bs.filter(function (b) { return b.checked; }).length;
+    if (!bs.length) { sText.textContent = sBtn.disabled ? sText.textContent : 'Add a service'; sNote.textContent = sLabel ? 'Reads as ' + sLabel : ''; return; }
+    if (sAll.checked) { bs.forEach(function (b) { b.checked = true; }); on = bs.length; }
+    sText.textContent = sAll.checked ? 'All services (' + bs.length + ')' : on + ' of ' + bs.length + ' services';
+    sNote.textContent = sLabel ? 'Reads as ' + sLabel : '';
+  }
+  function sRow(name, checked, added) {
+    var l = document.createElement('label'); l.className = 'loc-row';
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'svc'; cb.value = name; cb.checked = !!checked;
+    if (added) cb.dataset.added = '1';
+    cb.addEventListener('change', function () { sCustom.value = '1'; if (!cb.checked) sAll.checked = false; sSummarize(); });
+    var t = document.createElement('span'); t.className = 'loc-name'; t.textContent = name;
+    var src = document.createElement('span'); src.className = 'loc-src'; src.textContent = added ? 'added' : 'website';
+    l.appendChild(cb); l.appendChild(t); l.appendChild(src); sList.appendChild(l);
+  }
+  function sReset(msg) {
+    sList.innerHTML = ''; sAll.checked = true; sCustom.value = ''; sLabel = '';
+    sBtn.disabled = true; sBtn.classList.add('loading'); sText.textContent = msg; sNote.textContent = '';
+  }
+  function sFill(b) {
+    sBtn.disabled = false; sBtn.classList.remove('loading'); sList.innerHTML = '';
+    sLabel = b && b.label ? b.label : '';
+    ((b && b.services) || []).forEach(function (n) { sRow(n, true, false); });
+    if (!sBoxes().length) sText.textContent = 'Add a service';
+    sSummarize();
+  }
+  sBtn.addEventListener('click', function (e) { e.stopPropagation(); sPanel.hidden = !sPanel.hidden; sBtn.setAttribute('aria-expanded', sPanel.hidden ? 'false' : 'true'); });
+  document.addEventListener('click', function (e) { if (!sDd.contains(e.target)) { sPanel.hidden = true; sBtn.setAttribute('aria-expanded', 'false'); } });
+  sAll.addEventListener('change', function () {  // back to "All": the audit reads the services itself, unless some were typed in
+    if (!sAll.checked) { sBoxes().forEach(function (b) { b.checked = false; }); sCustom.value = '1'; }
+    else sCustom.value = sBoxes().some(function (b) { return b.dataset.added; }) ? '1' : '';
+    sSummarize();
+  });
+  form.querySelector('.svc-add-btn').addEventListener('click', function () {
+    var n = sAdd.value.trim().replace(/\s+/g, ' ');
+    if (!n) { sAdd.focus(); return; }
+    n = n.charAt(0).toUpperCase() + n.slice(1);
+    if (!sBoxes().some(function (b) { return b.value.toLowerCase() === n.toLowerCase(); })) sRow(n, true, true);
+    sCustom.value = '1'; sAdd.value = ''; sSummarize();
+  });
+  sAdd.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); form.querySelector('.svc-add-btn').click(); } });
+
   function load() {
     var u = urlIn.value.trim();
     if (u.indexOf('.') < 1 || u === lastUrl) return;
     lastUrl = u; var my = ++seq;
     list.innerHTML = ''; allBox.checked = true; cityH.value = ''; stateH.value = '';
+    sReset('Reading services…');
     btn.disabled = true; btn.classList.add('loading'); btnText.textContent = 'Finding service areas…'; note.textContent = 'Reading the website (about 15 seconds)';
     fetch(box.dataset.locs + '?url=' + encodeURIComponent(u) + '&scope=' + encodeURIComponent(scopeSel ? scopeSel.value : 'root'), {credentials: 'same-origin'})
       .then(function (r) { return r.json(); }).catch(function () { return {error: 'Couldn’t scan the site. Add the city below.', locations: []}; })
       .then(function (d) {
         if (my !== seq) return;
         btn.disabled = false; btn.classList.remove('loading');
+        sFill(d.business);
         meta.cap = d.cap || meta.cap; meta.cost_per_city = d.cost_per_city === undefined ? meta.cost_per_city : d.cost_per_city;
         if (d.market) { cityH.value = d.market.city; stateH.value = d.market.state; box.querySelector('.loc-add-state').value = d.market.state_code; }
         (d.locations || []).forEach(function (l) { row(l.label, l.sources, l.main, true); });

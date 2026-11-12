@@ -557,7 +557,9 @@ details.prompt summary::-webkit-details-marker { display:none; }
 .loc-add { display:flex; gap:6px; align-items:center; padding:8px 10px 4px; border-top:1px solid var(--line); }
 .loc-add .loc-add-city { flex:1; min-width:0; padding:7px 10px !important; }
 .loc-add-st { height:34px; } .loc-add-st select { height:32px; padding-right:28px; }
-@media (max-width: 640px) { .loc-btn { min-width:0; width:100%; } .loc-dd { flex:1 1 100%; } }
+.svc-panel { left:auto; right:0; }  /* change 53: the Services dropdown sits at the right of the row */
+.svc-dd .loc-btn { min-width:200px; }
+@media (max-width: 640px) { .loc-btn { min-width:0; width:100%; } .loc-dd { flex:1 1 100%; } .svc-panel { left:0; right:auto; } }
 
 /* ===== change 12: Strategy ===== */
 .strat-head { display:flex; justify-content:space-between; gap:18px; align-items:center; flex-wrap:wrap; background:linear-gradient(120deg, #F1FAFA, #fff 60%); }

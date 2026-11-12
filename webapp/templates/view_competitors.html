@@ -3,7 +3,7 @@
 {% set top = V.competitors[0] if V.competitors else None %}
 <div class="ov-mid">
   <section class="panel">
-    <div class="panel-h"><h2>Share of voice in AI answers {{ tip("How often each builder is named, as a share of all builder mentions across these AI answers. The highlighted row is this builder.") }}</h2><span class="small muted">Builder mentions across {{ V.answers }} answers</span></div>
+    <div class="panel-h"><h2>Share of voice in AI answers {{ tip("How often each " ~ biz(A).noun ~ " is named, as a share of all " ~ biz(A).noun ~ " mentions across these AI answers. The highlighted row is this " ~ biz(A).noun ~ ".") }}</h2><span class="small muted">{{ biz(A).Noun }} mentions across {{ V.answers }} answers</span></div>
     {% if V.measured_any and V.competitors|length > 1 %}
       {% set mx = V.competitors|map(attribute='mentions')|max or 1 %}
       {% for c in V.competitors %}
@@ -13,14 +13,14 @@
         <span class="r tnum">{{ c.share }}%</span><span class="r tnum link">{{ c.mentions }}</span>
       </div>
       {% endfor %}
-      <p class="small muted">Share of voice is each builder's mentions as a share of all builder mentions in these answers. Names come from the answer text.</p>
+      <p class="small muted">Share of voice is each {{ biz(A).noun }}'s mentions as a share of all {{ biz(A).noun }} mentions in these answers. Names come from the answer text.</p>
     {% else %}<div class="empty">Competitor mentions appear once AI platforms are connected.</div>{% endif %}
   </section>
   <section class="panel">
     <div class="panel-h"><h2>Google Maps 3-pack {{ tip("The three businesses Google shows on the map for these local searches. AI answers often lean on these listings.") }}</h2><span class="small muted">Local searches for the same questions</span></div>
     {% if V.kpis.pack is not none %}
       <p class="big-stat">{{ V.kpis.pack }} <small>of {{ V.kpis.pack_of }} searches show {{ A.profile.name }}</small></p>
-      <table class="t"><thead><tr><th>Builder</th><th class="r">3-pack spots</th></tr></thead><tbody>
+      <table class="t"><thead><tr><th>{{ biz(A).Noun }}</th><th class="r">3-pack spots</th></tr></thead><tbody>
         {% for b in V.pack|sort(attribute='pack', reverse=True) %}<tr><td>{{ b.name }}</td><td class="r tnum">{{ b.pack }}</td></tr>{% endfor %}
       </tbody></table>
     {% elif V.area %}<div class="empty">No Google Maps results were returned for {{ V.area }}'s searches.</div>
@@ -29,7 +29,7 @@
 </div>
 {% set M = (V.datawise or {}).get('mentions') %}
 <section class="panel">
-  <div class="panel-h"><h2>AI mentions database {{ tip("How often AI tools have mentioned these builders across all the questions people ask them, not just the ones in this audit.") }}</h2></div>
+  <div class="panel-h"><h2>AI mentions database {{ tip("How often AI tools have mentioned these " ~ biz(A).nouns ~ " across all the questions people ask them, not just the ones in this audit.") }}</h2></div>
   {% if M and (M.google or M.chatgpt) %}
   <div class="tw"><table class="t"><thead><tr><th>Domain</th><th class="r">Google AI mentions</th><th class="r">Google AI search volume</th><th class="r">ChatGPT mentions</th><th class="r">ChatGPT AI search volume</th><th>Top sources in Google AI</th></tr></thead><tbody>
     {% for d in (M.google.keys()|list + M.chatgpt.keys()|list)|unique %}
@@ -41,12 +41,12 @@
     {% endfor %}
   </tbody></table></div>
   {% set gsum = M.google.values()|map(attribute='mentions')|sum %}{% set csum = M.chatgpt.values()|map(attribute='mentions')|sum %}
-  {% if gsum == 0 and csum == 0 %}<p class="small" style="margin-top:10px"><b>None of these builders has recorded mentions in this database yet.</b> It covers popular prompts nationally, so smaller local builders often don't appear; this audit's own local questions above are the better measure for them.</p>{% endif %}
+  {% if gsum == 0 and csum == 0 %}<p class="small" style="margin-top:10px"><b>None of these {{ biz(A).nouns }} has recorded mentions in this database yet.</b> It covers popular prompts nationally, so smaller local {{ biz(A).nouns }} often don't appear; this audit's own local questions above are the better measure for them.</p>{% endif %}
   <p class="small muted">Mentions are AI answers that cite or name the website; AI search volume is the estimated monthly searches behind those prompts. Useful as a second, independent view next to this audit's own questions.</p>
   {% else %}<div class="empty">AI mentions data wasn't available for this audit.</div>{% endif %}
 </section>
 <section class="panel">
-  <div class="panel-h"><h2>Where competitors win {{ tip("Questions where AI named other builders and left this one out, with who it named instead.") }}</h2><span class="small muted">Questions where AI named other builders and not {{ A.profile.name }}</span></div>
+  <div class="panel-h"><h2>Where competitors win {{ tip("Questions where AI named other " ~ biz(A).nouns ~ " and left this one out, with who it named instead.") }}</h2><span class="small muted">Questions where AI named other {{ biz(A).nouns }} and not {{ A.profile.name }}</span></div>
   {% if V.opportunities %}
   <div class="tw"><table class="t"><thead><tr><th>Question</th><th class="r">Search Volume</th><th>Named instead</th></tr></thead><tbody>
     {% for r in V.opportunities %}<tr><td><b>{{ r.topic }}</b></td><td class="r tnum">{{ '{:,}'.format(r.volume) if r.volume is not none else '—' }}</td><td>{{ r.top_competitors|join(', ') }}</td></tr>{% endfor %}

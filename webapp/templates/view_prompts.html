@@ -5,7 +5,7 @@
     <div class="seg" data-filter="prompts">
       <button class="seg-item on" data-f="all">All</button><button class="seg-item" data-f="named">Named</button><button class="seg-item" data-f="missed">Not named</button>
     </div></div>
-  <p class="small muted" style="margin-top:-6px">Open a prompt to read each platform's actual answer, the builders it named and the sources it cited.</p>
+  <p class="small muted" style="margin-top:-6px">Open a prompt to read each platform's actual answer, the {{ biz(A).nouns }} it named and the sources it cited.</p>
   {% for p in V.prompts %}
   {% set named = p.rows|selectattr('mentioned')|list %}
   {% set answered = p.rows|selectattr('status', 'equalto', 'ok')|list %}
@@ -31,7 +31,7 @@
           {% if r.citations %}<p class="small"><b>Cited:</b> {% for c in r.citations %}<a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.domain }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
         {% elif r.status == 'ok' %}
           <div class="ans-text md">{{ r.text|md }}</div>
-          {% if r.competitors %}<p class="small"><b>Builders named:</b> {{ r.competitors|join(', ') }}</p>{% endif %}
+          {% if r.competitors %}<p class="small"><b>{{ biz(A).Nouns }} named:</b> {{ r.competitors|join(', ') }}</p>{% endif %}
           {% if r.citations %}<p class="small"><b>Sources:</b> {% for c in r.citations %}<a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.domain }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
         {% elif r.friendly %}<p class="small muted">{{ r.friendly[1] }}</p>
         {% elif r.status == 'not_configured' %}<p class="small muted">This platform isn't connected yet.</p>{% endif %}

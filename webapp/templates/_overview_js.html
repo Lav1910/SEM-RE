@@ -34,7 +34,7 @@
       box.innerHTML = '';
       var has = series.some(function (x) { return x.v.some(function (v) { return v !== null && v !== undefined; }); });
       if (!months.length || !has) {
-        box.innerHTML = '<div class="chart-empty">No history yet for this view. It fills in as this builder is audited again each month.</div>';
+        box.innerHTML = '<div class="chart-empty">No history yet for this view. It fills in as this business is audited again each month.</div>';
         return;
       }
       var W = Math.max(280, box.clientWidth), H = 230, L = 44, R = 14, T = 12, B = 30, pw = W - L - R, ph = H - T - B;

@@ -123,12 +123,28 @@ class ReopenAndWording(unittest.TestCase):
         aid = "r" + uuid.uuid4().hex[:11]
         self.db.x("""INSERT INTO audits (id, user_id, url, domain, scope, status, created_at, share_token)
                      VALUES (?,?,?,?, 'root', 'done', ?, ?)""", (aid, self.ids["spdboss"], f"https://{dom}/", dom, time.time() - 86400, uuid.uuid4().hex))
+        from webapp import store
+        store.save_json(aid, "audit.json", {"profile": {"name": "Recent", "domain": dom, "business": {"kind": "home_builder", "noun": "builder", "nouns": "builders"}}})
         with mock.patch("webapp.jobs.kick"):
             r = self.client("spdrep").post("/audits", data={"csrf": "t", "url": dom})
             self.assertIn(f"/audits/{aid}/overview", r.headers["Location"])
             self.assertIn("reopened=1", r.headers["Location"])
             r = self.client("spdrep").post("/audits", data={"csrf": "t", "url": dom, "confirm_duplicate": "1"})  # "Run fresh"
             self.assertNotIn(aid, r.headers["Location"])
+
+    def test_audit_from_before_service_detection_runs_fresh(self):
+        """change 53: an audit that asked home-builder questions of every business isn't reopened; it runs again."""
+        dom = f"old{uuid.uuid4().hex[:6]}.com"
+        aid = "o" + uuid.uuid4().hex[:11]
+        self.db.x("""INSERT INTO audits (id, user_id, url, domain, scope, status, created_at, share_token)
+                     VALUES (?,?,?,?, 'root', 'done', ?, ?)""", (aid, self.ids["spdrep"], f"https://{dom}/", dom, time.time() - 86400, uuid.uuid4().hex))
+        from webapp import store
+        store.save_json(aid, "audit.json", {"profile": {"name": "Old", "domain": dom}})
+        with mock.patch("webapp.jobs.kick"):
+            r = self.client("spdrep").post("/audits", data={"csrf": "t", "url": dom})
+        self.assertNotIn(aid, r.headers["Location"])
+        new = self.db.q("SELECT id FROM audits WHERE domain=? AND id!=?", (dom, aid), one=True)
+        self.assertTrue(new)
 
     def test_sales_get_a_question_not_an_error(self):
         aid = "f" + uuid.uuid4().hex[:11]
@@ -137,7 +153,7 @@ class ReopenAndWording(unittest.TestCase):
                    "This website turns away automated visitors, so we couldn't read the builder's city and state. Enter them and run again.",
                    time.time(), uuid.uuid4().hex))
         rep = self.client("spdrep").get(f"/audits/{aid}").get_data(as_text=True)
-        self.assertIn("We couldn't confirm where this builder is based", rep)
+        self.assertIn("We couldn't confirm where this business is based", rep)
         self.assertNotIn("turns away automated visitors", rep)
         self.assertIn("Run with this market", rep)
         boss = self.client("spdboss").get(f"/audits/{aid}").get_data(as_text=True)

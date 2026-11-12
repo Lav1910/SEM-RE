@@ -25,7 +25,7 @@ import urllib.parse
 from flask import abort, flash, g, jsonify, redirect, render_template, request, url_for
 from itsdangerous import BadData, URLSafeTimedSerializer
 
-from aeo import budget, kv
+from aeo import budget, business, kv
 from aeo import scope as scopes
 from . import auth, db, jobs, store, views
 from .app import (DAILY_LIMIT, DEPTH_INFO, PUBLIC_URL, REOPEN_DAYS, admin_required, app, login_required, normalize_url,
@@ -502,8 +502,9 @@ def t_get_audit_section(a):
     au = _audit(a.get("audit_id"))
     A = _done(au)
     V = views.build(A, clean=_clean())
+    W = business.words(A)
     out = {"audit_id": au["id"], "builder": A["profile"].get("name"), "website": au["domain"], "section": sec,
-           "report_url": _report_url(au["id"], sec)}
+           "business_type": W["label"], "services_measured": W["services"], "report_url": _report_url(au["id"], sec)}
     if sec == "overview":
         out.update({k: v for k, v in _summary(au, A).items() if k not in out})
         out["topics"] = [{"question": t["topic"], "keyword": t["keyword"], "monthly_searches": t["volume"], "visibility_pct": t["visibility"],
@@ -563,7 +564,12 @@ def t_start_audit(a):
     sc = scopes.make(url, "root")
     domain = sc["domain"]
     now = time.time()
-    if not a.get("force_new"):
+    svcs = a.get("services")  # change 53: optional; otherwise read from the website
+    if svcs is not None:
+        if not isinstance(svcs, list):
+            raise ToolError("services must be a list of service names, like [\"Bathroom remodeling\"].")
+        svcs = list(dict.fromkeys(str(x).strip()[:60] for x in svcs if str(x).strip()))[:8] or None
+    if not a.get("force_new") and svcs is None:
         prev = db.q("""SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id WHERE a.domain=?
                        AND COALESCE(a.scope,'root')='root' AND (a.status IN ('queued','running') AND a.created_at>?
                        OR a.status='done' AND a.created_at>?) ORDER BY a.created_at DESC LIMIT 1""",
@@ -588,9 +594,11 @@ def t_start_audit(a):
     city, state = _str(a, "city", 60) or None, _str(a, "state", 30) or None
     aid = secrets.token_hex(6)
     via = "agent:" + (g.agent_token["name"] or "AI agent")[:50]
-    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, city, state, test_mode, depth, status, stage, progress, share_token, created_at, via)
-            VALUES (?,?,?,?, 'root', NULL, ?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?, ?)""",
-         (aid, g.user["id"], url, domain, city, state, 1 if depth == "quick" else 0, depth, secrets.token_urlsafe(18), now, via))
+    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, services, city, state, test_mode, depth, status, stage, progress,
+                                share_token, created_at, via)
+            VALUES (?,?,?,?, 'root', NULL, ?, ?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?, ?)""",
+         (aid, g.user["id"], url, domain, json.dumps(svcs) if svcs else None, city, state, 1 if depth == "quick" else 0, depth,
+          secrets.token_urlsafe(18), now, via))
     jobs.kick(PUBLIC_URL or request.host_url)
     _note(f"Started {DEPTH_INFO[depth]['label']} audit · {domain}", aid)
     return {"audit_id": aid, "status": "queued", "type": DEPTH_INFO[depth]["label"], "website": domain,
@@ -733,13 +741,18 @@ TOOLS = [
       "include_answers": {"type": "boolean", "description": "prompts only: include each AI answer's text and sources (longer)."}},
      ["audit_id", "section"]),
     ("start_audit", "Start an audit", t_start_audit, {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True},
-     "Run an AI visibility audit on a home builder's website. Returns an audit_id straight away; the audit takes about 1-2 "
-     "minutes, so call get_audit_status until it's done. If the site was audited in the last week, that audit is returned "
-     "instead (pass force_new=true for a fresh one). Counts toward your daily agent audit limit and the team's spending cap.",
-     {"website": {"type": "string", "description": "The builder's website, e.g. justindoylehomes.com."},
+     "Run an AI visibility audit on a local business's website (home builders, remodelers and other trades). It reads what "
+     "the business sells from its website and asks the questions its local customers ask. Returns an audit_id straight away; "
+     "the audit takes about 1-2 minutes, so call get_audit_status until it's done. If the site was audited in the last week, "
+     "that audit is returned instead (pass force_new=true for a fresh one). Counts toward your daily agent audit limit and the "
+     "team's spending cap.",
+     {"website": {"type": "string", "description": "The business's website, e.g. justindoylehomes.com."},
+      "services": {"type": "array", "items": {"type": "string"},
+                   "description": "Optional: the services to measure, e.g. [\"Bathroom remodeling\", \"Basement finishing\"]. "
+                                  "Leave out to use the services found on the website."},
       "type": {"type": "string", "enum": ["quick", "standard", "full"],
                "description": "quick: ~6 questions, main city. standard (default): ~12 questions, main + busiest extra city. full: everything, up to 5 cities."},
-      "city": {"type": "string", "description": "Optional: the builder's main city, if the website doesn't make it clear."},
+      "city": {"type": "string", "description": "Optional: the business's main city, if the website doesn't make it clear."},
       "state": {"type": "string", "description": "Optional: two-letter state, e.g. OH."},
       "force_new": {"type": "boolean", "description": "Run a fresh audit even if one exists from this week."}}, ["website"]),
     ("get_audit_status", "Check audit progress", t_get_audit_status, RO,

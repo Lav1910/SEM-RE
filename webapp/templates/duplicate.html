@@ -2,7 +2,7 @@
 {% block title %}Already audited{% endblock %}
 {% block body %}
 <section class="card" style="max-width:36rem">
-  <h1>{{ prev.owner }} already audited this builder</h1>
+  <h1>{{ prev.owner }} already audited this business</h1>
   <p class="sub">{{ prev.builder_name or prev.domain }} was audited {{ prev.created_at|ago }}. Check with {{ prev.owner }} before reaching out, so the prospect doesn't hear from two of us.</p>
   <div class="actions">
     <a class="btn btn-primary" href="{{ url_for('audit_page', aid=prev.id) }}">Open their audit</a>

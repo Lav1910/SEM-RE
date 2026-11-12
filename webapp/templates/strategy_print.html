@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>{{ A.profile.name }} — AEO Strategy, {{ today }}</title>
+{% include "_favicon.html" %}
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
 <style>{{ css|safe }}
 .lane-h { font-size:8pt; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#0A686A; margin:16px 0 6px; }
@@ -30,7 +31,7 @@
    <div class="hk"><div class="hk-l">Deliverables</div><div class="hk-v">{{ S['items']|length }}</div><div class="hk-s">{{ S.fixes|length }} technical fixes</div></div>
   </div>
   <div class="summary"><div class="sum-label">Executive summary</div>
-   <p>This plan covers the work that would raise how often AI platforms name <b>{{ A.profile.name }}</b> when buyers in <b>{{ A.market.city }}, {{ A.market.state_code }}</b>{% if A.locations and A.locations|length > 1 %} and {{ A.locations|length - 1 }} other service area{{ 's' if A.locations|length > 2 }}{% endif %} ask for a home builder.</p>
+   <p>This plan covers the work that would raise how often AI platforms name <b>{{ A.profile.name }}</b> when {{ biz(A).customers }} in <b>{{ A.market.city }}, {{ A.market.state_code }}</b>{% if A.locations and A.locations|length > 1 %} and {{ A.locations|length - 1 }} other service area{{ 's' if A.locations|length > 2 }}{% endif %} ask for {{ "a home builder" if biz(A).is_builder else biz(A).a_label }}.</p>
    <p>It is built from the audit's AI answers, Google results and website checks. Items are ranked by expected visibility gain; the first {{ [S['items']|length, 5]|min }} are where HBM would start.</p>
   </div>
  </div>

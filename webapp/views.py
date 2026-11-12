@@ -221,7 +221,7 @@ def build(A, platform="all", history=None, vs=None, area=None, clean=False):
             if kind == "opp" and (r["you"] or not any(r["gap"].values())):
                 continue
             plat = PLATFORMS.get(d)
-            out.append({"domain": d, "label": plat or d, "type": SOURCE_GROUP.get(plat or "", "Builder or local site"),
+            out.append({"domain": d, "label": plat or d, "type": SOURCE_GROUP.get(plat or "", "Business or local site"),
                         "count": r["answers"], "you": r["you"], "urls": len(r["urls"]), "prompts": len(r["prompts"]),
                         "gap": [r["gap"].get(c, 0) for c in chosen], "competitors_mentioned": sum(1 for c in chosen if r["gap"].get(c))})
         return sorted(out, key=lambda x: (-x["competitors_mentioned"], -x["count"]))[:30]

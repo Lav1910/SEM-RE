@@ -12,7 +12,7 @@
   </div>
   {% set need_market = 'city and state' in (a.error or '') %}
   {% if need_market and not can('admin') %}{# change 30: Sales get a plain question, not an error #}
-  <div class="flash ask" style="margin:18px 0 0">We couldn't confirm where this builder is based. Enter their city and state to continue.</div>
+  <div class="flash ask" style="margin:18px 0 0">We couldn't confirm where this business is based. Enter their city and state to continue.</div>
   {% else %}<div class="flash bad" style="margin:18px 0 0">{{ a.error }}</div>{% endif %}
   {% if need_market %}
   <form class="retry-market" method="post" action="{{ url_for('create_audit') }}">
@@ -36,7 +36,7 @@
       <div class="run-meta">
         <div><span class="label">Elapsed</span><b id="elapsed">0:00</b></div>
         <div><span class="label">Progress</span><b id="pct">{{ a.progress or 0 }}%</b></div>
-        <div title="AI answers naming this builder so far. The finished report has the exact figures."><span class="label">Named so far</span><b id="named">—</b></div>
+        <div title="AI answers naming this business so far. The finished report has the exact figures."><span class="label">Named so far</span><b id="named">—</b></div>
       </div>
     </div>
     <div class="bar run-bar"><i id="bar" style="width:{{ a.progress or 0 }}%"></i></div>
@@ -70,7 +70,7 @@
         </li>
         <li class="phase" data-from="91" data-to="96">
           <div class="phase-h"><span class="dotstate"></span><b>Competitive analysis</b></div>
-          <ul class="phase-items"><li>Identifying the builders AI recommends</li><li>Mapping the sources AI platforms rely on</li><li>Comparing the AI mentions database</li></ul>
+          <ul class="phase-items"><li>Identifying the businesses AI recommends</li><li>Mapping the sources AI platforms rely on</li><li>Comparing the AI mentions database</li></ul>
         </li>
         <li class="phase" data-from="96" data-to="100">
           <div class="phase-h"><span class="dotstate"></span><b>Report</b></div>

@@ -3,7 +3,7 @@ Deterministic rules only, so every number in the report traces back to a stored 
 import collections
 import re
 
-from . import scope
+from . import business, scope
 from .engines import ENGINES, ENGINE_LABELS, domain_of
 
 PLATFORMS = {
@@ -24,11 +24,25 @@ SOURCE_GROUP = {  # how a builder would recognise the source type
     "Three Best Rated": "Best-of lists", "BuildZoom": "Home directories", "NAHB": "Industry", "Wikipedia": "Reference",
 }
 BUILDER_WORDS = r"(?:Custom\s+Homes|Homes|Home\s+Builders|Builders|Builder|Building(?:\s+Company|\s+Co\.?)?|Construction|Homebuilders|Communities|Design[\s-]Build|Group|Company|Contractors)"
-NAME_RX = re.compile(r"\b((?:[A-Z][\w'’.&-]*|[A-Z]\.)(?:\s+(?:[A-Z][\w'’.&-]*|&|of|and|[A-Z]\.)){0,4}?\s+" + BUILDER_WORDS + r")\b")
+# change 53: the endings of other trades' business names ("Russell Room Remodelers", "Apex Roofing", "Kitchen & Bath Pros")
+TRADE_WORDS = (r"(?:Kitchen\s+(?:&|and)\s+Baths?|Bath\s+(?:&|and)\s+Kitchens?|Remodel(?:ing|ers?)|Renovations?|Restoration|Roofing|Roofers|Plumbing|Heating(?:\s+(?:&|and)\s+(?:Air|Cooling))?|HVAC|"
+               r"Air|Electric(?:al)?|Landscaping|Landscapes|Pools?(?:\s+(?:&|and)\s+Spas?)?|Windows|Exteriors|Interiors|Design(?:s)?|"
+               r"Services|Solutions|Contracting|Pros|Painting|Painters|Flooring|Floors|Basements?|Baths?|Kitchens?|Cabinets|Cabinetry|"
+               r"Improvements?|Home\s+Improvement|Builds|Craftsmen|Carpentry|Concrete|Paving|Decks?|Solar|Inc|LLC)")
+ALL_WORDS = r"(?:" + BUILDER_WORDS[3:-1] + "|" + TRADE_WORDS[3:-1] + r")"
+
+
+def name_rx(words=BUILDER_WORDS):
+    return re.compile(r"\b((?:[A-Z][\w'’.&-]*|[A-Z]\.)(?:\s+(?:[A-Z][\w'’.&-]*|&|of|and|[A-Z]\.)){0,4}?\s+" + words + r")\b")
+
+
+NAME_RX = name_rx()
 GENERIC_WORDS = ["Best", "Top", "Custom", "New", "Luxury", "Local", "Ranch", "Home", "Homes", "Many", "Some", "Other", "These",
                  "Most", "Several", "Quality", "Top-Rated", "Top Rated", "Rated", "National", "Regional", "Production",
                  "Semi-Custom", "Area", "Search", "Google", "Find", "Notable", "Popular", "Reputable", "Established",
-                 "Experienced", "Independent", "Smaller", "Larger", "Boutique", "Greater \\w+", "Northern \\w+", "Southern \\w+"]
+                 "Experienced", "Independent", "Smaller", "Larger", "Boutique", "Greater \\w+", "Northern \\w+", "Southern \\w+",
+                 "Bathroom", "Kitchen", "Basement", "Complete", "Full", "Whole", "Interior", "Exterior", "Residential", "Commercial",
+                 "Affordable", "Professional", "Licensed", "General", "Trusted", "Certified", "Emergency", "Same-Day", "Your", "Our"]
 
 
 LEAD_WORDS = {"the", "a", "an", "for", "with", "and", "or", "in", "at", "consider", "try", "contact", "check", "call", "visit",
@@ -37,9 +51,9 @@ LEAD_WORDS = {"the", "a", "an", "for", "with", "and", "or", "in", "at", "conside
               "while", "if", "when", "as", "other", "local", "reputable", "established", "popular", "well-known", "among"}
 
 
-def generic_rx(market_words):
+def generic_rx(market_words, ends=BUILDER_WORDS):
     words = GENERIC_WORDS + [re.escape(w) for w in market_words if w]
-    return re.compile(r"^(?:The\s+)?(?:" + "|".join(words) + r")(?:\s+\w+)?\s+" + BUILDER_WORDS + r"$", re.I)
+    return re.compile(r"^(?:The\s+)?(?:" + "|".join(words) + r")(?:\s+\w+)?\s+" + ends + r"$", re.I)
 
 
 def norm_name(n):
@@ -51,33 +65,36 @@ def norm_name(n):
 def name_key(n):
     """Key for merging variants: 'J&K Custom Homes' == 'JK Custom Homes', 'Robert Lucke Homes' ~ 'Robert Lucke Group'."""
     n = re.sub(r"[^a-z ]", "", norm_name(n).lower().replace("&", ""))
-    n = re.sub(r"\b(the|custom|homes?|builders?|building|construction|homebuilders|group|company|co|inc|llc|communities|design build|contractors)\b", " ", n)
+    n = re.sub(r"\b(the|custom|homes?|builders?|building|construction|homebuilders|group|company|co|inc|llc|communities|design build|contractors|"
+               r"remodel(?:ing|ers?)|renovations?|services|solutions|pros)\b", " ", n)
     return re.sub(r"\s+", "", n)
 
 
-def brand_patterns(profile):
+def brand_patterns(profile, ends=BUILDER_WORDS):
     name = norm_name(profile["name"])
-    core = re.sub(r"\s+" + BUILDER_WORDS + r"$", "", name, flags=re.I).strip()
+    core = re.sub(r"\s+" + ends + r"$", "", name, flags=re.I).strip()
     label = profile["domain"].split(".")[0]
     pats = [re.escape(name)]
     if len(core.split()) >= 2 or len(core) >= 6:
-        pats.append(re.escape(core) + r"(?:'s)?\s+" + BUILDER_WORDS)
+        pats.append(re.escape(core) + r"(?:'s)?\s+" + ends)
         pats.append(re.escape(core) + r"\b")
     pats.append(re.escape(label))
     return re.compile("|".join(pats), re.I)
 
 
-def find_builders(text, known, generic):
-    """Builder names in an answer: known candidates (Maps pack titles etc.) plus name-shaped phrases."""
+def find_builders(text, known, generic, rx=None):
+    """Builder (or other business) names in an answer: known candidates (Maps pack titles etc.) plus name-shaped phrases."""
     found = collections.OrderedDict()
     low = text.lower()
     for k in known:
         i = low.find(k.lower())
         if i >= 0:
             found.setdefault(norm_name(k), i)
-    for m in NAME_RX.finditer(text):
+    for m in (rx or NAME_RX).finditer(text):
         n = norm_name(m.group(1))
         words = n.split()
+        cut = max((i for i, w in enumerate(words[:-1]) if w.endswith(".") and len(w) > 2), default=-1)
+        words = words[cut + 1:]  # a match that runs across a sentence end ("... Bath. Also Bathroom Remodeling")
         while len(words) > 2 and words[0].lower().strip(",:") in LEAD_WORDS:
             if words[0] == "The" and len(words) == 3:  # keep "The Bold Company"
                 break
@@ -90,15 +107,18 @@ def find_builders(text, known, generic):
 
 
 def analyze(profile, market, questions, answers, checks, semrush):
-    brand_rx = brand_patterns(profile)
+    W = business.words(profile)
+    ends = BUILDER_WORDS if W["is_builder"] else ALL_WORDS  # change 53: other trades' names end differently
+    rx = NAME_RX if W["is_builder"] else name_rx(ends)
+    brand_rx = brand_patterns(profile, ends)
     me = profile["domain"]
     sc = profile.get("scope") or scope.make(me, "root")
     mine = lambda u: bool(u) and scope.matches(u, sc)  # noqa: E731  (cited pages must sit inside the chosen scope)
     on_site = lambda d: bool(d) and scope.matches(d, scope.make(sc["domain"], "root"))  # noqa: E731  (Maps listings link to the site)
     qmap = {q["id"]: q for q in questions}
     generic = generic_rx([market["city"], market["state"], market["state_code"]] +
-                         [w for a in profile["areas_served"] + [q.get("area") or "" for q in questions]
-                          for w in re.findall(r"[A-Z][a-z]+", a or "")])
+                         [w for a in profile["areas_served"] + [q.get("area") or "" for q in questions] + W["services"]
+                          for w in re.findall(r"[A-Z][a-z]+", a or "")], ends)
     known = sorted({p["title"] for a in answers for p in a.get("local_pack", []) if p.get("title") and "." not in p["title"]},
                    key=len, reverse=True)
 
@@ -116,7 +136,7 @@ def analyze(profile, market, questions, answers, checks, semrush):
             cell["cited"] = any(mine(c.get("url") or c.get("domain")) for c in a["citations"])
             m = brand_rx.search(text)
             cell["mentioned"] = bool(m) or cell["cited"]
-            builders = [b for b in find_builders(text, known, generic) if not brand_rx.search(b)]
+            builders = [b for b in find_builders(text, known, generic, rx) if not brand_rx.search(b)]
             if m:
                 cell["rank"] = 1 + sum(1 for b in builders if text.find(b) < m.start())
             cell["competitors"] = builders[:12]
@@ -185,7 +205,8 @@ def analyze(profile, market, questions, answers, checks, semrush):
 
     groups = collections.Counter()
     for d, n in src_domains.items():
-        label = "This builder's website" if d == me else SOURCE_GROUP.get(PLATFORMS.get(d, ""), "Other builders' and local sites")
+        label = (f"This {W['noun']}'s website" if d == me else
+                 SOURCE_GROUP.get(PLATFORMS.get(d, ""), f"Other {W['nouns']}' and local sites"))
         groups[label] += n
 
     kpis = {
@@ -219,9 +240,11 @@ def competitor_domains(analysis, answers, me):
 
 def recommend(profile, market, questions, cells, checks, src_domains, leaderboard, per_engine):
     recs = []
+    W = business.words(profile)
+    B = W["is_builder"]
     status = {c[1]: c for c in checks}
     top = [b for b in leaderboard if not b.get("prospect")][:3]
-    top_names = ", ".join(b["name"] for b in top) or "other builders"
+    top_names = ", ".join(b["name"] for b in top) or "other " + W["nouns"]
     google = [c for c in cells if c["engine"] == "google_aio" and c["in_pack"] is not None]
     if google and sum(1 for c in google if c["in_pack"]) <= len(google) // 3:
         pack_leaders = sorted([b for b in leaderboard if b["pack"] and not b.get("prospect")], key=lambda b: -b["pack"])[:3]
@@ -229,7 +252,8 @@ def recommend(profile, market, questions, cells, checks, src_domains, leaderboar
             f"{profile['name']} appeared in the Maps 3-pack for {sum(1 for c in google if c['in_pack'])} of {len(google)} local searches. "
             + (f"{', '.join(b['name'] + ' (' + str(b['pack']) + ')' for b in pack_leaders)} took those spots. " if pack_leaders else "")
             + "AI answers lean on Google Business Profile listings and reviews.",
-            "Rebuild the Google Business Profile: primary category, service areas, weekly photos and posts, Q&A, and a steady review request flow after closings."))
+            "Rebuild the Google Business Profile: primary category, service areas, weekly photos and posts, Q&A, and a steady review request flow "
+            + ("after closings." if B else "after each finished project.")))
     g = profile.get("gbp")
     if g and g.get("reviews") is not None:
         low = sum(v for k, v in (g.get("distribution") or {}).items() if int(k) <= 2)
@@ -237,7 +261,8 @@ def recommend(profile, market, questions, cells, checks, src_domains, leaderboar
             recs.append((8.5, "Grow and protect Google reviews",
                 f"The Google Business Profile shows {g['rating']}★ from {g['reviews']} reviews"
                 + (f", including {low} rated 1 or 2 stars" if low else "") + ". AI answers and the Maps pack lean on review count and rating.",
-                "Ask every closing and walkthrough client for a review, reply to every review (especially the low ones), and add review markup to the site."))
+                ("Ask every closing and walkthrough client" if B else "Ask every client when a project wraps up")
+                + " for a review, reply to every review (especially the low ones), and add review markup to the site."))
     if status.get("Phone number consistency", ("good",))[0] == "bad":
         recs.append((9, "Fix the phone number mismatch", status["Phone number consistency"][2],
             "Pick one main number and make the site markup, footer, Google Business Profile, Facebook, Houzz and Yelp all match."))
@@ -252,23 +277,28 @@ def recommend(profile, market, questions, cells, checks, src_domains, leaderboar
         why = ""
         if weak_areas:
             names = " and ".join(q["prompt"].split(" in ")[-1].rstrip("?") for q in weak_areas)
-            why = f"No AI answer about builders in {names} named {profile['name']}. "
+            why = f"No AI answer about {W['nouns']} in {names} named {profile['name']}. "
         if page_gap:
             why += status["Service-area pages"][2]
         recs.append((8, "Build pages for each service area", why.strip(),
-            "Write one page per area with local communities, lots, price ranges, drive times and past builds, linked from the homepage and marked up with the area served."))
+            ("Write one page per area with local communities, lots, price ranges, drive times and past builds"
+             if B else "Write one page per area with the services offered there, recent local projects, typical costs and local reviews")
+            + ", linked from the homepage and marked up with the area served."))
     if any(status.get(k, ("good",))[0] == "warn" for k in ("FAQ markup", "Review markup", "Answers to common questions")):
         recs.append((7, "Make answers and reviews easy for AI to lift",
             "AI tools quote clear question-and-answer content and trust reviews they can read. Several of these are missing or unmarked on the site.",
-            "Add or expand an FAQ (cost, timeline, lots, financing, warranty) with FAQPage markup, and add review and rating markup to testimonials."))
+            "Add or expand an FAQ (" + ("cost, timeline, lots, financing, warranty" if B else "cost, timeline, the process, permits, warranty")
+            + ") with FAQPage markup, and add review and rating markup to testimonials."))
     platform_sources = [d for d, n in src_domains.most_common() if d in PLATFORMS and d != profile["domain"]][:5]
     if platform_sources:
         recs.append((6, "Show up on the sources AI answers trust",
-            f"Across these answers, AI tools cited {', '.join(PLATFORMS[d] for d in platform_sources)}. Those sources shape which builders get named.",
-            "Claim and complete listings on those sites, collect reviews there, publish build walkthrough videos, and pitch local best-builder lists."))
+            f"Across these answers, AI tools cited {', '.join(PLATFORMS[d] for d in platform_sources)}. Those sources shape which {W['nouns']} get named.",
+            "Claim and complete listings on those sites, collect reviews there, publish " + ("build" if B else "project")
+            + " walkthrough videos, and pitch local best-of lists."))
     if status.get("Prices published", ("good",))[0] == "warn":
         recs.append((6, "Publish price ranges", status["Prices published"][2],
-            "Add starting prices or price bands per series or plan so AI answers to cost questions can include this builder."))
+            ("Add starting prices or price bands per series or plan" if B else "Add typical price ranges for each service")
+            + f" so AI answers to cost questions can include this {W['noun']}."))
     weak_engines = [v["label"] for v in per_engine.values() if v["measured"] and v["answers"] and v["mentioned"] == 0]
     if weak_engines:
         recs.append((5, f"Get named in {', '.join(weak_engines)}",

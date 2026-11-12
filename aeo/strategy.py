@@ -19,12 +19,20 @@ IMPACT_ORDER = {"High": 0, "Medium": 1, "Low": 2}
 
 
 # ---------------------------------------------------------------- facts
+def _w(A):
+    from . import business
+    return business.words(A)
+
+
 def facts(A):
     P, M = A["profile"], A["market"]
     gbp = P.get("gbp") or {}
     pages = [u for u in (P.get("sitemap_urls") or []) if u.count("/") <= 5][:40]
+    W = _w(A)
     return {
-        "builder": P["name"], "website": P.get("url"), "main_market": f"{M['city']}, {M['state_code']}",
+        ("builder" if W["is_builder"] else "business"): P["name"], "business_type": W["label"],
+        **({} if W["is_builder"] else {"main_services": W["services"]}),
+        "website": P.get("url"), "main_market": f"{M['city']}, {M['state_code']}",
         "service_locations": [l["label"] for l in (A.get("locations") or [])] or P.get("areas_served") or [],
         "services_mentioned_on_site": P.get("services") or [], "prices_seen_on_site": P.get("prices_found") or [],
         "phone": (P.get("schema_phones") or P.get("page_phones") or [None])[0],
@@ -34,10 +42,11 @@ def facts(A):
     }
 
 
-def _rules():
+def _rules(W=None):
     return ("Rules: use only the facts given. Never invent prices, years in business, awards, warranty terms, timelines, "
             "team names or statistics. Where a specific detail would help but isn't in the facts, write [confirm: what to add]. "
-            "Write for home buyers in plain, warm, confident language. US spelling. No hype words like 'premier' or 'unparalleled'.")
+            f"Write for {(W or {}).get('customers') or 'home buyers'} in plain, warm, confident language. US spelling. "
+            "No hype words like 'premier' or 'unparalleled'.")
 
 
 # ---------------------------------------------------------------- evidence helpers
@@ -92,6 +101,8 @@ def plan(A):
     P, M, X = A["profile"], A["market"], A["analysis"]
     checks = {c[1]: c for c in A["checks"]}
     items = []
+    W = _w(A)
+    B, cust, nouns = W["is_builder"], W["customers"], W["nouns"]
 
     def add(iid, lane, title, why, impact, effort, gen=None, how=None):
         items.append({"id": iid, "lane": lane, "lane_label": LANES[lane], "title": title, "why": why, "impact": impact,
@@ -101,8 +112,8 @@ def plan(A):
     gaps = gap_questions(A)
     if gaps:
         g = gaps[0]
-        add("faq", "content", "Answer local buyers' questions on the site",
-            f"AI named {P['name']} in {sum(x['me'] for x in gaps)} of {sum(x['ok'] for x in gaps)} answers to {len(gaps)} buyer questions; "
+        add("faq", "content", f"Answer local {cust}' questions on the site",
+            f"AI named {P['name']} in {sum(x['me'] for x in gaps)} of {sum(x['ok'] for x in gaps)} answers to {len(gaps)} {'buyer' if B else 'customer'} questions; "
             f"{', '.join(g['top'][:2])} came up instead. Clear, quotable answers on the site give AI something to cite.",
             "High", "Low", "faq", "Publish an FAQ page (and short FAQ blocks on key pages) with FAQPage markup.")
         add("blog", "content", "Write posts on the topics where competitors get named",
@@ -117,11 +128,13 @@ def plan(A):
                + (f"; {ex[1]['comps'].most_common(1)[0][0]} was named {ex[1]['comps'].most_common(1)[0][1]} times." if ex[1]["comps"] else ".")
                if ex else f"The site serves {', '.join(l['label'] for l in locs[:4])} but AI has little local detail to cite.")
         add("city_pages", "content", "Build a page for each service city", why, "High", "Medium", "city_pages",
-            "One page per city: communities, lot availability, price range, drive times, past builds, local FAQs.")
+            "One page per city: communities, lot availability, price range, drive times, past builds, local FAQs." if B else
+            "One page per city: the services offered there, recent local projects, typical costs, local reviews and FAQs.")
     if "Prices published" in checks and checks["Prices published"][0] != "good":
-        add("cost_guide", "content", "Publish a cost-to-build guide",
-            "Cost is one of the most-asked buyer questions and no prices were found on the site, so AI quotes other builders' figures.",
-            "Medium", "Medium", "cost_guide", "A guide with price ranges per home type and what drives cost.")
+        add("cost_guide", "content", "Publish a cost-to-build guide" if B else "Publish a cost guide",
+            f"Cost is one of the most-asked {'buyer' if B else 'customer'} questions and no prices were found on the site, so AI quotes other {nouns}' figures.",
+            "Medium", "Medium", "cost_guide", "A guide with price ranges per home type and what drives cost." if B else
+            "A guide with typical price ranges for each service and what drives cost.")
 
     # technical
     for f in fixes(A):
@@ -135,7 +148,7 @@ def plan(A):
         add("gbp_posts", "local", "Strengthen the Google Business Profile",
             f"{P['name']} showed in the Maps 3-pack for {k['pack']} of {k['pack_of']} local searches"
             + (f"; {', '.join(leaders)} held the top spots." if leaders else "."),
-            "High", "Low", "gbp_posts", "Weekly posts, seeded Q&A, photos of recent builds, every service and city listed.")
+            "High", "Low", "gbp_posts", f"Weekly posts, seeded Q&A, photos of recent {'builds' if B else 'projects'}, every service and city listed.")
     elif gbp:
         add("gbp_posts", "local", "Keep the Google Business Profile active",
             "Google's AI answers and Maps lean on active profiles with fresh posts and answered questions.", "Medium", "Low", "gbp_posts",
@@ -143,15 +156,16 @@ def plan(A):
     if not gbp.get("reviews") or (gbp.get("reviews") or 0) < 40:
         add("reviews", "local", "Collect more Google reviews",
             (f"The profile has {gbp.get('reviews')} reviews" if gbp.get("reviews") else "No Google reviews were found")
-            + "; AI tools favour builders with many recent reviews.", "High", "Low", "review_requests",
-            "Ask every closing and walkthrough client, with a direct review link.")
+            + f"; AI tools favour {nouns} with many recent reviews.", "High", "Low", "review_requests",
+            "Ask every closing and walkthrough client, with a direct review link." if B else
+            "Ask every client when a project wraps up, with a direct review link.")
 
     # sources
     src = [s for s in X.get("source_domains") or [] if s["domain"] != P["domain"]][:6]
     if src:
         add("sources", "sources", "Get listed on the sites AI cites",
             "AI answers here cited " + ", ".join(f"{s['label']} ({s['count']})" for s in src[:5]) + ".",
-            "Medium", "Medium", None, "Claim or complete these listings, add photos and reviews, and pitch local best-builder roundups.")
+            "Medium", "Medium", None, "Claim or complete these listings, add photos and reviews, and pitch local best-of roundups.")
 
     items.sort(key=lambda i: (IMPACT_ORDER[i["impact"]], {"Low": 0, "Medium": 1, "High": 2}[i["effort"]]))
     return items
@@ -185,6 +199,7 @@ def schema_block(A):
 
 def fixes(A):
     P = A["profile"]
+    B = _w(A)["is_builder"]
     out = []
     for status, title, detail in A["checks"]:
         if status == "good":
@@ -212,10 +227,11 @@ def fixes(A):
             f.update(title="Publish an XML sitemap", how="Turn on the sitemap in the SEO plugin (Yoast, Rank Math) and add "
                      "“Sitemap: https://" + P["domain"] + "/sitemap.xml” to robots.txt.")
         elif title == "Prices published":
-            f.update(title="Publish price ranges", how="Add starting prices or ranges per home type; generate a cost guide in Content Generator.",
+            f.update(title="Publish price ranges", how=("Add starting prices or ranges per home type" if B else "Add typical price ranges for each service")
+                     + "; generate a cost guide in Content Generator.",
                      gen="cost_guide", effort="Medium")
         elif title == "Google Business Profile":
-            f.update(title="Complete the Google Business Profile", how="Fill every field, add services and cities, upload recent build photos.")
+            f.update(title="Complete the Google Business Profile", how=f"Fill every field, add services and cities, upload recent {'build' if B else 'project'} photos.")
         else:
             f["how"] = detail
         out.append(f)
@@ -228,7 +244,7 @@ def fixes(A):
 
 # ---------------------------------------------------------------- generators
 GENERATORS = {
-    "faq": "FAQ answers", "blog": "Blog post drafts", "city_pages": "City pages", "cost_guide": "Cost-to-build guide",
+    "faq": "FAQ answers", "blog": "Blog post drafts", "city_pages": "City pages", "cost_guide": "Cost guide",
     "llms_txt": "llms.txt file", "gbp_posts": "Google Business Profile posts & Q&A", "review_requests": "Review request messages",
 }
 
@@ -236,7 +252,7 @@ GENERATORS = {
 def targets(A, kind):
     """The pieces a generator produces: [(key, label)]."""
     if kind == "blog":
-        return [(f"gap{i}", g["q"]["prompt"]) for i, g in enumerate(gap_questions(A, 3))] or [("gap0", "Choosing a custom home builder in " + A["market"]["city"])]
+        return [(f"gap{i}", g["q"]["prompt"]) for i, g in enumerate(gap_questions(A, 3))] or [("gap0", _default_topic(A))]
     if kind == "city_pages":
         locs = [l for l in (A.get("locations") or []) if not l.get("main")][:6]
         return [(re.sub(r"[^a-z0-9]+", "_", l["label"].lower()), l["label"]) for l in locs] or \
@@ -244,10 +260,23 @@ def targets(A, kind):
     return [("all", GENERATORS[kind])]
 
 
+def _default_topic(A):
+    W = _w(A)
+    if W["is_builder"]:
+        return "Choosing a custom home builder in " + A["market"]["city"]
+    return f"Choosing {W['a_label']} in {A['market']['city']}"
+
+
 def _faq_questions(A):
     qs = [q["prompt"] for q in A["questions"] if q.get("kind") != "brand"]
-    extra = [f"Do you build on my lot in {A['market']['city']}?", "What is included in your base price?", "How long does a build take?",
-             "Do you offer financing help?", "What warranty do you offer?", "Can I customise a floor plan?"]
+    W = _w(A)
+    if W["is_builder"]:
+        extra = [f"Do you build on my lot in {A['market']['city']}?", "What is included in your base price?", "How long does a build take?",
+                 "Do you offer financing help?", "What warranty do you offer?", "Can I customise a floor plan?"]
+    else:
+        s0 = (W["services"] or ["a project"])[0].lower()
+        extra = [f"Do you serve my area of {A['market']['city']}?", f"How long does {s0} take?", "Do you handle permits?",
+                 "Do you offer free estimates?", "What warranty do you offer on your work?", "Are you licensed and insured?"]
     seen, out = set(), []
     for q in qs + extra:
         k = re.sub(r"\W+", " ", q.lower()).strip()
@@ -259,12 +288,14 @@ def _faq_questions(A):
 def generate(A, kind, key, provider="gemini"):
     """Return (markdown, cost). Raises on failure."""
     F = facts(A)
-    base = "Facts about the builder (JSON):\n" + json.dumps(F, indent=1) + "\n\n" + _rules() + "\n\n"
+    W = _w(A)
+    B, noun, cust = W["is_builder"], W["noun"], W["customers"]
+    base = f"Facts about the {noun} (JSON):\n" + json.dumps(F, indent=1) + "\n\n" + _rules(W) + "\n\n"
     name = A["profile"]["name"]
     if kind == "faq":
         qs = _faq_questions(A)
-        prompt = (base + f"Write website FAQ answers for {name}. Rewrite each buyer question below from the builder's side where needed "
-                  "(e.g. 'Who are the best builders in X?' becomes 'Why choose " + name + " in X?'). Each answer: 2-4 sentences, "
+        prompt = (base + f"Write website FAQ answers for {name}. Rewrite each customer question below from the {noun}'s side where needed "
+                  f"(e.g. 'Who are the best {W['nouns']} in X?' becomes 'Why choose " + name + " in X?'). Each answer: 2-4 sentences, "
                   "starts with a direct answer AI can quote, names the city. Reply with JSON only: "
                   '[{"question": "...", "answer": "..."}]\nQuestions:\n' + "\n".join("- " + q for q in qs))
         data, cost = llm.json_answer(prompt, provider)
@@ -278,9 +309,9 @@ def generate(A, kind, key, provider="gemini"):
         return md, cost
     if kind == "blog":
         g = next((x for i, x in enumerate(gap_questions(A, 3)) if f"gap{i}" == key), None)
-        topic = g["q"]["prompt"] if g else dict(targets(A, "blog")).get(key, "Choosing a custom home builder")
+        topic = g["q"]["prompt"] if g else dict(targets(A, "blog")).get(key, _default_topic(A))
         comps = ", ".join(g["top"]) if g else ""
-        prompt = (base + f"Write a blog post for {name}'s website that answers this buyer question: “{topic}”. "
+        prompt = (base + f"Write a blog post for {name}'s website that answers this {'buyer' if B else 'customer'} question: “{topic}”. "
                   + (f"AI tools currently name {comps} for it, not {name}. " if comps else "")
                   + "Do not mention competitors. 900-1200 words in Markdown: an H1 title, a 2-sentence direct answer first (quotable by AI), "
                   "then H2 sections with local detail, a short FAQ (3 questions) at the end, and a closing call to action. "
@@ -288,30 +319,47 @@ def generate(A, kind, key, provider="gemini"):
         return llm.text(prompt, provider, timeout=180)
     if kind == "city_pages":
         loc = dict(targets(A, "city_pages")).get(key) or f"{A['market']['city']}, {A['market']['state_code']}"
-        prompt = (base + f"Write a service-area page for {name} about building homes in {loc}. Markdown, 600-800 words: H1 "
-                  f"'Custom Home Builder in {loc}', a direct 2-sentence answer first, then sections on communities and lots in {loc} "
-                  "([confirm] specific community names unless in the facts), home styles, price range ([confirm] unless in the facts), "
-                  "the build process, drive times or nearby areas, 3 local FAQs, and a call to action. Also give a meta title (under 60 "
-                  "characters) and meta description (under 155) at the top.")
+        if B:
+            prompt = (base + f"Write a service-area page for {name} about building homes in {loc}. Markdown, 600-800 words: H1 "
+                      f"'Custom Home Builder in {loc}', a direct 2-sentence answer first, then sections on communities and lots in {loc} "
+                      "([confirm] specific community names unless in the facts), home styles, price range ([confirm] unless in the facts), "
+                      "the build process, drive times or nearby areas, 3 local FAQs, and a call to action. Also give a meta title (under 60 "
+                      "characters) and meta description (under 155) at the top.")
+        else:
+            s0 = (W["services"] or [W["label"]])[0]
+            prompt = (base + f"Write a service-area page for {name} about their services in {loc}. Markdown, 600-800 words: H1 "
+                      f"'{s0} in {loc}', a direct 2-sentence answer first, then a section for each main service ({', '.join(W['services'][:4])}) "
+                      f"as offered in {loc}, recent local projects ([confirm] specifics unless in the facts), typical cost ranges ([confirm] "
+                      "unless in the facts), how a project works, nearby areas served, 3 local FAQs, and a call to action. Also give a meta "
+                      "title (under 60 characters) and meta description (under 155) at the top.")
         return llm.text(prompt, provider, timeout=180)
     if kind == "cost_guide":
-        prompt = (base + f"Write a 'Cost to build a custom home in {A['market']['city']}' guide for {name}. Markdown, 800-1000 words: a "
-                  "direct answer first, what drives cost (lot, size, finishes, site work, permits), a table of cost ranges by home type with "
-                  "every figure as [confirm: $X–$Y] unless prices are in the facts, ways to manage budget, a short FAQ, call to action.")
+        if B:
+            prompt = (base + f"Write a 'Cost to build a custom home in {A['market']['city']}' guide for {name}. Markdown, 800-1000 words: a "
+                      "direct answer first, what drives cost (lot, size, finishes, site work, permits), a table of cost ranges by home type with "
+                      "every figure as [confirm: $X–$Y] unless prices are in the facts, ways to manage budget, a short FAQ, call to action.")
+        else:
+            svc = ", ".join(s.lower() for s in W["services"][:4]) or W["label"]
+            prompt = (base + f"Write a 'What {svc} costs in {A['market']['city']}' guide for {name}. Markdown, 800-1000 words: a direct "
+                      "answer first, what drives cost (size, materials, layout changes, permits, labor), a table of cost ranges for each "
+                      "service with every figure as [confirm: $X–$Y] unless prices are in the facts, ways to manage budget, a short FAQ, "
+                      "call to action.")
         return llm.text(prompt, provider, timeout=180)
     if kind == "llms_txt":
         prompt = (base + f"Write an llms.txt file for {name} following the llms.txt convention: '# {name}', a one-paragraph '> ' summary "
-                  "(what they build, where, for whom), then '## Key pages' with up to 10 '- [Title](url): one line' entries chosen from the "
+                  f"(what they {'build' if B else 'offer'}, where, for whom), then '## Key pages' with up to 10 '- [Title](url): one line' entries chosen from the "
                   "site pages given, then '## Service areas' and '## Contact'. Plain Markdown only, no code fences.")
         return llm.text(prompt, provider)
     if kind == "gbp_posts":
-        prompt = (base + f"Write Google Business Profile content for {name}: 4 posts (each under 1,200 characters, one per week: a recent build "
-                  "[confirm details], a buyer tip, a service-area spotlight, an invitation to talk) and 6 questions with answers to seed in "
-                  "the profile's Q&A, using what local buyers ask. Markdown with headings 'Posts' and 'Q&A'.")
+        prompt = (base + f"Write Google Business Profile content for {name}: 4 posts (each under 1,200 characters, one per week: a recent "
+                  f"{'build' if B else 'project'} [confirm details], a {'buyer' if B else 'homeowner' if 'homeowner' in cust else 'customer'} tip, "
+                  "a service-area spotlight, an invitation to talk) and 6 questions with answers to seed in "
+                  f"the profile's Q&A, using what local {cust} ask. Markdown with headings 'Posts' and 'Q&A'.")
         return llm.text(prompt, provider)
     if kind == "review_requests":
-        prompt = (base + f"Write review request messages for {name}: a short email and a text message for right after closing, a follow-up "
-                  "for 30 days after move-in, and a note for trade partners. Each includes [Google review link]. Friendly, personal, short. "
+        prompt = (base + f"Write review request messages for {name}: a short email and a text message for right after "
+                  + ("closing, a follow-up for 30 days after move-in" if B else "a project wraps up, a follow-up for 30 days later")
+                  + ", and a note for trade partners. Each includes [Google review link]. Friendly, personal, short. "
                   "Markdown with a heading per message.")
         return llm.text(prompt, provider)
     raise ValueError("unknown generator")

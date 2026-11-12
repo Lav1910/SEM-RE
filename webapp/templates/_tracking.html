@@ -2,7 +2,7 @@
 <div class="stack">
   <section class="card">
     <div class="status-row">
-      <div><h2 style="margin:0">Client link {{ tip("The interactive report you send the builder. Everything below comes from their visits; visits from signed-in HBM teammates don't count.") }}</h2>
+      <div><h2 style="margin:0">Client link {{ tip("The interactive report you send the business. Everything below comes from their visits; visits from signed-in HBM teammates don't count.") }}</h2>
         <p class="small muted" style="margin:2px 0 0">{% if a.client_created_at or a.client_token %}Sent {{ (a.client_created_at or (a.client_expires or 0) - 2592000)|ago }}{% if sender %} by {{ sender.name }}{% endif %} · {% endif %}
           {% if client %}<b>active</b>, expires {{ client.expires|datefmt }}{% elif a.client_token %}expired{% elif a.client_created_at %}turned off{% else %}not sent yet{% endif %}</p></div>
       <div class="row-actions">

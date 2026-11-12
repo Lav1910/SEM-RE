@@ -32,11 +32,12 @@
       <div class="hiw-pop" id="hiw-pop" hidden>
         <h3>How this audit works</h3>
         <ol>
-          <li><b>Buyer questions.</b> We write {{ A.questions|length }} questions a home buyer in {{ A.market.city }} would ask, weighted by Google search demand.</li>
-          <li><b>Five AI platforms.</b> Each question is asked live on ChatGPT, Gemini, Perplexity, Google AI Overviews and AI Mode, set to the builder's market.</li>
-          <li><b>Who gets named.</b> We record which builders each answer names and which websites it cites.</li>
-          <li><b>The score.</b> AI Visibility is the share of non-brand answers that name the builder, weighted by demand. Brand-name questions don't count.</li>
-          <li><b>History.</b> Each new audit of the builder adds a point to the trend, so progress shows month by month.</li>
+          {% set W = biz(A) %}
+          <li><b>{{ 'Buyer' if W.is_builder else 'Customer' }} questions.</b> {% if not W.is_builder %}We read what the business sells ({{ W.services[:4]|join(', ')|lower }}), then w{% else %}W{% endif %}rite {{ A.questions|length }} questions {{ 'a home buyer' if W.is_builder else 'a customer' }} in {{ A.market.city }} would ask, weighted by Google search demand.</li>
+          <li><b>Five AI platforms.</b> Each question is asked live on ChatGPT, Gemini, Perplexity, Google AI Overviews and AI Mode, set to the {{ W.noun }}'s market.</li>
+          <li><b>Who gets named.</b> We record which {{ W.nouns }} each answer names and which websites it cites.</li>
+          <li><b>The score.</b> AI Visibility is the share of non-brand answers that name the {{ W.noun }}, weighted by demand. Brand-name questions don't count.</li>
+          <li><b>History.</b> Each new audit of the {{ W.noun }} adds a point to the trend, so progress shows month by month.</li>
         </ol>
         <p class="small muted">Website checks (markup, crawlers, reviews) are read from the site itself, not from AI answers.</p>
       </div></div>
@@ -112,6 +113,13 @@
     {% set extra = [] %}{% for ar in A.profile.areas_served %}{% if ar.split(',')[0]|lower != A.market.city|lower and ar|lower != ('greater ' ~ A.market.city)|lower %}{% set _ = extra.append(ar.split(',')[0]) %}{% endif %}{% endfor %}
     {% if extra %}<span class="ctl-sub" title="{{ extra|join(', ') }}">+{{ extra|length }} area{{ 's' if extra|length != 1 }}</span>{% endif %}
   </div>
+  {% if A.profile.business %}{% set BW = biz(A) %}{# change 53: what the questions were built around #}
+  <div class="ctl ctl-market ctl-biz" title="Measured as {{ BW.a_label }}{% if BW.services %}: {{ BW.services|join(', ') }}{% endif %}">
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 7h16v12H4zM9 7V5h6v2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <span>{{ BW.label|capitalize }}</span>
+    {% if BW.services %}<span class="ctl-sub">{{ BW.services|length }} service{{ 's' if BW.services|length != 1 }}</span>{% endif %}
+  </div>
+  {% endif %}
   {% if view in ('overview', 'competitors', 'prompts') %}
   <form method="get" class="ctl-form">
     {% for v in request.args.getlist('vs') %}<input type="hidden" name="vs" value="{{ v }}">{% endfor %}
@@ -133,7 +141,7 @@
 </div>
 {% if request.args.get('reopened') %}{# change 29: a recent audit opened instantly, with the option to run a new one #}
 <div class="reopen-note">
-  <span>Opened instantly: this builder was audited <b>{{ a.created_at|ago }}</b>{% if a.owner %} by {{ a.owner }}{% endif %}.</span>
+  <span>Opened instantly: this business was audited <b>{{ a.created_at|ago }}</b>{% if a.owner %} by {{ a.owner }}{% endif %}.</span>
   <form method="post" action="{{ url_for('create_audit') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
     <input type="hidden" name="url" value="{{ a.url }}"><input type="hidden" name="scope" value="{{ a.scope or 'root' }}"><input type="hidden" name="confirm_duplicate" value="1">
     <button class="btn btn-primary btn-small" type="submit">Run fresh</button></form>
