@@ -1,8 +1,7 @@
 {# change 48: the Audits area's own sidebar (like the one inside an audit) #}
 {% set _ep = request.endpoint %}
 <nav class="side" aria-label="Audits">
-  <img class="side-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
-  <div class="side-title">AEO Snapshot</div>
+  {% from "_wordmark.html" import wordmark %}{{ wordmark(href=url_for('dashboard')) }}{# change 57 #}
   <div class="side-group">Audits</div>
   <a class="side-link {{ 'on' if _ep == 'dashboard' }}" href="{{ url_for('dashboard') }}">All audits</a>
   {% if can('share') %}

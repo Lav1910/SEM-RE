@@ -1135,3 +1135,25 @@ mark.confirm { background:#FFF1C9; color:#7A5600; border-radius:4px; padding:0 3
 @media (max-width: 600px) { .ai-log li { grid-template-columns:1fr auto; } .ai-who { grid-column:1 / -1; } .ai-create { flex-direction:column; } }
 .ai-admin { display:flex; flex-wrap:wrap; gap:14px 22px; align-items:flex-end; margin:14px 0 0; }
 .ai-admin label:not(.chk) { display:grid; gap:6px; } .ai-admin input[type=number] { width:120px; padding:8px 10px; }
+
+/* change 57: the AEO Snapshot wordmark in Syncopate (wide caps): bold white AEO, teal SNAPSHOT. On white cards
+   (.wm-light) it turns ink + deep teal. It slides in left to right once per visit (html.wm-first). */
+.wm { display:block; padding:10px 10px 22px; text-decoration:none; }
+.wm-t { display:inline-block; font-family:'Syncopate', 'Poppins', sans-serif; font-size:14.5px; line-height:1; letter-spacing:.18em;
+  white-space:nowrap; color:#F3FBFB; }
+.wm-t b { font-weight:700; }
+.wm-t span { font-weight:400; color:#3FD6D8; }
+.wm-t.wm-light { color:var(--ink, #16302F); }
+.wm-t.wm-light span { color:#0A686A; }
+.wm-t.wm-big { font-size:19px; }
+html.wm-first .wm-t { -webkit-mask-image:linear-gradient(90deg, #000 0%, #000 46%, transparent 54%, transparent 100%);
+  mask-image:linear-gradient(90deg, #000 0%, #000 46%, transparent 54%, transparent 100%);
+  -webkit-mask-size:240% 100%; mask-size:240% 100%; -webkit-mask-position:100% 0; mask-position:100% 0;
+  animation:wm-write 1.6s cubic-bezier(.45,.05,.2,1) .15s forwards; }
+@keyframes wm-write { to { -webkit-mask-position:0 0; mask-position:0 0; } }
+@media (prefers-reduced-motion: reduce) { html.wm-first .wm-t { animation:none; -webkit-mask-image:none; mask-image:none; } }
+.login-card .wm.login-wm { padding:6px 0 4px; }
+.client-hero-top .wm.client-wm { padding:0; flex:none; align-self:center; }
+.client-hero-top .wm.client-wm .wm-t { font-size:16px; }
+.rail-logo .rail-icon { display:block; width:40px; height:40px; margin:0 auto; border-radius:11px; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+@media (max-width: 640px) { .client-hero-top .wm.client-wm .wm-t { font-size:13px; } }

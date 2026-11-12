@@ -1,0 +1,5 @@
+{# change 57: the AEO Snapshot wordmark (Syncopate, wide caps). light=True for white cards, otherwise for the teal panels. #}
+{% macro wordmark(light=False, big=False, href=None, cls='') -%}
+{%- set inner -%}<span class="wm-t{{ ' wm-light' if light }}{{ ' wm-big' if big }}" aria-hidden="true"><b>AEO</b> <span>SNAPSHOT</span></span>{%- endset -%}
+{% if href %}<a class="wm {{ cls }}" href="{{ href }}" aria-label="AEO Snapshot">{{ inner }}</a>{% else %}<div class="wm {{ cls }}" role="img" aria-label="AEO Snapshot">{{ inner }}</div>{% endif %}
+{%- endmacro %}

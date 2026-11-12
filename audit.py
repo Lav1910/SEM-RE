@@ -35,13 +35,7 @@ class AuditError(Exception):
 
 def _typed_location(label):
     """A place typed on the dashboard, like "Mason, OH"."""
-    m = re.match(r"^\s*([A-Za-z .'-]+?),\s*([A-Za-z]{2})\s*$", label or "")
-    if not m or m.group(2).upper() not in site.STATE_NAMES:
-        return None
-    st = m.group(2).upper()
-    name = " ".join(w.capitalize() for w in m.group(1).split())
-    return {"label": f"{name}, {st}", "name": name, "city": name, "state": site.STATE_NAMES[st], "state_code": st,
-            "kind": "city", "main": False, "sources": ["entered"]}
+    return locations.typed(label)
 
 
 def _stepper(progress):
@@ -116,6 +110,9 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     import concurrent.futures as _cf
     biz_pool = _cf.ThreadPoolExecutor(max_workers=1)
     f_biz = biz_pool.submit(business.cached, profile, profile["domain"]) if not blocked else None
+    preset = locations.preset_for(profile["domain"])
+    if preset and not city:  # change 56: a set main market (HBM: San Diego) when none was typed in
+        city, state = preset["city"], preset["state_code"]
     market = site.market_from(profile, city, state)
     if (not market["city"] or not market["state"]) and pm.get("city") and pm.get("state_code"):  # the market from the last audit
         market = site.market_from(profile, pm["city"], pm["state_code"])

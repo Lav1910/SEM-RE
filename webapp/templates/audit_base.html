@@ -2,8 +2,7 @@
 {% block title %}{{ views_nav[view] }}: {{ a.domain }}{% endblock %}
 {% block sidebar %}
 <nav class="side" aria-label="AI Visibility">
-  <img class="side-logo" src="{{ url_for('static', filename='hbm-logo.png') }}" alt="Home Builder Marketers">
-  <div class="side-title">AEO Snapshot</div>
+  {% from "_wordmark.html" import wordmark %}{{ wordmark(href=url_for('dashboard')) }}{# change 57 #}
   <div class="side-group">AI Analysis</div>
   {% for key in ('overview', 'competitors', 'prompts') %}
     <a class="side-link {{ 'on' if view == key }}" href="{{ url_for('audit_view', aid=a.id, view=key, platform=platform if platform != 'all' else None) }}">{{ views_nav[key] }}</a>
@@ -150,17 +149,26 @@
 {% block view %}{% endblock %}
 {% include "_feedback.html" %}
 <script>
-(function () {  // change 39: one click creates and copies the client link; the arrow opens copy / new link / turn off
+(function () {  // change 39 + 54: one click copies the client link (creating it first if needed); the arrow opens copy / new link / turn off
   var box = document.querySelector('.cl'); if (!box) return;
   var main = box.querySelector('.cl-main'), label = box.querySelector('.cl-label'), count = box.querySelector('.cl-count');
   var on = box.querySelector('.cl-on'), none = box.querySelector('.cl-none'), input = box.querySelector('.exp-client-url'), stats = box.querySelector('[data-stats]');
-  var timer;
+  var more = box.querySelector('.cl-more'), timer;
   function flash(text) { clearTimeout(timer); label.textContent = text; main.classList.add('done'); timer = setTimeout(function () { label.textContent = 'Client link'; main.classList.remove('done'); }, 2200); }
-  function copy() {
-    if (!input.value) return;
-    var ok = function () { flash('✓ Link copied'); };
-    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(input.value).then(ok, function () { input.select(); document.execCommand('copy'); ok(); });
-    else { input.select(); document.execCommand('copy'); ok(); }
+  function legacyCopy(text) {  // works without the dropdown being open: a temporary off-screen box inside the click
+    var t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', '');
+    t.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0'; document.body.appendChild(t); t.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(t); return ok;
+  }
+  function showForManualCopy() {  // the browser refused: open the menu with the link selected, so one Cmd+C does it
+    more.open = true; input.focus(); input.select(); flash('Press ⌘C to copy');
+  }
+  function copyNow(text) {  // must run inside the click itself
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { flash('✓ Link copied'); },
+        function () { if (legacyCopy(text)) flash('✓ Link copied'); else showForManualCopy(); });
+    } else if (legacyCopy(text)) flash('✓ Link copied'); else showForManualCopy();
   }
   function paint(l) {
     on.hidden = !l; none.hidden = !!l;
@@ -169,24 +177,41 @@
     stats.textContent = (l.views ? 'Opened ' + l.views + ' time' + (l.views === 1 ? '' : 's') + ' · last ' + l.last_label : 'Not opened yet') + ' · expires ' + l.expires_label;
     count.textContent = l.views; count.hidden = !l.views;
   }
+  function post(act) {
+    var fd = new FormData(); fd.append('csrf', box.dataset.csrf); fd.append('action', act);
+    return fetch(box.dataset.url, {method: 'POST', body: fd, headers: {'Accept': 'application/json'}, credentials: 'same-origin'}).then(function (r) { return r.json(); });
+  }
+  function createAndCopy() {
+    main.disabled = true;
+    var req = post('create');
+    var done = function () { main.disabled = false; };
+    // Safari and Chrome keep the click's permission when the text arrives as a promise inside a ClipboardItem
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write && window.isSecureContext) {
+      var text = req.then(function (d) { paint(d.link); if (!d.link) throw new Error('no link'); return new Blob([d.link.url], {type: 'text/plain'}); });
+      navigator.clipboard.write([new ClipboardItem({'text/plain': text})])
+        .then(function () { flash('✓ Link copied'); }, function () { req.then(function (d) { if (d.link && !legacyCopy(d.link.url)) showForManualCopy(); else if (d.link) flash('✓ Link copied'); }); })
+        .then(done, done);
+    } else {
+      req.then(function (d) { paint(d.link); if (d.link) { if (legacyCopy(d.link.url)) flash('✓ Link copied'); else showForManualCopy(); } })
+        .catch(function () { flash('Try again'); }).then(done);
+    }
+  }
   box.addEventListener('click', function (ev) {
     var b = ev.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
-    if (act === 'copy') { copy(); return; }
+    if (act === 'create') { if (input.value) copyNow(input.value); else createAndCopy(); return; }  // change 54: instant when a link exists
+    if (act === 'copy') { if (input.value) copyNow(input.value); return; }
     if (act === 'off' && !confirm('Turn off this client link? Anyone with it will see "link expired".')) return;
-    var fd = new FormData(); fd.append('csrf', box.dataset.csrf); fd.append('action', act);
     main.disabled = true;
-    fetch(box.dataset.url, {method: 'POST', body: fd, headers: {'Accept': 'application/json'}, credentials: 'same-origin'})
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
+    post(act).then(function (d) {
         paint(d.link);
         if (act === 'full' || act === 'preview') { box.querySelectorAll('.cl-acc').forEach(function (x) { x.classList.toggle('on', x.dataset.act === act); }); flash(act === 'full' ? 'Full access on' : 'Preview on'); }
-        else if (d.link) copy(); else flash('Link turned off');
+        else if (d.link) { if (legacyCopy(d.link.url)) flash('✓ New link copied'); else showForManualCopy(); } else flash('Link turned off');
       })
       .catch(function () { flash('Try again'); })
       .then(function () { main.disabled = false; });
   });
-  document.addEventListener('click', function (e) { var m = box.querySelector('.cl-more'); if (m.open && !m.contains(e.target)) m.open = false; });
+  document.addEventListener('click', function (e) { if (more.open && !more.contains(e.target)) more.open = false; });
 })();
 </script>
 {% endblock %}

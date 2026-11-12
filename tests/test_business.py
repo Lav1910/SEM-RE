@@ -143,6 +143,25 @@ class Report(unittest.TestCase):
         self.assertIn("What AI tells local home buyers", render.render(A))
 
 
+class Presets(unittest.TestCase):
+    """change 56: HBM is measured from San Diego plus the US home-building hubs."""
+    def test_hbm_gets_san_diego_and_the_hubs(self):
+        from aeo import locations
+        P = {"domain": "homebuildermarketers.com", "areas_served": [], "location_links": [], "area_phrases": [], "sitemap_urls": []}
+        M = {"city": "San Diego", "state": "California", "state_code": "CA"}
+        with mock.patch.object(locations, "validate", lambda c, m, provider="gemini": [
+                {"label": "San Diego, CA", "name": "San Diego", "city": "San Diego", "state": "California", "state_code": "CA", "kind": "city", "main": True, "sources": ["main market"]}]):
+            found = locations.find(P, M)
+        labels = [l["label"] for l in found]
+        self.assertEqual(labels[0], "San Diego, CA")
+        self.assertIn("Dallas, TX", labels); self.assertIn("Denver, CO", labels)
+        self.assertEqual(len(labels), 13)
+        self.assertIsNone(locations.preset_for("someremodeler.com"))
+
+    def test_niche_rule_is_in_the_prompt(self):
+        self.assertIn("SEO for home builders", business.PROMPT)
+
+
 class Dashboard(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -173,6 +192,12 @@ class Dashboard(unittest.TestCase):
         html = self.client().get("/").get_data(as_text=True)
         self.assertIn("svc-dd", html)
         self.assertIn("Business website", html)
+
+    def test_wordmark_everywhere(self):
+        html = self.client().get("/").get_data(as_text=True)
+        self.assertIn('class="wm-t"', html); self.assertNotIn("hbm-logo.png", html)
+        login = self.app.test_client().get("/login").get_data(as_text=True)
+        self.assertIn("wm-light", login); self.assertNotIn("hbm-logo.png", login); self.assertIn("Syncopate", login)
 
     def test_favicon(self):
         r = self.app.test_client().get("/favicon.ico")

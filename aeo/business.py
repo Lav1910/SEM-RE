@@ -88,7 +88,10 @@ builders); a remodeler, contractor or other trade is false. List the 3 to 6 main
 a customer would search for them. Put the broad, most-searched services first and narrower ones after (for example
 "Bathroom remodeling" before "Tub-to-shower conversion"), and don't list two names for the same service. "pros" is the
 plural a customer would type to find businesses that do that service, like "bathroom remodelers", "roofers" or
-"basement finishing companies".
+"basement finishing companies". If the business serves one specific industry or kind of client (for example an agency
+that only works with home builders, or a firm that only serves dentists), name every service and "pros" for that
+audience, like {"name": "SEO for home builders", "pros": "home builder SEO agencies"}, and say so in "business"
+(e.g. "marketing agency for home builders").
 Website details (JSON):
 """
 
