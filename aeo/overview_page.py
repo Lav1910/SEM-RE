@@ -55,7 +55,7 @@ def chart_svg(chart, set_="main", w=520, h=190):
     months = chart.get("months") or []
     series = [s for s in chart.get(set_, []) if any(v is not None for v in s.get("values", []))]
     if not months or not series:
-        return '<div class="ov-chart-empty">History builds up as this builder is audited again each month.</div>'
+        return '<div class="ov-chart-empty">History builds up as this business is audited again each month.</div>'
     L, R, T, B = 34, 10, 8, 26
     pw, ph = w - L - R, h - T - B
     mx = max([v for s in series for v in s["values"] if v is not None] + [1])
@@ -128,10 +128,12 @@ def section(A, ov, filter_label=None):
     """The overview page body (inside a .page)."""
     V, chart = ov["V"], ov["chart"]
     P, M = A["profile"], A["market"]
+    from . import business
+    noun = business.words(A)["noun"]
     score, band = V["score"], V["band"]
     a, _, wash = BAND.get(band, ("#7A898B", "", "#F4F8F8"))
     semh = (A.get("semrush") or {}).get("history") or []
-    metrics = [("#5B5FD9", "Mentions", V["mentions"] if V["measured_any"] else "—", "AI answers naming the builder"),
+    metrics = [("#5B5FD9", "Mentions", V["mentions"] if V["measured_any"] else "—", f"AI answers naming the {noun}"),
                ("#18C3A4", "Citations", V["citations"] if V["measured_any"] else "—", "answers linking to the site"),
                ("#B37FEB", "Cited pages", V["cited_pages"] if V["measured_any"] else "—", "site pages AI cites"),
                ("#0FB2B5", "AI Overviews", semh[-1]["aio_cited"] if semh else "—", "Google AI Overviews citing the site")]
@@ -165,7 +167,7 @@ def section(A, ov, filter_label=None):
    <p class="ov-cap" style="--w:{wash}">{e(V["caption"])}</p></div>
   <div class="ov-box"><div class="ov-t">Main metrics</div><div class="ov-ms">{mt}</div>{chart_svg(chart)}</div>
  </div>
- <div class="ov-box"><div class="ov-t">Distribution by AI platform <span>share of the builder's mentions, visibility score 0–100, and answers naming them</span></div>
+ <div class="ov-box"><div class="ov-t">Distribution by AI platform <span>share of the {noun}'s mentions, visibility score 0–100, and answers naming them</span></div>
   <table class="ov-dist"><thead><tr><th>Platform</th><th></th><th class="r">Share</th><th class="r">Score</th><th class="r">Named</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>
  <div class="ov-next"><div class="ov-t">What's next?</div><div class="ov-cards">{cards}</div></div>'''
 

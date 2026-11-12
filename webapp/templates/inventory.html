@@ -15,7 +15,7 @@
     <input type="hidden" name="scope" value="{{ scope }}"><input type="hidden" name="mode" value="{{ mode }}">{% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
     <label class="hist-search"><span class="sr-only">Search files</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <input type="search" name="q" value="{{ q }}" placeholder="Search by builder or website" autocomplete="off"></label>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search by business or website" autocomplete="off"></label>
     <label class="ctl ctl-select"><span class="sr-only">File type</span><select name="type" onchange="this.form.submit()">
       <option value="all">All types</option>{% for k, v in kinds.items() %}{% if k != 'data' or can('raw_data') %}<option value="{{ k }}" {{ 'selected' if kind == k }}>{{ v[0] }} ({{ v[1] }})</option>{% endif %}{% endfor %}</select></label>
     <label class="ctl ctl-select"><span class="sr-only">Date</span><select name="when" onchange="this.form.submit()">
@@ -44,7 +44,7 @@
     {% if files %}
     <form id="inv-zip" method="post" action="{{ url_for('inventory_zip') }}"><input type="hidden" name="csrf" value="{{ session.csrf }}">
     <div class="inv-files" data-views>
-      <div class="inv-head"><span></span><span>Name</span><span>Builder</span><span>Type</span><span class="r">Size</span><span>Date</span><span>By</span><span></span></div>
+      <div class="inv-head"><span></span><span>Name</span><span>Business</span><span>Type</span><span class="r">Size</span><span>Date</span><span>By</span><span></span></div>
       {% for f in files %}{% set ic = ICON[f.type] %}
       <div class="inv-file">
         <label class="inv-pick"><input type="checkbox" name="f" value="{{ f.aid }}:{{ f.kind }}" aria-label="Select {{ f.label }} for {{ f.builder }}"></label>

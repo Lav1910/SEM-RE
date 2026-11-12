@@ -18,12 +18,13 @@ import urllib.parse
 from markupsafe import escape
 import uuid
 
-from flask import (Flask, abort, flash, g, jsonify, redirect, render_template, request, send_file, session, url_for)
+from flask import (Flask, abort, flash, g, jsonify, redirect, render_template, request, send_file, send_from_directory, session,
+                   url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from aeo import budget, config, engines, semrush, site  # noqa: E402
+from aeo import budget, business, config, engines, semrush, site  # noqa: E402
 from aeo import dates  # noqa: E402
 from aeo import scope as scopes  # noqa: E402
 from . import auth, db, jobs, mailer, markdown, pdf, status, store, views  # noqa: E402
@@ -149,6 +150,17 @@ def _static_version(endpoint, values):
             values["v"] = _static_v[fn]
 
 
+@app.route("/favicon.ico")
+@app.route("/apple-touch-icon.png")
+@app.route("/apple-touch-icon-precomposed.png")
+def root_icon():
+    """change 52: browsers and phones ask for these at the site root even when a page doesn't link them."""
+    fn = "favicon.ico" if request.path == "/favicon.ico" else "apple-touch-icon.png"
+    resp = send_from_directory(os.path.join(app.static_folder, "icons"), fn, max_age=86400)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
 def login_required(f):
     @functools.wraps(f)
     def w(*a, **k):
@@ -221,6 +233,7 @@ def tip(text):
 app.jinja_env.globals["tip"] = tip
 app.jinja_env.filters["datefmt"] = lambda ts: dates.date_time(ts) if ts else "—"
 app.jinja_env.globals["engine_labels"] = engines.ENGINE_LABELS
+app.jinja_env.globals["biz"] = business.words  # change 53: {{ biz(A).noun }} is "builder", "remodeler", ...
 
 
 def platform_logo(engine, size=18):
@@ -615,8 +628,12 @@ def create_audit():
     prev = db.q("""SELECT a.*, u.name AS owner FROM audits a JOIN users u ON u.id=a.user_id
                    WHERE a.domain=? AND a.status='done' AND a.created_at>? ORDER BY a.created_at DESC LIMIT 1""",
                 (domain, time.time() - 30 * 86400), one=True)
+    svcs = None
+    if request.form.get("svc_custom"):  # change 53: services ticked or typed in the dropdown; otherwise read from the site
+        svcs = list(dict.fromkeys(v.strip()[:60] for v in request.form.getlist("svc") if v.strip()))[:8] or None
     if prev and prev["created_at"] > time.time() - REOPEN_DAYS * 86400 and not request.form.get("confirm_duplicate") \
-            and (prev["scope"] or "root") == kind:  # change 29: audited this week, so open it instantly
+            and (prev["scope"] or "root") == kind and svcs is None and _knows_business(prev["id"]):
+        # change 29: audited this week, so open it instantly (change 53: not when that audit predates service detection)
         return redirect(url_for("audit_view", aid=prev["id"], view="overview", reopened=1))
     if prev and prev["user_id"] != g.user["id"] and not request.form.get("confirm_duplicate"):
         return render_template("duplicate.html", prev=prev, form=request.form)
@@ -625,15 +642,26 @@ def create_audit():
     if request.form.get("loc_all"):
         locs = []  # "All locations": let the audit pick by search demand, up to the cap
     depth = request.form.get("depth") if request.form.get("depth") in jobs.DEPTHS else ("quick" if request.form.get("test_mode") else "standard")
-    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, city, state, test_mode, depth, status, stage, progress, share_token, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
-         (aid, g.user["id"], url, domain, kind, json.dumps(locs) if locs else None, request.form.get("city", "").strip() or None, request.form.get("state", "").strip() or None,
+    db.x("""INSERT INTO audits (id, user_id, url, domain, scope, locations, services, city, state, test_mode, depth, status, stage, progress,
+                                share_token, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?, 'queued', 'Waiting to start', 0, ?, ?)""",
+         (aid, g.user["id"], url, domain, kind, json.dumps(locs) if locs else None, json.dumps(svcs) if svcs else None,
+          request.form.get("city", "").strip() or None, request.form.get("state", "").strip() or None,
           1 if depth == "quick" else 0, depth, secrets.token_urlsafe(18), time.time()))
     jobs.kick(PUBLIC_URL or request.host_url)
     return redirect(url_for("audit_page", aid=aid))
 
 
 REOPEN_DAYS = int(os.environ.get("HBM_REOPEN_DAYS", "7"))
+
+
+def _knows_business(aid):
+    """change 53: audits from before service detection asked home-builder questions of every business."""
+    try:
+        A = store.load_json(aid)
+    except Exception:
+        return False
+    return bool(A and A.get("profile", {}).get("business"))
 
 # change 36: audit types shown on the run form, the audit page and the Audits list
 DEPTH_INFO = {"quick": {"label": "Quick", "what": "~6 questions · main city", "q": 6, "secs": 45},
@@ -696,25 +724,42 @@ def api_locations():
     if A:
         locs = A.get("locations")
         if locs:
-            return jsonify(dict(meta, source="last audit", market=A["market"],
+            return jsonify(dict(meta, source="last audit", market=A["market"], business=_biz_json(business.cached(A["profile"], domain)),
                                 locations=[{"label": l["label"], "main": bool(l.get("main")), "sources": l.get("sources", [])} for l in locs]))
     hit = _loc_cache.get(domain)
     if hit and time.time() - hit[0] < 6 * 3600:
         return jsonify(dict(meta, **hit[1]))
+    from concurrent.futures import ThreadPoolExecutor
+    pool = ThreadPoolExecutor(max_workers=1)
     try:
         prof = site.read_site(url, use_browser=False)
         if not prof["homepage_status"] or prof["homepage_status"] >= 400:
             return jsonify(dict(meta, error="Couldn't load that website.", locations=[]))
+        f_biz = pool.submit(business.cached, prof, domain)  # change 53: the Services dropdown, read alongside the cities
         mk = site.market_from(prof)
+        biz = None
+        try:
+            biz = _biz_json(f_biz.result(timeout=45))
+        except Exception:
+            pass
         if not mk.get("city") or not mk.get("state"):
-            return jsonify(dict(meta, error="Couldn't tell where this builder works. Add the city below.", locations=[]))
+            return jsonify(dict(meta, error="Couldn't tell where this business works. Add the city below.", locations=[], business=biz))
         found = locmod.find(prof, mk)
     except Exception as e:
         return jsonify(dict(meta, error=f"Couldn't scan the site ({type(e).__name__}). Add the city below.", locations=[]))
-    res = {"source": "website scan", "market": mk,
+    finally:
+        pool.shutdown(wait=False)
+    res = {"source": "website scan", "market": mk, "business": biz,
            "locations": [{"label": l["label"], "main": bool(l.get("main")), "sources": l.get("sources", [])} for l in found]}
     _loc_cache[domain] = (time.time(), res)
     return jsonify(dict(meta, **res))
+
+
+def _biz_json(b):
+    """change 53: what the dashboard's Services dropdown shows."""
+    if not b:
+        return None
+    return {"kind": b["kind"], "label": b.get("label"), "services": [s["name"] for s in b.get("services") or []]}
 
 
 @app.route("/feedback", methods=["POST"])

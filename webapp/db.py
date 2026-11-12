@@ -128,7 +128,7 @@ LATER_COLUMNS = {
                ("cost_usd", "REAL"), ("client_token", "TEXT"), ("client_expires", "REAL"), ("client_views", "INTEGER NOT NULL DEFAULT 0"),
                ("client_last_view", "REAL"), ("depth", "TEXT"), ("client_by", "INTEGER"), ("client_created_at", "REAL"),
                ("client_full", "INTEGER NOT NULL DEFAULT 0"), ("client_alerted_at", "REAL"),
-               ("via", "TEXT")],
+               ("via", "TEXT"), ("services", "TEXT")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
               ("last_login", "REAL"), ("avatar_at", "REAL")],
     "strategy_content": [("lease_until", "REAL")],

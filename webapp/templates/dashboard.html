@@ -5,10 +5,10 @@
 <div class="stack">
   <section class="card">
     <h1>Run an AEO Snapshot</h1>
-    <p class="sub">Paste a home builder's website. We'll ask the AI platforms local buyer questions, check the site, and build a report you can share.</p>
+    <p class="sub">Paste a business's website. We read what they sell and where, ask the AI platforms the questions their local customers ask, check the site, and build a report you can share.</p>
     <form class="new-audit" method="post" action="{{ url_for('create_audit') }}">
       <input type="hidden" name="csrf" value="{{ session.csrf }}">
-      <div><span class="label">Builder website</span>
+      <div><span class="label">Business website</span>
         {{ scope_field('', 'root', big=true, id='url', placeholder='justindoylehomes.com') }}</div>
       <button class="btn btn-primary" type="submit" style="height:52px">Run audit</button>
       <div class="opts locs" data-locs="{{ url_for('api_locations') }}">
@@ -28,6 +28,21 @@
         </div>
         <span class="loc-note small muted"></span>
         <input type="hidden" id="city" name="city"><input type="hidden" id="state" name="state">
+        {# change 53: services read from the website; untick or add more, like locations #}
+        <span class="locs-label">Services:</span>
+        <div class="loc-dd svc-dd">
+          <button class="ctl ctl-select loc-btn svc-btn" type="button" aria-haspopup="true" aria-expanded="false" disabled><span class="loc-btn-text svc-btn-text">Enter a website first</span></button>
+          <div class="loc-panel svc-panel" hidden>
+            <label class="loc-all"><input type="checkbox" class="svc-all" checked> <b>All services</b> <span class="small muted">read from the website</span></label>
+            <div class="loc-list svc-list"></div>
+            <div class="loc-add">
+              <input type="text" class="loc-add-city svc-add-name" placeholder="Add a service, e.g. walk-in showers" aria-label="Service to add" maxlength="60">
+              <button class="btn btn-ghost btn-small svc-add-btn" type="button">Add</button>
+            </div>
+          </div>
+        </div>
+        <span class="svc-note small muted"></span>
+        <input type="hidden" name="svc_custom" class="svc-custom" value="">
         {# change 36: audit type #}
         <div class="depth-pick" role="radiogroup" aria-label="Audit type">
           {% for k in ('quick', 'standard', 'full') %}{% set d = depths[k] %}
@@ -60,7 +75,7 @@
       <input type="hidden" name="scope" value="{{ scope }}">
       <label class="hist-search"><span class="sr-only">Search audits</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="hist_q" type="search" name="q" value="{{ hist.q }}" placeholder="Search by builder, website{{ ' or person' if scope == 'team' }}" autocomplete="off"></label>
+        <input id="hist_q" type="search" name="q" value="{{ hist.q }}" placeholder="Search by business, website{{ ' or person' if scope == 'team' }}" autocomplete="off"></label>
       <button class="btn btn-ghost btn-small" type="submit">Search</button>
       {% if hist.q %}<a class="link-btn small" href="{{ url_for('dashboard', scope=scope) }}">Clear</a>{% endif %}
     </form>
@@ -71,7 +86,7 @@
     </div>
     {% if rows %}
     <div class="tw" style="margin-top:10px"><table class="hist-table">{# change 45: balanced columns #}
-      <thead><tr><th class="hc-builder">Builder</th><th class="hc-status">Status</th><th class="c">Score</th><th class="c">Named in AI</th><th class="c">Maps 3-pack</th><th class="c">Site checks</th>{% if scope == 'team' %}<th class="hc-by">By</th>{% endif %}<th class="hc-ran">Ran</th><th class="c">Run time</th>{% if can('see_costs') %}<th class="c">Cost</th>{% endif %}<th></th></tr></thead>
+      <thead><tr><th class="hc-builder">Business</th><th class="hc-status">Status</th><th class="c">Score</th><th class="c">Named in AI</th><th class="c">Maps 3-pack</th><th class="c">Site checks</th>{% if scope == 'team' %}<th class="hc-by">By</th>{% endif %}<th class="hc-ran">Ran</th><th class="c">Run time</th>{% if can('see_costs') %}<th class="c">Cost</th>{% endif %}<th></th></tr></thead>
       <tbody>
       {% for a in rows %}
         <tr>
@@ -105,7 +120,7 @@
     {% elif hist.q %}
       <p class="muted" style="margin:12px 0 0">No audits match “{{ hist.q }}”. <a href="{{ url_for('dashboard', scope=scope) }}">Clear the search</a>.</p>
     {% else %}
-      <p class="muted" style="margin:12px 0 0">No audits yet. Paste a builder's website above to run the first one.</p>
+      <p class="muted" style="margin:12px 0 0">No audits yet. Paste a business's website above to run the first one.</p>
     {% endif %}
   </section>
 </div>

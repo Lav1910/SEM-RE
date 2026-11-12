@@ -1,6 +1,6 @@
 {% set mx = [3] %}{% for key, col in series %}{% for p in t %}{% if p[key] > mx[-1] %}{% set _ = mx.append(p[key]) %}{% endif %}{% endfor %}{% endfor %}{% set mx = mx[-1] %}
 {% set n = t|length %}
-<div class="trend-wrap" role="img" aria-label="Trend across audits of this builder">
+<div class="trend-wrap" role="img" aria-label="Trend across audits of this business">
   <div class="trend-y">{% for i in range(3, -1, -1) %}<span>{{ '{:,}'.format((mx * i / 3)|round(0)|int) }}</span>{% endfor %}</div>
   <div class="trend-plot">
     <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">

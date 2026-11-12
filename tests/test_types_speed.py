@@ -82,7 +82,9 @@ class HeadStartAndBrand(unittest.TestCase):
     def test_known_builder_starts_asking_before_the_site_is_read(self):
         import audit
         prior = {"market": {"city": "Cincinnati", "state": "Ohio", "state_code": "OH"},
-                 "profile": {"name": "Acme Homes", "domain": "acme.com", "services": [], "areas_served": []}}
+                 "profile": {"name": "Acme Homes", "domain": "acme.com", "services": [], "areas_served": [],
+                             "business": {"kind": "home_builder", "label": "home builder", "noun": "builder", "nouns": "builders",
+                                          "customers": "home buyers", "services": [], "source": "website"}}}
         S = audit.prepare("https://acme.com/", max_q=6, only=["perplexity"], use_semrush=False, prior=prior)
         self.assertEqual(S["market"]["city"], "Cincinnati")  # a blocked site still gets its market from last time
         self.assertTrue(self.asked)

@@ -20,7 +20,7 @@ if os.name == "nt" and not sys.flags.utf8_mode:  # Windows: run in UTF-8 mode so
     sys.exit(subprocess.call([sys.executable, "-X", "utf8"] + sys.argv))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from aeo import analyze, config, dates, datawise, engines, locations, questions, render, scope, semrush, site  # noqa: E402
+from aeo import analyze, business, config, dates, datawise, engines, locations, questions, render, scope, semrush, site  # noqa: E402
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -56,7 +56,7 @@ def _stepper(progress):
 
 
 def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progress=None, scope_kind="root",
-            locations_chosen=None, max_locations=None, skip_brand=False, prior=None, hedge=True):
+            locations_chosen=None, max_locations=None, skip_brand=False, prior=None, hedge=True, services_chosen=None):
     """Step 1 of an audit (about 30-90 s): read the site, find the market and service cities, build the questions,
     pull search demand and the Google profile, run the site checks. Returns a JSON-safe state for the next steps."""
     t0 = time.time()
@@ -84,12 +84,14 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         th.start()
         return {"qs": qs_, "early_qs": eq, "early": early_, "est": est_, "thread": th, "market": mkt}
 
-    # change 34: a builder audited before already has a known market and questions, so the AI questions start at once
+    # change 34: a business audited before already has a known market and questions, so the AI questions start at once
+    # (change 53: only when that audit knew the business type and services, and no new services were picked)
     head = None
     pm = (prior or {}).get("market") or {}
-    if pm.get("city") and pm.get("state_code") and (not city or city.strip().lower() == pm["city"].lower()):
+    if pm.get("city") and pm.get("state_code") and (not city or city.strip().lower() == pm["city"].lower()) \
+            and prior["profile"].get("business") and services_chosen is None:
         head = start_early(build_qs(prior["profile"], pm), pm, prior["profile"])
-        step("Asking AI platforms", 4, event=f"Known builder: asking {len(live)} AI platforms right away for {pm['city']}, {pm['state_code']}",
+        step("Asking AI platforms", 4, event=f"Audited before: asking {len(live)} AI platforms right away for {pm['city']}, {pm['state_code']}",
              engines_state={k: dict(v) for k, v in head["est"].items()})
     step("Reading the website", 5, event=f"Opening {url} in a real browser")
     log(f"Reading {url} ...")
@@ -110,32 +112,47 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     else:
         step("Reading the website", 12, event=f"Checked business markup, phone details and {profile['sitemap_count']:,} sitemap pages")
         step("Reading the website", 14, event="Checked robots.txt and llms.txt for AI crawler access")
+    # change 53: what the business sells decides the questions; read it alongside the market lookup
+    import concurrent.futures as _cf
+    biz_pool = _cf.ThreadPoolExecutor(max_workers=1)
+    f_biz = biz_pool.submit(business.cached, profile, profile["domain"]) if not blocked else None
     market = site.market_from(profile, city, state)
-    if (not market["city"] or not market["state"]) and head:  # the market from this builder's last audit
-        market = site.market_from(profile, head["market"]["city"], head["market"]["state_code"])
+    if (not market["city"] or not market["state"]) and pm.get("city") and pm.get("state_code"):  # the market from the last audit
+        market = site.market_from(profile, pm["city"], pm["state_code"])
     if not market["city"] or not market["state"]:  # change 30: look it up instead of stopping
         lc, ls, how = site.lookup_market(profile["name"] or site.name_from_domain(profile["domain"]), profile["domain"])
         if lc:
             market = site.market_from(profile, lc, ls)
             if market["city"] and market["state"]:
-                step("Reading the website", 15, event=f"Found the builder's market with {how}: {market['city']}, {market['state_code']}")
+                step("Reading the website", 15, event=f"Found the business's market with {how}: {market['city']}, {market['state_code']}")
     if not market["city"] or not market["state"]:
-        raise AuditError("This website turns away automated visitors, so we couldn't read the builder's city and state. Enter them and run again."
-                         if blocked else "Couldn't find the builder's city and state on the website. Enter them and run again.")
+        biz_pool.shutdown(wait=False)
+        raise AuditError("This website turns away automated visitors, so we couldn't read the business's city and state. Enter them and run again."
+                         if blocked else "Couldn't find the business's city and state on the website. Enter them and run again.")
     step("Reading the website", 16, event=f"Set the search location to {market['city']}, {market['state_code']}")
     log(f"  {profile['name']} · market {market['city']}, {market['state_code']} · areas {profile['areas_served'] or '—'}")
     main_label = f"{market['city']}, {market['state_code']}"
-    if head and head["market"]["city"].lower() == market["city"].lower() and head["market"]["state_code"] == market["state_code"]:
+    try:
+        biz = f_biz.result(timeout=60) if f_biz else business.detect(profile)
+    except Exception:
+        biz = business.detect({})  # too slow: the original home-builder set
+    biz_pool.shutdown(wait=False)
+    profile["business"] = business.apply_choice(biz, services_chosen)
+    W = business.words(profile)
+    step("Reading the website", 16, event=(f"Reads as {W['a_label']}: " + ", ".join(W["services"][:4]) if W["services"] else f"Reads as {W['a_label']}")
+         + (" (services picked on the dashboard)" if services_chosen is not None else ""))
+    same_biz = head and _biz_sig(prior["profile"]["business"]) == _biz_sig(profile["business"])
+    if head and same_biz and head["market"]["city"].lower() == market["city"].lower() and head["market"]["state_code"] == market["state_code"]:
         run = head  # the head start was right: keep those questions and answers
     else:
-        if head:  # the builder moved market since last time: start over with the new one
+        if head:  # the business moved market or changed what it sells since last time: start over
             head["thread"].join()
         run = start_early(build_qs(profile, market), market, profile)
         step("Asking AI platforms", 17, event=f"Asking {len(live)} AI platform{'s' if len(live) != 1 else ''} the main local questions "
                                               "while the rest of the local data loads", engines_state={k: dict(v) for k, v in run["est"].items()})
     qs, early_qs, early, est, t_early = run["qs"], run["early_qs"], run["early"], run["est"], run["thread"]
     # ---- service locations: each city is measured on its own, searched from that city ----
-    step("Finding service locations", 17, event="Finding the cities and neighbourhoods this builder serves")
+    step("Finding service locations", 17, event="Finding the cities and neighbourhoods this business serves")
     found = locations.find(profile, market)
     cap = max_locations or (2 if max_q <= 6 else config.SETTINGS["MAX_LOCATIONS"])
     if locations_chosen:  # picked on the dashboard: found places plus any typed by the salesperson
@@ -158,7 +175,7 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
 
     step("Getting search demand and the Google profile", 20, event="Pulling search demand and keyword difficulty")
     from concurrent.futures import ThreadPoolExecutor
-    city_kw = {l["label"]: questions.CITY_KEYWORD.format(kw=questions.loc_kw(l)) for l in pool_locs[1:9]}
+    city_kw = {l["label"]: questions.city_keyword(profile["business"]).format(kw=questions.loc_kw(l)).lower() for l in pool_locs[1:9]}
     kws = list(dict.fromkeys([q["keyword"] for q in qs] + list(city_kw.values())))
     pool = ThreadPoolExecutor(max_workers=2)  # Semrush and DataWise run side by side
     f_sem = pool.submit(semrush.context, scope.semrush_target(sc), kws) if (use_semrush and semrush.available()) else None
@@ -198,11 +215,11 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         l["measured"] = l.get("main") or l in measured
     per_loc = 1 if max_q <= 6 else 3
     for l in measured:
-        qs += questions.for_location(l, per_loc)
+        qs += questions.for_location(l, per_loc, profile["business"])
     if measured:
         step("Preparing questions", 19, event="Measuring " + ", ".join([main_label] + [l["label"] for l in measured]) + " separately")
     questions.apply_volumes(qs, vols, (sem or {}).get("trends", {}))
-    step("Preparing questions", 20, event=f"Prepared {len(qs)} local home-buyer questions")
+    step("Preparing questions", 20, event=f"Prepared {len(qs)} questions local {W['customers']} ask")
     # change 29: the city questions start now too, instead of waiting for the rest of this step
     early_ids = {q["id"] for q in early_qs}
     rest_qs = [q for q in qs if q["id"] not in early_ids]
@@ -240,6 +257,12 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     return {"url": url, "t0": t0, "profile": profile, "market": market, "questions": qs, "sem": sem, "dw": dw, "checks": checks,
             "chosen": chosen, "est": est, "answers": early["answers"], "pool_locs": pool_locs, "hedge": hedge,
             "found": [l for l in found if l not in pool_locs]}
+
+
+def _biz_sig(b):
+    """Same business type and services: the questions from a head start are still the right ones."""
+    b = b or {}
+    return (b.get("kind"), tuple(s.get("name", "").lower() for s in b.get("services") or []))
 
 
 HEDGED = ("chatgpt", "gemini", "perplexity")  # the platforms whose answers sometimes straggle
@@ -348,7 +371,7 @@ def finish(S, progress=None):
     profile, market, qs, checks, sem, dw = S["profile"], S["market"], S["questions"], S["checks"], S["sem"], S["dw"]
     answers = [S["answers"][f"{en}|{q['id']}"] for q in qs for en in S["chosen"] if f"{en}|{q['id']}" in S["answers"]]
     url, t0, pool_locs, found = S["url"], S["t0"], S["pool_locs"], S["pool_locs"] + S["found"]
-    step("Analysing answers", 91, event="Identifying the builders each answer recommends")
+    step("Analysing answers", 91, event=f"Identifying the {business.words(profile)['nouns']} each answer recommends")
     step("Analysing answers", 92, event="Mapping the sources AI platforms rely on")
     capped = sum(1 for a in answers if a["status"] == "budget_reached")
     if capped:
@@ -359,10 +382,10 @@ def finish(S, progress=None):
 
     analysis = analyze.analyze(profile, market, qs, answers, checks, sem)
     if dw is not None:
-        # AI mentions database for the builder + up to 4 competitors that have a known domain
+        # AI mentions database for the business + up to 4 competitors that have a known domain
         doms = [profile["domain"]] + [b["domain"] for b in analysis["leaderboard"] if b.get("domain") and not b.get("prospect")]
         doms += analyze.competitor_domains(analysis, answers, profile["domain"])
-        step("Checking the AI mentions database", 94, event="Comparing the AI mentions database for this builder and its competitors")
+        step("Checking the AI mentions database", 94, event="Comparing the AI mentions database for this business and its competitors")
         mpool = ThreadPoolExecutor(max_workers=1)  # change 29: capped like the other search data
         try:
             dw["mentions"] = mpool.submit(datawise.mentions, list(dict.fromkeys(doms))[:5]).result(timeout=config.SETTINGS["DATA_WAIT"])
@@ -395,10 +418,11 @@ def finish(S, progress=None):
 
 
 def run(url, city=None, state=None, max_q=14, only=None, use_semrush=True, progress=None, out_dir=None, scope_kind="root",
-        locations_chosen=None, max_locations=None):
+        locations_chosen=None, max_locations=None, services_chosen=None):
     """Run one whole audit in this process (command line, or a server with background workers).
     progress(stage, percent, event=..., engines=...) is called as it goes; returns the output folder."""
-    S = prepare(url, city, state, max_q, only, use_semrush, progress, scope_kind, locations_chosen, max_locations)
+    S = prepare(url, city, state, max_q, only, use_semrush, progress, scope_kind, locations_chosen, max_locations,
+                services_chosen=services_chosen)
     ask_batch(S, progress)
     audit, report_html, loom = finish(S, progress)
     out_dir = out_dir or os.path.join(ROOT, "audits", audit["profile"]["domain"], datetime.date.today().isoformat())

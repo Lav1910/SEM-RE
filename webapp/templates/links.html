@@ -16,7 +16,7 @@
   </div>
   {% if rows %}
   <div class="tw"><table>
-    <thead><tr><th>Builder</th><th>Sent</th>{% if see_all %}<th>Sent by</th>{% endif %}<th class="r">Views</th><th>Last opened</th><th class="r">Time spent</th><th>Most viewed</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Business</th><th>Sent</th>{% if see_all %}<th>Sent by</th>{% endif %}<th class="r">Views</th><th>Last opened</th><th class="r">Time spent</th><th>Most viewed</th><th>Status</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}{% set a = r.a %}
       <tr class="link-row" onclick="location='{{ url_for('audit_view', aid=a.id, view='tracking') }}'">

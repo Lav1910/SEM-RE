@@ -80,7 +80,7 @@ def validate(cands, market, provider="gemini"):
         return [main]
     checked = None
     if llm.available(provider):
-        prompt = ("A home builder's main market is " + main_label + ". Below are place names found on their website. "
+        prompt = ("A local business's main market is " + main_label + ". Below are place names found on their website. "
                   "Keep only real US cities, towns, suburbs or neighbourhoods within about 75 miles of the main market. Drop "
                   "community or subdivision brand names, street names, counties, states and anything that is not a place. "
                   "For each kept place give its proper name, the two-letter state, kind (\"city\" or \"neighbourhood\") and, for a "

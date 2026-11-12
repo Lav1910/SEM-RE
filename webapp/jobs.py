@@ -119,7 +119,8 @@ def step_audit(row, deadline):
                 S = engine.prepare(row["url"], row["city"] or None, row["state"] or None, max_q, max_locations=max_locs,
                                    progress=progress, scope_kind=row["scope"] or "root",
                                    locations_chosen=json.loads(row["locations"]) if row["locations"] else None,
-                                   skip_brand=bool(row["batch_id"]), hedge=not row["batch_id"], prior=_prior(row))
+                                   skip_brand=bool(row["batch_id"]), hedge=not row["batch_id"], prior=_prior(row),
+                                   services_chosen=json.loads(row["services"]) if "services" in row.keys() and row["services"] else None)
                 store.save_json(aid, "state.json", S)
                 phase = "ask"
                 db.x("UPDATE audits SET phase='ask', attempts=0 WHERE id=?", (aid,))

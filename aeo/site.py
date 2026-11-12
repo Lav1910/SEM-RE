@@ -217,6 +217,10 @@ def read_site(url, html_override=None, use_browser=True, start=None):
     services = [s for s, rx in SERVICE_WORDS.items() if re.search(rx, text, re.I)]
     faq_q = [q for q in re.findall(r"<(?:h[2-4]|summary|button|dt)[^>]*>(.*?)</(?:h[2-4]|summary|button|dt)>", dom, re.S | re.I)
              if visible_text(q).endswith("?")]
+    # change 53: headings and menu labels say what the business sells (aeo.business reads them)
+    headings = list(dict.fromkeys(h for h in (visible_text(x)[:90] for x in re.findall(r"<h[1-3][^>]*>(.*?)</h[1-3]>", dom, re.S | re.I)) if h))[:40]
+    nav_links = list(dict.fromkeys(t for t in (visible_text(x) for x in re.findall(r"<a[^>]*>(.*?)</a>", dom, re.S | re.I))
+                                   if 2 < len(t) <= 40 and not re.search(r"@|\d{3}.\d{4}", t)))[:60]
 
     # links and phrases that name places the builder serves (used by aeo.locations)
     loc_links = []
@@ -250,7 +254,7 @@ def read_site(url, html_override=None, use_browser=True, start=None):
         "word_count": len(text.split()), "same_as": (biz or org or {}).get("sameAs") or [],
         "meta_description": H.unescape((re.findall(r'<meta[^>]+name="description"[^>]+content="([^"]*)"', dom) or [""])[0]),
         "opening_text": text[:2000],
-        "location_links": loc_links[:80], "area_phrases": area_phrases,
+        "location_links": loc_links[:80], "area_phrases": area_phrases, "headings": headings, "nav_links": nav_links,
     }
     return profile
 
@@ -261,7 +265,7 @@ def lookup_market(name, domain):
     ChatGPT (web search)."""
     import json as _json
     from . import budget, config, engines
-    prompt = (f"Where is the home builder \"{name}\" (website {domain}) based? Use their Google Business Profile, website or "
+    prompt = (f"Where is the business \"{name}\" (website {domain}) based? Use their Google Business Profile, website or "
               "business listings. Reply with JSON only, no other words: {\"city\": \"...\", \"state\": \"two-letter US state code\"}. "
               "If you can't tell with confidence, reply {\"city\": null, \"state\": null}.")
     tries = []
@@ -357,7 +361,7 @@ def infer_market_llm(profile):
     import urllib.request
     clue = {"title": profile.get("title"), "description": profile.get("meta_description"), "phones": profile.get("page_phones"),
             "text": (profile.get("opening_text") or "")[:1500]}
-    prompt = ("From this home builder's website, which single US city and state is their main market? Reply with JSON only, "
+    prompt = ("From this business's website, which single US city and state is their main market? Reply with JSON only, "
               'like {"city": "Charlotte", "state": "North Carolina", "areas": ["Lake Norman"]}. If unknown use null.\n' + json.dumps(clue))
     body = {"model": config.SETTINGS["GEMINI_MODEL"], "input": prompt}
     req = urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/interactions", data=json.dumps(body).encode(),

@@ -69,6 +69,10 @@ def render(A, ov=None):
     D = S.get("domain") or {}
     date = A["date"]
     name = P["name"]
+    from . import business
+    W = business.words(A)  # change 53: 'builder' / 'remodeler', 'home buyers' / 'homeowners' ...
+    BZ = business.of(A)
+    noun, nouns, cust = W["noun"], W["nouns"], W["customers"]
     LOGO = _logo()
     pages = []
     q_by = {q["id"]: q for q in A["questions"]}
@@ -90,7 +94,7 @@ def render(A, ov=None):
     # ---------------- cover ----------------
     score = K["score"]
     hero = [
-        ("AI visibility score", "—" if score is None else f'{score} <small>/ 100</small>', "Share of AI answers naming the builder, weighted by search demand"),
+        ("AI visibility score", "—" if score is None else f'{score} <small>/ 100</small>', f"Share of AI answers naming the {noun}, weighted by search demand"),
         ("Named in AI answers", f'{K["mentioned"]} <small>of {K["answers"]}</small>', f'{K["questions"]} local questions × {K["engines_measured"]} AI platforms'),
         ("Google Maps 3-pack", "—" if K["pack"] is None else f'{K["pack"]} <small>of {K["pack_of"]}</small>', "Local searches checked"),
         ("Website readiness", "—", "Not checked: the website turns away automated visitors") if P.get("site_blocked") else
@@ -98,33 +102,34 @@ def render(A, ov=None):
     ]
     support = [(X["per_engine"][en]["label"],
                 f'{X["per_engine"][en]["mentioned"]} of {X["per_engine"][en]["answers"]}' if en in measured else "0",
-                "answers naming the builder") for en in ENGINES]
+                f"answers naming the {noun}") for en in ENGINES]
     support_html = "".join(f'<div><span>{l}</span><b>{v}</b><i>{s}</i></div>' for l, v, s in support)
     lb = X["leaderboard"]
     leader = next((b for b in lb if not b.get("prospect")), None)
     me_rank = 1 + next((i for i, b in enumerate(lb) if b.get("prospect")), 0)
-    summ = [f'This audit checks how <b>{e(name)}</b> shows up when people around {e(M["city"])}, {e(M["state_code"])} ask AI tools about building a home. '
+    topic = "building a home" if W["is_builder"] else e(business.service_phrase(BZ))
+    summ = [f'This audit checks how <b>{e(name)}</b> shows up when people around {e(M["city"])}, {e(M["state_code"])} ask AI tools about {topic}. '
             f'We asked <b>{K["questions"]} local questions</b> on <b>{K["engines_measured"]} AI platforms</b> and checked the website, on {e(date)}.']
     if K["answers"] and not K["mentioned"]:
         summ.append(f'{e(name)} <b>wasn&rsquo;t named in any of the {K["answers"]} AI answers</b> to these local questions. '
-                    + (f'<b>{e(leader["name"])}</b> came up most often, and {e(name)} ranks <b>#{me_rank}</b> of the {len(lb)} builders compared.' if leader else ""))
+                    + (f'<b>{e(leader["name"])}</b> came up most often, and {e(name)} ranks <b>#{me_rank}</b> of the {len(lb)} {nouns} compared.' if leader else ""))
     elif K["answers"]:
         summ.append(f'Across <b>{K["answers"]} AI answers</b>, {e(name)} was named in <b>{K["mentioned"]}</b>, by {K["engines_named"]} of {K["engines_measured"]} platforms. '
-                    + (f'<b>{e(leader["name"])}</b> came up most often among other builders, and {e(name)} ranks <b>#{me_rank}</b> of the {len(lb)} builders compared.' if leader else ""))
+                    + (f'<b>{e(leader["name"])}</b> came up most often among other {nouns}, and {e(name)} ranks <b>#{me_rank}</b> of the {len(lb)} {nouns} compared.' if leader else ""))
     gaps = [e(r["title"]) for r in X["recommendations"][:3]]
     if gaps:
         summ.append("The biggest opportunities: <b>" + "</b>; <b>".join(gaps) + "</b>.")
     # plain-English takeaways for each page
     missed = K["answers"] - K["mentioned"]
-    w1 = ("Each row is a question local buyers ask an AI tool. <b>Green</b> means the AI named " + e(name) + "; <b>red</b> means it recommended other builders. "
+    w1 = (f"Each row is a question local {cust} ask an AI tool. <b>Green</b> means the AI named " + e(name) + f"; <b>red</b> means it recommended other {nouns}. "
           + (f"{e(name)} was left out of <b>{missed} of {K['answers']}</b> answers." if K["answers"] else "No AI answers were measured in this audit."))
-    w2 = ((f"When buyers ask AI for a builder near {e(M['city'])}, <b>{e(leader['name'])}</b> is the name that comes up most. "
-           f"{e(name)} is <b>#{me_rank} of {len(lb)}</b> builders compared.") if leader else "No competing builders were named in these answers.")
+    w2 = ((f"When {cust} ask AI for {W['a_label'] if not W['is_builder'] else 'a builder'} near {e(M['city'])}, <b>{e(leader['name'])}</b> is the name that comes up most. "
+           f"{e(name)} is <b>#{me_rank} of {len(lb)}</b> {nouns} compared.") if leader else f"No competing {nouns} were named in these answers.")
     top_src = X["source_domains"][0]["label"] if X.get("source_domains") else None
     w3 = ("AI tools build their answers from sites they trust. " + (f"<b>{e(top_src)}</b> was cited most. " if top_src else "")
           + "Being listed, reviewed and mentioned on these sites raises the chance of being recommended.")
     w4 = (f"<b>{K['checks_passed']} of {K['checks_total']}</b> checks passed. Each fix makes it easier for AI tools to understand who "
-          f"{e(name)} is, where they build and why buyers trust them.")
+          f"{e(name)} is, where they {'build' if W['is_builder'] else 'work'} and why {cust} trust them.")
     if P.get("site_blocked"):  # change 26
         w4 = (f"{e(P['domain'])} turns away automated visitors, so the website checks couldn't run in this audit. "
               "Everything else in this report comes from the AI platforms and Google, which don't depend on reading the site.")
@@ -136,9 +141,9 @@ def render(A, ov=None):
  {overview_page.section(A, ov)}
  {footer(1, TOTAL)}
 </section>''')
-    lead = (f"{e(name)} was named in <b>{K['mentioned']} of {K['answers']}</b> AI answers to local home-buyer questions"
+    lead = (f"{e(name)} was named in <b>{K['mentioned']} of {K['answers']}</b> AI answers to questions local {cust} ask"
             + (f" (an AI visibility score of <b>{score}/100</b>)." if score is not None else ".")
-            + (f" <b>{e(leader['name'])}</b> is the builder AI recommends most often." if leader else "")) if K["answers"] else \
+            + (f" <b>{e(leader['name'])}</b> is the {noun} AI recommends most often." if leader else "")) if K["answers"] else \
         "No AI platform answers were measured in this audit, so the score isn't available yet; the website checks and Google data still apply."
     pages.append(f'''
 <section class="page">
@@ -173,7 +178,7 @@ def render(A, ov=None):
         for v in (X["per_engine"][en] if en in measured else dict(X["per_engine"][en], **zero) for en in ENGINES))
     pages.append(f'''
 <section class="page">
- {ph("01", "What AI tells local home buyers", "Each local question asked on every AI platform, and whether the builder was named", ["ai"])}
+ {ph("01", "What AI tells local " + cust, "Each local question asked on every AI platform, and whether the " + noun + " was named", ["ai"])}
  {wtm(w1)}
  <div class="sec-l">Visibility score by platform <span>0–100, weighted by search demand</span></div>
  <div class="plats">{eng_cards}</div>
@@ -181,7 +186,7 @@ def render(A, ov=None):
   <colgroup><col style="width:34%"><col style="width:9%">{"".join(f'<col style="width:{round(57 / max(1, len(ENG)), 1)}%">' for _ in ENG)}</colgroup>
   <thead><tr><th>Question</th><th class="r">Monthly searches</th>{"".join(f"<th>{ENGINE_LABELS[en]}</th>" for en in ENG)}</tr></thead>
   <tbody>{"".join(rows)}</tbody></table></div>
- <p class="note">“Named #2” means the builder was the second business named in that answer. Monthly searches are US estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
+ <p class="note">“Named #2” means the {noun} was the second business named in that answer. Monthly searches are US estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
  {footer(3, TOTAL)}
 </section>''')
 
@@ -190,23 +195,24 @@ def render(A, ov=None):
     bars = []
     for b in lb:
         w = lambda n, k: f'<i class="seg seg-{k}" style="width:{n / mx * 100:.1f}%"></i>' if n else ""
-        bars.append(f'''<div class="lb{' me' if b.get('prospect') else ''}"><div class="lb-n">{e(b["name"])}{' <em>this builder</em>' if b.get('prospect') else ''}</div>
+        bars.append(f'''<div class="lb{' me' if b.get('prospect') else ''}"><div class="lb-n">{e(b["name"])}{' <em>this ' + noun + '</em>' if b.get('prospect') else ''}</div>
      <div class="lb-bar">{w(b["mentions"] * 2, "aio")}{w(b["pack"], "pack")}</div>
      <div class="lb-v two-col"><span title="AI answers naming them">{b["mentions"]}</span><span title="Maps 3-pack spots">{b["pack"]}</span></div></div>''')
     no_data = K["answers"] == 0 and K["pack"] is None
     empty = ('<div class="empty-state"><b>Not measured in this audit</b><p>This page fills in once at least one AI platform '
              'or the Google results feed is connected. Nothing here is shown as zero.</p></div>')
-    lead_txt = f"<b>{e(leader['name'])}</b> is the builder AI tools and Google Maps surface most for these questions. " if leader else ""
+    lead_txt = f"<b>{e(leader['name'])}</b> is the {noun} AI tools and Google Maps surface most for these questions. " if leader else ""
     lb_html = empty if no_data else (
         f'<p class="lede">{lead_txt}{e(name)} ranks <b>#{me_rank}</b> of {len(lb)}.</p>'
-        '<div class="lb-head"><span>Builder</span><span class="lb-key"><i class="seg seg-aio"></i>Named in an AI answer ×2 <i class="seg seg-pack"></i>Maps 3-pack spot ×1</span><span class="lb-v two-col"><span>AI</span><span>Maps</span></span></div>'
+        f'<div class="lb-head"><span>{W["Noun"]}</span>'
+        '<span class="lb-key"><i class="seg seg-aio"></i>Named in an AI answer ×2 <i class="seg seg-pack"></i>Maps 3-pack spot ×1</span><span class="lb-v two-col"><span>AI</span><span>Maps</span></span></div>'
         + "".join(bars))
     pages.append(f'''
 <section class="page">
- {ph("02", "Who AI recommends instead", "Builders named in the same AI answers, and who holds the Maps 3-pack", ["ai", "search"])}
+ {ph("02", "Who AI recommends instead", W["Nouns"] + " named in the same AI answers, and who holds the Maps 3-pack", ["ai", "search"])}
  {wtm(w2)}
  {lb_html}
- <p class="note">Builder names are taken from the answer text and matched against Google Maps listings. Visibility points: 2 per AI answer naming the builder, 1 per Maps 3-pack spot.</p>
+ <p class="note">{W["Noun"]} names are taken from the answer text and matched against Google Maps listings. Visibility points: 2 per AI answer naming the {noun}, 1 per Maps 3-pack spot.</p>
  {footer(4, TOTAL)}
 </section>''')
 
@@ -275,7 +281,7 @@ def render(A, ov=None):
 <section class="page">
  {ph("06", "Report notes and sources", "Where every number came from and how to read it", ["ai", "search", "site"])}
  <div class="notes">
-  <div><h4>Questions asked</h4><p>{K["questions"]} questions a home buyer near {e(M["city"])} might ask, built from the services and areas on {e(P["domain"])}. Each was asked once per platform with the location set to {e(M["city"])}, {e(M["state_code"])}.</p></div>
+  <div><h4>Questions asked</h4><p>{K["questions"]} questions {"a home buyer" if W["is_builder"] else "a customer"} near {e(M["city"])} might ask, built from the services and areas on {e(P["domain"])}{"" if W["is_builder"] else " (" + e(business.service_phrase(BZ, 6)) + ")"}. Each was asked once per platform with the location set to {e(M["city"])}, {e(M["state_code"])}.</p></div>
   <div><h4>AI answer data</h4><p>Collected {e(date)} from {e(", ".join(ENGINE_LABELS[k] for k in measured))}. Answers can differ slightly from the consumer apps, which personalize results.</p></div>
   <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from the latest US Google search data.</p></div>
   <div><h4>Website checks</h4><p>{"Not run: the website turns away automated visitors." if P.get("site_blocked") else "The homepage, robots.txt, llms.txt and sitemap were read on " + e(date) + ". Nothing on the site was changed."}</p></div>
