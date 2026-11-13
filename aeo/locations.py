@@ -81,9 +81,10 @@ def validate(cands, market, provider="gemini"):
     checked = None
     if llm.available(provider):
         prompt = ("A local business's main market is " + main_label + ". Below are place names found on their website. "
-                  "Keep only real US cities, towns, suburbs or neighbourhoods within about 75 miles of the main market. Drop "
-                  "community or subdivision brand names, street names, counties, states and anything that is not a place. "
-                  "For each kept place give its proper name, the two-letter state, kind (\"city\" or \"neighbourhood\") and, for a "
+                  "Keep only real cities, towns, suburbs or neighbourhoods (in the US or Canada) within about 75 miles of the main "
+                  "market. Drop community or subdivision brand names, street names, counties, regional districts, states, provinces "
+                  "and anything that is not a place. For each kept place give its proper name, the two-letter state or province "
+                  "code, kind (\"city\" or \"neighbourhood\") and, for a "
                   "neighbourhood, the city it is in. Reply with JSON only: "
                   '[{"input": "...", "name": "Indian Hill", "state_code": "OH", "kind": "city", "parent": null}]\n'
                   + "\n".join(f"- {c['name']}" + (f" ({c['state_code']})" if c.get("state_code") else "") for c in rest))
@@ -155,4 +156,5 @@ def typed(label, source="entered"):
 
 def market_for(loc):
     """The location an AI platform should search from for this place (a neighbourhood searches from its city)."""
-    return {"city": loc["city"], "state": loc["state"], "state_code": loc["state_code"]}
+    from .engines import country_of
+    return {"city": loc["city"], "state": loc["state"], "state_code": loc["state_code"], "country": country_of(loc)}

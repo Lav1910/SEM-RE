@@ -191,6 +191,7 @@ class Dashboard(unittest.TestCase):
     def test_dashboard_has_a_services_picker(self):
         html = self.client().get("/").get_data(as_text=True)
         self.assertIn("svc-dd", html)
+        self.assertIn('<optgroup label="Canada">', html)
         self.assertIn("Business website", html)
 
     def test_wordmark_everywhere(self):
@@ -222,3 +223,31 @@ class Dashboard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    """change 58: Canadian businesses audit exactly like US ones, with Canadian locations and search data."""
+    def test_provinces_are_markets(self):
+        from aeo import engines, site
+        m = site._validated("vancouver", "BC", "website markup")
+        self.assertEqual((m["city"], m["state"], m["state_code"], m["country"]), ("Vancouver", "British Columbia", "BC", "CA"))
+        self.assertEqual(site._validated("Austin", "Texas", "x")["country"], "US")
+        self.assertEqual(engines.country_of({"state_code": "ON"}), "CA")
+        self.assertEqual(engines.country_of({"state_code": "CA"}), "US")  # California, not Canada
+        self.assertEqual(engines._dfs_location(m), "Vancouver,British Columbia,Canada")
+
+    def test_canadian_places_and_questions(self):
+        from aeo import locations, semrush
+        loc = locations.typed("Burnaby, BC")
+        self.assertEqual((loc["state"], locations.market_for(loc)["country"]), ("British Columbia", "CA"))
+        self.assertEqual(semrush.database({"state_code": "BC"}), "ca")
+        P = {"name": "Infinity West", "services": ["custom homes"], "areas_served": []}
+        qs = questions.build(P, {"city": "Vancouver", "state": "British Columbia", "state_code": "BC"}, 14)
+        self.assertEqual(qs[0]["prompt"], "Who are the best custom home builders in Vancouver, BC?")
+
+    def test_name_from_the_page_beats_a_template_name(self):
+        from aeo import site
+        self.assertEqual(site.name_in_text("About Infinity West Development Group, Vancouver", "infinitywestdevelopment.com"),
+                         "Infinity West Development Group")
+        self.assertEqual(site.name_in_text("© 2026 Infinity West. All rights reserved", "infinitywestdevelopment.com"), "Infinity West")
+        self.assertIsNone(site.name_in_text("Nothing related here", "acme.com"))

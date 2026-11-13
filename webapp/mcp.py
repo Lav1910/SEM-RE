@@ -753,7 +753,7 @@ TOOLS = [
       "type": {"type": "string", "enum": ["quick", "standard", "full"],
                "description": "quick: ~6 questions, main city. standard (default): ~12 questions, main + busiest extra city. full: everything, up to 5 cities."},
       "city": {"type": "string", "description": "Optional: the business's main city, if the website doesn't make it clear."},
-      "state": {"type": "string", "description": "Optional: two-letter state, e.g. OH."},
+      "state": {"type": "string", "description": "Optional: two-letter US state or Canadian province, e.g. OH or BC."},
       "force_new": {"type": "boolean", "description": "Run a fresh audit even if one exists from this week."}}, ["website"]),
     ("get_audit_status", "Check audit progress", t_get_audit_status, RO,
      "Progress of a running audit (status, percent, current step). When status is done, call get_audit.",

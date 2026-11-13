@@ -37,8 +37,25 @@ STATE_CODES = {"Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR
     "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA",
     "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT",
     "Vermont": "VT", "Virginia": "VA", "Washington": "WA", "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY"}
+US_CODES = set(STATE_CODES.values())
+# change 58: Canadian provinces and territories work exactly like US states (no code is shared with a US state)
+PROVINCE_CODES = {"Alberta": "AB", "British Columbia": "BC", "Manitoba": "MB", "New Brunswick": "NB", "Newfoundland and Labrador": "NL",
+                  "Nova Scotia": "NS", "Northwest Territories": "NT", "Nunavut": "NU", "Ontario": "ON", "Prince Edward Island": "PE",
+                  "Quebec": "QC", "Saskatchewan": "SK", "Yukon": "YT"}
+STATE_CODES.update(PROVINCE_CODES)
+COUNTRY_NAMES = {"US": "United States", "CA": "Canada"}
 
-ANSWER_INSTRUCTIONS = ("You are answering a home buyer's question. Answer the way you normally would for a consumer, "
+
+def country_of(market):
+    """'US' or 'CA' for a market or location dict (older audits have no country: they're all US)."""
+    m = market or {}
+    return m.get("country") or ("CA" if m.get("state_code") in PROVINCE_CODES.values() else "US")
+
+
+def country_name(market):
+    return COUNTRY_NAMES[country_of(market)]
+
+ANSWER_INSTRUCTIONS = ("You are answering a local customer's question. Answer the way you normally would for a consumer, "
                        "naming specific businesses where relevant, and cite your sources.")
 
 
@@ -109,7 +126,7 @@ def ask_chatgpt(q, market):
         "instructions": ANSWER_INSTRUCTIONS,
         "input": q["prompt"],
         "tools": [{"type": "web_search", "user_location": {
-            "type": "approximate", "country": "US", "city": market["city"], "region": market["state"]}}],
+            "type": "approximate", "country": country_of(market), "city": market["city"], "region": market["state"]}}],
     }
     resp = _post("https://api.openai.com/v1/responses", payload,
                  {"Authorization": "Bearer " + config.key("OPENAI_API_KEY")})
@@ -139,7 +156,7 @@ def parse_gemini(resp):
 
 
 def ask_gemini(q, market):
-    prompt = f"I live in {market['city']}, {market['state']}. {q['prompt']}"
+    prompt = f"I live in {market['city']}, {market['state']}" + (", Canada" if country_of(market) == "CA" else "") + f". {q['prompt']}"
     payload = {"model": config.SETTINGS["GEMINI_MODEL"], "input": prompt, "tools": [{"type": "google_search"}]}
     resp = _post("https://generativelanguage.googleapis.com/v1beta/interactions", payload,
                  {"x-goog-api-key": config.key("GEMINI_API_KEY"), "Api-Revision": config.SETTINGS["GEMINI_API_REVISION"]})
@@ -164,7 +181,7 @@ def ask_perplexity(q, market):
         "effort": config.SETTINGS["PERPLEXITY_EFFORT"],
         "input": q["prompt"],
         "tools": [{"type": "web_search", "user_location": {
-            "country": "US", "region": market["state_code"], "city": market["city"]}}],
+            "country": country_of(market), "region": market["state_code"], "city": market["city"]}}],
     }
     resp = _post("https://api.perplexity.ai/v1/agent", payload,
                  {"Authorization": "Bearer " + config.key("PERPLEXITY_API_KEY")})
@@ -179,7 +196,7 @@ def _dfs_headers():
 
 
 def _dfs_location(market):
-    return f"{market['city']},{market['state']},United States"
+    return f"{market['city']},{market['state']},{country_name(market)}"
 
 
 def parse_dataforseo(resp):
@@ -232,7 +249,7 @@ def ask_google_aio_semrush(q, market):
     and its snapshot is national (US database), not city-specific."""
     from . import semrush
     try:
-        rows, _, units = semrush._report("phrase_organic", {"database": "us", "phrase": q["keyword"], "positions_type": "all",
+        rows, _, units = semrush._report("phrase_organic", {"database": semrush.database(market), "phrase": q["keyword"], "positions_type": "all",
                                                             "display_limit": 15, "export_columns": ["position", "position_type", "domain", "url", "triggered_serp_features"]})
     except RuntimeError as e:
         if "no data" in str(e).lower():  # Semrush doesn't track this search; not measured rather than an error
