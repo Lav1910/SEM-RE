@@ -16,13 +16,13 @@ def available():
     return engines.is_configured("google_ai_mode")  # the same DataForSEO login
 
 
-def volumes(keywords, timeout=25):
+def volumes(keywords, timeout=25, country="US"):
     """{keyword: monthly US searches} for the keywords DataForSEO knows. Never raises; returns {} on any problem."""
     kws = list(dict.fromkeys(k.strip().lower() for k in keywords if k and k.strip()))[:700]
     if not kws or not available():
         return {}
     auth = base64.b64encode(f"{config.key('DATAFORSEO_LOGIN')}:{config.key('DATAFORSEO_PASSWORD')}".encode()).decode()
-    req = urllib.request.Request(URL, method="POST", data=json.dumps([{"keywords": kws, "location_code": 2840, "language_code": "en"}]).encode(),
+    req = urllib.request.Request(URL, method="POST", data=json.dumps([{"keywords": kws, "location_code": {"US": 2840, "CA": 2124}.get(country, 2840), "language_code": "en"}]).encode(),
                                  headers={"Authorization": "Basic " + auth, "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:

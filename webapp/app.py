@@ -618,7 +618,7 @@ def dashboard():
     LA = store.load_json(last["id"]) if last else None
     from aeo.engines import STATE_CODES
     return render_template("dashboard.html", rows=rows, scope=scope, hist=hist, live=live, depths=depth_estimates(), budget=b if auth.can(g.user, "see_costs") else {}, pstat=status.current(LA, plain=True),
-                           states=sorted(STATE_CODES.values()))
+                           states=sorted(engines.US_CODES), provinces=sorted(engines.PROVINCE_CODES.values()))
 
 
 @app.route("/audits", methods=["POST"])

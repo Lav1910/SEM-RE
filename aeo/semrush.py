@@ -88,11 +88,17 @@ def _report(report, params):
     return [dict(zip(head, r)) for r in raw], raw, units
 
 
-def history(domain, res=None, months=12):
+def database(market):
+    """change 58: Semrush keeps a separate database per country ("us", "ca")."""
+    from .engines import country_of
+    return country_of(market).lower()
+
+
+def history(domain, res=None, months=12, db="us"):
     """Monthly Google AI Overview history for the domain (Semrush resource_rank_history, ~10 units per month):
     how many of its ranking searches show an AI Overview, and how many of those AI Overviews cite it."""
     try:
-        _, raw, u = _report("resource_rank_history", {"database": "us", "target": domain, "display_limit": months,
+        _, raw, u = _report("resource_rank_history", {"database": db, "target": domain, "display_limit": months,
                                                       "export_columns": ["date", "organic_keywords", "organic_traffic",
                                                                          "serp_ai_overview_keywords", "serp_ai_overview_positions"]})
         if res is not None:
@@ -109,11 +115,11 @@ def history(domain, res=None, months=12):
         return []
 
 
-def context(domain, keywords):
+def context(domain, keywords, db="us"):
     """Return Semrush facts for the report, never raising: missing parts become None."""
     res = {"units": 0, "domain": None, "ai_cited_keywords": [], "volumes": {}, "trends": {}, "history": [], "errors": []}
     try:
-        _, raw, u = _report("domain_rank", {"database": "us", "target": domain, "export_columns": [
+        _, raw, u = _report("domain_rank", {"database": db, "target": domain, "export_columns": [
             "domain", "organic_keywords", "organic_traffic", "serp_ai_overview_keywords", "serp_ai_overview_positions",
             "serp_local_pack_positions"]})
         res["units"] += u
@@ -123,9 +129,9 @@ def context(domain, keywords):
                              "aio_keywords": int(vals[3]), "aio_cited": int(vals[4]), "pack_positions": int(vals[5])}
     except Exception as e:
         res["errors"].append(f"domain_rank: {e}")
-    res["history"] = history(domain, res)
+    res["history"] = history(domain, res, db=db)
     try:
-        rows, _, u = _report("resource_organic", {"database": "us", "target": domain, "display_positions_type": "serp_features",
+        rows, _, u = _report("resource_organic", {"database": db, "target": domain, "display_positions_type": "serp_features",
                                                   "display_filter": [{"sign": "+", "field": "domain_serp_features", "operation": "equals", "value": "52"}],
                                                   "display_limit": 20, "display_sort": "volume_desc",
                                                   "export_columns": ["keyword", "volume", "url"]})
@@ -140,7 +146,7 @@ def context(domain, keywords):
         res["errors"].append(f"resource_organic: {e}")
     try:
         kws = [k for k in dict.fromkeys(keywords) if k][:100]
-        rows, _, u = _report("phrase_these", {"database": "us", "phrase": ";".join(kws)})
+        rows, _, u = _report("phrase_these", {"database": db, "phrase": ";".join(kws)})
         res["units"] += u
         res["volumes"] = {r["Keyword"]: int(r.get("Search Volume") or 0) for r in rows}
         # 12 monthly values relative to the peak (Semrush "Trends"), shown as a sparkline like Semrush's volume_trend

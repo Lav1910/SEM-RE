@@ -176,6 +176,7 @@ AI_BOTS = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "PerplexityBot", "Google-E
 
 
 def schema_block(A):
+    from .engines import country_of
     P, M = A["profile"], A["market"]
     gbp = P.get("gbp") or {}
     addr = P.get("address") or {}
@@ -186,7 +187,7 @@ def schema_block(A):
     if addr:
         d["address"] = {k: v for k, v in addr.items() if k != "@context"}
     else:
-        d["address"] = {"@type": "PostalAddress", "addressLocality": M["city"], "addressRegion": M["state_code"], "addressCountry": "US",
+        d["address"] = {"@type": "PostalAddress", "addressLocality": M["city"], "addressRegion": M["state_code"], "addressCountry": country_of(M),
                         "streetAddress": "[confirm: street address]", "postalCode": "[confirm: ZIP]"}
     areas = [l["label"] for l in (A.get("locations") or [])] or [f"{M['city']}, {M['state_code']}"]
     d["areaServed"] = [{"@type": "City", "name": a} for a in areas]

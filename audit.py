@@ -175,10 +175,11 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     city_kw = {l["label"]: questions.city_keyword(profile["business"]).format(kw=questions.loc_kw(l)).lower() for l in pool_locs[1:9]}
     kws = list(dict.fromkeys([q["keyword"] for q in qs] + list(city_kw.values())))
     pool = ThreadPoolExecutor(max_workers=2)  # Semrush and DataWise run side by side
-    f_sem = pool.submit(semrush.context, scope.semrush_target(sc), kws) if (use_semrush and semrush.available()) else None
+    ctry = engines.country_of(market)  # change 58: search data from the right country's database
+    f_sem = pool.submit(semrush.context, scope.semrush_target(sc), kws, semrush.database(market)) if (use_semrush and semrush.available()) else None
     f_dw = pool.submit(datawise.early, profile, market, kws) if datawise.available() else None
     from aeo import dfs_volume  # change 40: search volumes from DataForSEO when Semrush isn't connected
-    f_dfs = pool.submit(dfs_volume.volumes, kws) if (dfs_volume.available() and not (use_semrush and semrush.available())) else None
+    f_dfs = pool.submit(dfs_volume.volumes, kws, 25, ctry) if (dfs_volume.available() and not (use_semrush and semrush.available())) else None
     wait_until = time.time() + config.SETTINGS["DATA_WAIT"]  # change 29: a slow data source can't hold the audit up
 
     def _within(f, label):
@@ -199,8 +200,8 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         if vols.get(k) is None:
             vols[k] = v
     if dw is not None:
-        for k, m in dw["keywords"].items():
-            if vols.get(k) is None and m.get("volume") is not None:
+        for k, m in dw["keywords"].items():  # DataWise volumes are US figures: not used for Canadian markets
+            if vols.get(k) is None and m.get("volume") is not None and ctry == "US":
                 vols[k] = m["volume"]
     # choose the cities to measure: the salesperson's picks, else the highest search demand, up to the cap
     others = pool_locs[1:]
@@ -237,7 +238,7 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         for q in qs:
             m = dw["keywords"].get(q["keyword"]) or {}
             q["difficulty"], q["intent"] = m.get("difficulty"), m.get("intent")
-            if q.get("volume") is None and m.get("volume") is not None:
+            if q.get("volume") is None and m.get("volume") is not None and ctry == "US":
                 q["volume"], q["weight"] = m["volume"], max(m["volume"], questions.FLOOR_WEIGHT)
         profile["gbp"] = dw["gbp"]
         profile["gbp_checked"] = True

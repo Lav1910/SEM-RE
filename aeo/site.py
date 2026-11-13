@@ -15,7 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .engines import STATE_CODES
+from .engines import COUNTRY_NAMES, STATE_CODES, US_CODES
 
 MCP_CALL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools", "mcp_call.py")
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"
@@ -166,6 +166,35 @@ def name_from_domain(domain):
     return " ".join(x.capitalize() for x in out) or domain
 
 
+GENERIC_TAIL = (r"(?:development|developments|homes|homebuilders|builders|builder|construction|group|inc|co|company|custom|design|"
+                r"designbuild|build|contracting|contractors|renovations|remodeling|remodelers|ltd|llc|corp|studio|properties)+")
+
+
+def name_in_text(text, domain):
+    """The business name as the page writes it, when its words spell out the domain: 'Infinity West Development Group'
+    for infinitywestdevelopment.com. None when the page doesn't contain such a phrase."""
+    label = re.sub(r"[^a-z0-9]", "", (domain or "").split(".")[0].lower())
+    if len(label) < 6:
+        return None
+    best = None
+    for m in re.finditer(r"(?:[A-Z][\w'’.-]*(?:\s+|&|\s*&\s*)){0,5}[A-Z][\w'’.-]*", text or ""):
+        parts = re.split(r"\s+", m.group(0).strip())
+        for i in range(len(parts)):
+            acc = ""
+            for j in range(i, len(parts)):
+                acc += re.sub(r"[^a-z0-9]", "", parts[j].lower())
+                rest = label[len(acc):] if label.startswith(acc) else None
+                if acc == label or (len(acc) >= 8 and rest is not None and (len(rest) <= 4 or re.fullmatch(GENERIC_TAIL, rest))):
+                    tail = parts[j + 1] if j + 1 < len(parts) else ""
+                    extra = [tail] if re.fullmatch(r"(?:Group|Inc\.?|Ltd\.?|LLC|Homes|Builders|Construction|Company|Co\.?|Corp\.?)", tail) else []
+                    cand = " ".join(parts[i:j + 1] + extra).strip(" .,")
+                    if not best or len(cand) > len(best):
+                        best = cand
+                if len(acc) > len(label):
+                    break
+    return best
+
+
 def read_site(url, html_override=None, use_browser=True, start=None):
     """start: the page to read first (a subfolder or exact URL scope); defaults to the homepage."""
     if not url.startswith("http"):
@@ -189,6 +218,7 @@ def read_site(url, html_override=None, use_browser=True, start=None):
     code, _, dom, final = (200, "", html_override, url) if html_override else fetch(start or base + "/")
     raw_phones = sorted({digits(x) for x in re.findall(r"\(?\b\d{3}\)?[-. ]?\d{3}[-. ]\d{4}\b", visible_text(dom))})
     rendered = f_rendered.result() if f_rendered else None
+    raw_text = visible_text(dom)  # change 58: the page before scripts run can name the business more fully
     if rendered and len(rendered) > len(dom) * 0.3:
         dom = rendered  # what a visitor's browser shows, after scripts run
     text = visible_text(dom)
@@ -201,6 +231,13 @@ def read_site(url, html_override=None, use_browser=True, start=None):
     name = (biz or {}).get("name") or (org or {}).get("name") or (og_name[0] if og_name else "") \
         or H.unescape(re.split(r"[|\-–—]", title)[-1]).strip()
 
+    # change 58: a name in the markup that the page never shows is usually a template leftover ("Artego" on
+    # infinitywestdevelopment.com); the name the page itself uses that spells out the domain wins
+    seen = max([n for n in (name_in_text(text, domain), name_in_text(raw_text, domain)) if n], key=len, default=None)
+    flat = re.sub(r"[^a-z0-9]", "", H.unescape(name or "").lower())
+    label = re.sub(r"[^a-z0-9]", "", domain.split(".")[0])
+    if seen and (not flat or (flat[:5] not in label and label[:5] not in flat)):  # the markup name has nothing to do with the domain
+        name = seen
     addr = (biz or {}).get("address") or {}
     if isinstance(addr, list):
         addr = addr[0] if addr else {}
@@ -266,7 +303,7 @@ def lookup_market(name, domain):
     import json as _json
     from . import budget, config, engines
     prompt = (f"Where is the business \"{name}\" (website {domain}) based? Use their Google Business Profile, website or "
-              "business listings. Reply with JSON only, no other words: {\"city\": \"...\", \"state\": \"two-letter US state code\"}. "
+              "business listings. Reply with JSON only, no other words: {\"city\": \"...\", \"state\": \"two-letter US state or Canadian province code\"}. "
               "If you can't tell with confidence, reply {\"city\": null, \"state\": null}.")
     tries = []
     if engines.is_configured("gemini"):
@@ -337,7 +374,7 @@ def market_from(profile, city=None, state=None):
 
 
 def _validated(city, state, source):
-    """Only accept a real US state; tidy the city's capitalisation. Anything else means 'ask the salesperson'."""
+    """Only accept a real US state or (change 58) Canadian province; tidy the city's capitalisation. Anything else means 'ask the salesperson'."""
     st = (state or "").strip()
     if len(st) == 2:
         st = STATE_NAMES.get(st.upper(), "")
@@ -347,13 +384,15 @@ def _validated(city, state, source):
     if c and (c.islower() or c.isupper()):
         c = " ".join(w.capitalize() for w in c.split())
     if not (c and st):
-        return {"city": c if st else "", "state": st, "state_code": STATE_CODES.get(st, ""), "source": source}
-    return {"city": c, "state": st, "state_code": STATE_CODES[st], "source": source}
+        return {"city": c if st else "", "state": st, "state_code": STATE_CODES.get(st, ""), "source": source,
+                "country": ("US" if STATE_CODES.get(st) in US_CODES else "CA") if st else "US"}
+    return {"city": c, "state": st, "state_code": STATE_CODES[st], "source": source,
+            "country": "US" if STATE_CODES[st] in US_CODES else "CA"}
 
 
 def infer_market_llm(profile):
     """When the site's markup doesn't say where the builder works, ask Gemini (no web search, tiny prompt)
-    to read the title, description, opening text and phone numbers and name the main US city and state."""
+    to read the title, description, opening text and phone numbers and name the main US or Canadian city and state/province."""
     from . import config
     key = config.key("GEMINI_API_KEY")
     if not key:
@@ -361,7 +400,7 @@ def infer_market_llm(profile):
     import urllib.request
     clue = {"title": profile.get("title"), "description": profile.get("meta_description"), "phones": profile.get("page_phones"),
             "text": (profile.get("opening_text") or "")[:1500]}
-    prompt = ("From this business's website, which single US city and state is their main market? Reply with JSON only, "
+    prompt = ("From this business's website, which single city and US state or Canadian province is their main market? Reply with JSON only, "
               'like {"city": "Charlotte", "state": "North Carolina", "areas": ["Lake Norman"]}. If unknown use null.\n' + json.dumps(clue))
     body = {"model": config.SETTINGS["GEMINI_MODEL"], "input": prompt}
     req = urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/interactions", data=json.dumps(body).encode(),
