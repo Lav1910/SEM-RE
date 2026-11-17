@@ -42,10 +42,17 @@ def facts(A):
     }
 
 
-def _rules(W=None):
+def _au(A):
+    from .engines import country_of
+    return country_of(A["market"]) == "AU"
+
+
+def _rules(W=None, country="US"):
+    spelling = {"US": "US spelling", "CA": "Canadian spelling", "AU": "Australian spelling and terms (e.g. 'block' not 'lot', "
+                "'storey', 'colour', 'house and land')"}.get(country, "US spelling")
     return ("Rules: use only the facts given. Never invent prices, years in business, awards, warranty terms, timelines, "
             "team names or statistics. Where a specific detail would help but isn't in the facts, write [confirm: what to add]. "
-            f"Write for {(W or {}).get('customers') or 'home buyers'} in plain, warm, confident language. US spelling. "
+            f"Write for {(W or {}).get('customers') or 'home buyers'} in plain, warm, confident language. {spelling}. "
             "No hype words like 'premier' or 'unparalleled'.")
 
 
@@ -271,7 +278,10 @@ def _default_topic(A):
 def _faq_questions(A):
     qs = [q["prompt"] for q in A["questions"] if q.get("kind") != "brand"]
     W = _w(A)
-    if W["is_builder"]:
+    if W["is_builder"] and _au(A):  # change 60
+        extra = [f"Do you build on my block in {A['market']['city']}?", "Do you do knockdown rebuilds?", "What's included in your base price?",
+                 "How long does a build take?", "Do you offer house and land packages?", "What warranty and insurance do you provide?"]
+    elif W["is_builder"]:
         extra = [f"Do you build on my lot in {A['market']['city']}?", "What is included in your base price?", "How long does a build take?",
                  "Do you offer financing help?", "What warranty do you offer?", "Can I customise a floor plan?"]
     else:
@@ -291,7 +301,9 @@ def generate(A, kind, key, provider="gemini"):
     F = facts(A)
     W = _w(A)
     B, noun, cust = W["is_builder"], W["noun"], W["customers"]
-    base = f"Facts about the {noun} (JSON):\n" + json.dumps(F, indent=1) + "\n\n" + _rules(W) + "\n\n"
+    from .engines import country_of
+    AU = country_of(A["market"]) == "AU"
+    base = f"Facts about the {noun} (JSON):\n" + json.dumps(F, indent=1) + "\n\n" + _rules(W, country_of(A["market"])) + "\n\n"
     name = A["profile"]["name"]
     if kind == "faq":
         qs = _faq_questions(A)
@@ -320,7 +332,13 @@ def generate(A, kind, key, provider="gemini"):
         return llm.text(prompt, provider, timeout=180)
     if kind == "city_pages":
         loc = dict(targets(A, "city_pages")).get(key) or f"{A['market']['city']}, {A['market']['state_code']}"
-        if B:
+        if B and AU:
+            prompt = (base + f"Write a service-area page for {name} about building homes in {loc}. Markdown, 600-800 words: H1 "
+                      f"'Home Builders in {loc}', a direct 2-sentence answer first, then sections on building on your own block, "
+                      "knockdown rebuilds and any house and land options in " + loc + " ([confirm] specifics unless in the facts), home "
+                      "designs, price range ([confirm] unless in the facts), the build process including council approval, nearby suburbs, "
+                      "3 local FAQs, and a call to action. Also give a meta title (under 60 characters) and meta description (under 155) at the top.")
+        elif B:
             prompt = (base + f"Write a service-area page for {name} about building homes in {loc}. Markdown, 600-800 words: H1 "
                       f"'Custom Home Builder in {loc}', a direct 2-sentence answer first, then sections on communities and lots in {loc} "
                       "([confirm] specific community names unless in the facts), home styles, price range ([confirm] unless in the facts), "
@@ -335,7 +353,12 @@ def generate(A, kind, key, provider="gemini"):
                       "title (under 60 characters) and meta description (under 155) at the top.")
         return llm.text(prompt, provider, timeout=180)
     if kind == "cost_guide":
-        if B:
+        if B and AU:
+            prompt = (base + f"Write a 'Cost to build a house in {A['market']['city']}' guide for {name}. Markdown, 800-1000 words: a "
+                      "direct answer first, what drives cost (block and site works, size, design, inclusions, council and certification fees), "
+                      "a table of cost ranges by home type with every figure as [confirm: $X–$Y] unless prices are in the facts (AUD), "
+                      "knockdown rebuild costs, ways to manage budget, a short FAQ, call to action.")
+        elif B:
             prompt = (base + f"Write a 'Cost to build a custom home in {A['market']['city']}' guide for {name}. Markdown, 800-1000 words: a "
                       "direct answer first, what drives cost (lot, size, finishes, site work, permits), a table of cost ranges by home type with "
                       "every figure as [confirm: $X–$Y] unless prices are in the facts, ways to manage budget, a short FAQ, call to action.")

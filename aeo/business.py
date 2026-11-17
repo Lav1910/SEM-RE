@@ -20,9 +20,12 @@ from . import llm
 BUILDER_WORDS = {  # the builder service keys (site.SERVICE_WORDS) that shape the builder questions, as the picker shows them
     "custom homes": "Custom homes", "new construction": "New construction", "luxury homes": "Luxury homes",
     "build on your lot": "Build on your lot", "ranch homes": "Ranch homes", "condos": "Condos",
+    # change 60: Australian builders
+    "knockdown rebuild": "Knockdown rebuild", "house and land": "House and land packages",
+    "single storey homes": "Single storey homes", "duplex": "Duplexes",
 }
-BUILDER_SIGNAL = re.compile(r"home ?builders?|custom homes?|new (?:construction|homes)|floor ?plans|build(?:ing)? on your (?:own )?(?:lot|land)|"
-                            r"semi-custom|move-in ready|quick move-in", re.I)
+BUILDER_SIGNAL = re.compile(r"home ?builders?|custom homes?|new (?:construction|homes)|floor ?plans|build(?:ing)? on your (?:own )?(?:lot|land|block)|"
+                            r"semi-custom|move-in ready|quick move-in|house\s*(?:and|&)\s*land|knock[\s-]?down[\s-]?(?:and[\s-])?re[\s-]?build", re.I)
 
 # fallback when no AI helper is connected: common home-service trades (regex, service name, what people call the pros)
 TRADES = [
