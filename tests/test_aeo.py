@@ -134,10 +134,10 @@ class BudgetTests(unittest.TestCase):
 
     def test_cap_stops_calls_and_settles_real_cost(self):
         b = self.budget
-        b.set_limit(0.10, reset=True)
-        r1 = b.reserve("chatgpt")            # 0.06 reserved
+        b.set_limit(0.20, reset=True)
+        r1 = b.reserve("chatgpt")            # 0.15 reserved (change 59: real OpenAI web-search prices)
         self.assertIsNotNone(r1)
-        self.assertIsNone(b.reserve("gemini"))  # 0.06 + 0.05 > 0.10 -> blocked
+        self.assertIsNone(b.reserve("gemini"))  # 0.15 + 0.06 > 0.20 -> blocked
         b.settle(r1, 0.02)                   # real cost lower than the estimate
         self.assertAlmostEqual(b.status()["spent_usd"], 0.02)
         self.assertIsNotNone(b.reserve("gemini"))  # room again after settling

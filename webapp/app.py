@@ -1744,7 +1744,8 @@ def admin():
     seclog = db.q("SELECT * FROM security_log ORDER BY t DESC LIMIT 40")
     return render_template("admin.html", feedback=fb, seclog=seclog, auth_info={"google": auth.google_enabled(),
                            "password": True, "mail": mailer.configured(), "domain": auth.ALLOWED_DOMAIN}, roles=auth.ROLES, users=users, platforms=platforms, budget=budget.status(), stats=stats,
-                           workers=jobs.WORKERS, keys_file=config.KEYS_FILE, ai=mcp.admin_ctx())
+                           workers=jobs.WORKERS, keys_file=config.KEYS_FILE, ai=mcp.admin_ctx(),
+                           answers_captured=engines.captured_on())
 
 
 @app.errorhandler(400)

@@ -10,10 +10,19 @@ import os
 import threading
 
 LEDGER = os.path.expanduser("~/.config/hbm-aeo/spend.json")
-# Conservative per-answer estimates in USD (high end of the published-price ranges).
-ESTIMATE = {"chatgpt": 0.06, "gemini": 0.05, "perplexity": 0.05, "google_aio": 0.005, "google_ai_mode": 0.005}
-# Typical per-answer cost, for the cost estimate shown before an audit runs (Semrush calls use units, not dollars).
-TYPICAL = {"chatgpt": 0.035, "gemini": 0.035, "perplexity": 0.015, "google_aio": 0.003, "google_ai_mode": 0.003}
+# Conservative per-answer reservations in USD; the provider-reported cost replaces them where there is one.
+ESTIMATE = {"chatgpt": 0.15, "gemini": 0.06, "perplexity": 0.01, "google_aio": 0.005, "google_ai_mode": 0.005}
+# Typical per-answer cost, measured Nov 17 2026 (change 59): an OpenAI web-search answer ~$0.11 (2-6 searches at $0.01
+# plus 19-38k tokens of results), a Gemini grounded answer ~$0.05, Perplexity $0.0037, DataForSEO Google $0.004.
+TYPICAL = {"chatgpt": 0.11, "gemini": 0.05, "perplexity": 0.004, "google_aio": 0.004, "google_ai_mode": 0.004}
+CAPTURED_TYPICAL = 0.004  # chatgpt.com / Gemini app answers through DataForSEO's LLM Scraper
+
+
+def typical(engine):
+    from . import engines
+    if engine in engines.CAPTURED and engines.captured_on() and engines._dfs_ready():
+        return CAPTURED_TYPICAL
+    return TYPICAL.get(engine, 0)
 _lock = threading.Lock()
 
 
@@ -32,7 +41,7 @@ def audit_cost(A):
 
 def per_question(live_engines):
     """Typical dollars to ask one question on every connected platform."""
-    return sum(TYPICAL.get(e, 0) for e in live_engines)
+    return sum(typical(e) for e in live_engines)
 
 
 EMPTY = {"limit_usd": None, "spent_usd": 0.0, "calls": {}}

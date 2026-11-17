@@ -274,6 +274,80 @@ ASK = {"chatgpt": ask_chatgpt, "gemini": ask_gemini, "perplexity": ask_perplexit
        "google_aio": ask_google_aio, "google_ai_mode": ask_google_ai_mode}
 
 
+# ---------------- change 59: ChatGPT and Gemini as people see them, via DataForSEO ----------------
+# DataForSEO's LLM Scraper returns the answer the consumer apps (chatgpt.com, the Gemini app) give, with the sources
+# they cite and, for ChatGPT, the local business cards they show. About $0.004 an answer against ~$0.11 for an
+# OpenAI web-search answer. If it fails, the official APIs answer instead, so an audit never loses the platform.
+CAPTURED = {"chatgpt": "chat_gpt", "gemini": "gemini"}
+
+
+def captured_on():
+    """On unless an admin turned it off (Admin page) or HBM_CAPTURED_ANSWERS=0."""
+    import os
+    if os.environ.get("HBM_CAPTURED_ANSWERS", "1") == "0":
+        return False
+    try:
+        from . import kv
+        return (kv.get("answers") or {}).get("captured", True) is not False
+    except Exception:
+        return True
+
+
+def _dfs_ready():
+    return bool(config.key("DATAFORSEO_LOGIN") and config.key("DATAFORSEO_PASSWORD"))
+
+
+def _captured_locations(engine, market):
+    """chatgpt.com can only be set to a country; the Gemini app can be set to the city (DataForSEO's naming)."""
+    country = country_name(market)
+    if engine == "gemini" and market.get("city"):
+        if country_of(market) == "US":
+            return [f"{market['city']}, {market['state_code']},{market['state']},{country}", country]
+        return [f"{market['city']},{market['state']},{country}", country]
+    return [country]
+
+
+def parse_captured(resp):
+    """(text, citations, cards, cost) from a DataForSEO LLM Scraper response."""
+    t = (resp.get("tasks") or [{}])[0]
+    if t.get("status_code") not in (20000, None):
+        raise RuntimeError(f"DataForSEO {t.get('status_code')}: {t.get('status_message')}")
+    r = (t.get("result") or [None])[0] or {}
+    items = r.get("items") or []
+    text = r.get("markdown") or "\n".join(it.get("markdown") or it.get("text") or "" for it in items if "text" in (it.get("type") or ""))
+    cites = _cites([(x.get("url"), x.get("title")) for x in r.get("sources") or []])
+    cards = []
+    for it in items:
+        if "local_business" in (it.get("type") or ""):
+            for b in it.get("items") or [it]:
+                if b.get("title"):
+                    rating = b.get("rating") or {}
+                    cards.append({"title": b["title"], "domain": domain_of(b.get("url") or "") or (b.get("domain") or ""),
+                                  "rating": rating.get("value") if isinstance(rating, dict) else rating, "reviews": b.get("reviews_count")})
+    return text, cites, cards, t.get("cost"), r.get("model")
+
+
+def ask_captured(engine, q, market):
+    last = None
+    for loc in _captured_locations(engine, market):
+        body = {"keyword": q["prompt"][:2000], "location_name": loc, "language_code": "en"}
+        if engine == "chatgpt":
+            body["force_web_search"] = True
+        try:
+            resp = _post(f"https://api.dataforseo.com/v3/ai_optimization/{CAPTURED[engine]}/llm_scraper/live/advanced", [body], _dfs_headers())
+            text, cites, cards, cost, model = parse_captured(resp)
+        except RuntimeError as e:
+            last = e
+            if "location" in str(e).lower():
+                continue  # a city DataForSEO doesn't know: ask from the country instead
+            raise
+        if not text.strip():
+            raise RuntimeError("DataForSEO returned an empty answer")
+        return _record(engine, q, text=text, citations=cites, cards=cards, cost_usd=cost, source="dataforseo",
+                       model=model, location=loc)
+    raise last or RuntimeError("DataForSEO couldn't ask from this location")
+
+
 def _semrush_ok():
     from . import semrush
     return semrush.available()
@@ -286,6 +360,8 @@ def _dfs_auth_problem(e):
 
 def is_configured(engine):
     if all(config.key(k) for k in REQUIRED_KEYS[engine]):
+        return True
+    if engine in CAPTURED and captured_on() and _dfs_ready():
         return True
     return engine == "google_aio" and _semrush_ok()  # Semrush fallback for AI Overviews + Maps pack
 
@@ -311,9 +387,24 @@ def _ask(engine, q, market):
     reserved = 0.0 if use_semrush else budget.reserve(engine)  # Semrush uses API units, not the dollar cap
     if reserved is None:
         return _record(engine, q, status="budget_reached", error="Spending cap reached (see spend.py)")
+    if engine in CAPTURED and captured_on() and _dfs_ready():  # change 59
+        try:
+            rec = ask_captured(engine, q, market)
+            budget.settle(reserved, rec.get("cost_usd"))
+            return rec
+        except Exception as e:
+            if not all(config.key(k) for k in REQUIRED_KEYS[engine]):
+                if reserved:
+                    budget.settle(reserved, 0.0)
+                return _record(engine, q, status="error", error=str(e)[:300], source="dataforseo")
+            captured_error = str(e)[:200]  # fall back to the official API below
+    else:
+        captured_error = None
     try:
         rec = ask_google_aio_semrush(q, market) if use_semrush else ASK[engine](q, market)
         budget.settle(reserved, rec.get("cost_usd"))
+        if captured_error:
+            rec.update(source="api (fallback)", dfs_error=captured_error)
         return rec
     except Exception as e:  # keep the audit going; the report shows "—" for this cell
         if engine == "google_aio" and not use_semrush and _dfs_auth_problem(e) and _semrush_ok():
