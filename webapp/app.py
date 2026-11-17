@@ -618,7 +618,8 @@ def dashboard():
     LA = store.load_json(last["id"]) if last else None
     from aeo.engines import STATE_CODES
     return render_template("dashboard.html", rows=rows, scope=scope, hist=hist, live=live, depths=depth_estimates(), budget=b if auth.can(g.user, "see_costs") else {}, pstat=status.current(LA, plain=True),
-                           states=sorted(engines.US_CODES), provinces=sorted(engines.PROVINCE_CODES.values()))
+                           states=sorted(engines.US_CODES), provinces=sorted(engines.PROVINCE_CODES.values()),
+                           au_states=sorted(engines.AU_STATE_CODES.values()))
 
 
 @app.route("/audits", methods=["POST"])
@@ -751,7 +752,7 @@ def api_locations():
             return jsonify(dict(meta, error="Couldn't load that website.", locations=[]))
         f_biz = pool.submit(business.cached, prof, domain)  # change 53: the Services dropdown, read alongside the cities
         preset = locmod.preset_for(domain)  # change 56: HBM measures San Diego plus the US home-building hubs
-        mk = site.market_from(prof, preset["city"], preset["state_code"]) if preset else site.market_from(prof)
+        mk = site.market_from(prof, preset["city"], preset.get("state") or preset["state_code"]) if preset else site.market_from(prof)
         biz = None
         try:
             biz = _biz_json(f_biz.result(timeout=45))

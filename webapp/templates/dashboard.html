@@ -22,7 +22,8 @@
               <input type="text" class="loc-add-city" placeholder="Add a city" aria-label="City to add">
               <label class="ctl ctl-select loc-add-st"><span class="sr-only">State or province</span><select class="loc-add-state">
                 <optgroup label="United States">{% for code in states %}<option value="{{ code }}">{{ code }}</option>{% endfor %}</optgroup>
-                <optgroup label="Canada">{% for code in provinces %}<option value="{{ code }}">{{ code }}</option>{% endfor %}</optgroup></select></label>
+                <optgroup label="Canada">{% for code in provinces %}<option value="{{ code }}">{{ code }}</option>{% endfor %}</optgroup>
+                <optgroup label="Australia">{% for code in au_states %}<option value="{{ code }}">{{ code }}</option>{% endfor %}</optgroup></select></label>
               <button class="btn btn-ghost btn-small loc-add-btn" type="button">Add</button>
             </div>
           </div>

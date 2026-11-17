@@ -96,7 +96,7 @@ class MarketLookup(unittest.TestCase):
         with mock.patch.object(config, "key", side_effect=lambda n: "x" if n == "GEMINI_API_KEY" else None), \
                 mock.patch.object(engines, "_post", return_value={}), \
                 mock.patch.object(engines, "parse_gemini", return_value=('Sure: {"city": "Solana Beach", "state": "ca"}', [])):
-            self.assertEqual(site.lookup_market("Acme", "acme.com"), ("Solana Beach", "CA", "a Google search"))
+            self.assertEqual(site.lookup_market("Acme", "acme.com"), ("Solana Beach", "California", "a Google search"))  # change 60: full name
 
 
 class ReopenAndWording(unittest.TestCase):
