@@ -3,7 +3,7 @@ import base64
 import html
 import os
 
-from .engines import ENGINES, ENGINE_LABELS, country_of
+from .engines import COUNTRY_ADJ, ENGINES, ENGINE_LABELS, country_of
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 e = html.escape
@@ -186,7 +186,7 @@ def render(A, ov=None):
   <colgroup><col style="width:34%"><col style="width:9%">{"".join(f'<col style="width:{round(57 / max(1, len(ENG)), 1)}%">' for _ in ENG)}</colgroup>
   <thead><tr><th>Question</th><th class="r">Monthly searches</th>{"".join(f"<th>{ENGINE_LABELS[en]}</th>" for en in ENG)}</tr></thead>
   <tbody>{"".join(rows)}</tbody></table></div>
- <p class="note">“Named #2” means the {noun} was the second business named in that answer. Monthly searches are {"Canadian" if country_of(M) == "CA" else "US"} estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
+ <p class="note">“Named #2” means the {noun} was the second business named in that answer. Monthly searches are {COUNTRY_ADJ[country_of(M)]} estimates for the Google search form of each question. “—” means the platform wasn't measured or didn't respond. AI answers change between runs and by location; this is a snapshot from {e(date)} with the location set to {e(M["city"])}, {e(M["state_code"])}.</p>
  {footer(3, TOTAL)}
 </section>''')
 
@@ -283,7 +283,7 @@ def render(A, ov=None):
  <div class="notes">
   <div><h4>Questions asked</h4><p>{K["questions"]} questions {"a home buyer" if W["is_builder"] else "a customer"} near {e(M["city"])} might ask, built from the services and areas on {e(P["domain"])}{"" if W["is_builder"] else " (" + e(business.service_phrase(BZ, 6)) + ")"}. Each was asked once per platform with the location set to {e(M["city"])}, {e(M["state_code"])}.</p></div>
   <div><h4>AI answer data</h4><p>Collected {e(date)} from {e(", ".join(ENGINE_LABELS[k] for k in measured))}. {"ChatGPT and Gemini answers are the ones their consumer apps (chatgpt.com, the Gemini app) gave, captured through DataForSEO. " if any("dataforseo" in (v or {}) for k, v in (A.get("answer_sources") or {}).items() if k in ("chatgpt", "gemini")) else ""}Answers can differ slightly from what one person sees, since the apps personalize results.</p></div>
-  <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from the latest {"Canadian" if country_of(M) == "CA" else "US"} Google search data.</p></div>
+  <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from the latest {COUNTRY_ADJ[country_of(M)]} Google search data.</p></div>
   <div><h4>Website checks</h4><p>{"Not run: the website turns away automated visitors." if P.get("site_blocked") else "The homepage, robots.txt, llms.txt and sitemap were read on " + e(date) + ". Nothing on the site was changed."}</p></div>
  </div>
  <div class="close">

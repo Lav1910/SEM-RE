@@ -18,7 +18,7 @@
   <form class="retry-market" method="post" action="{{ url_for('create_audit') }}">
     <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="url" value="{{ a.url }}"><input type="hidden" name="scope" value="{{ a.scope or 'root' }}"><input type="hidden" name="confirm_duplicate" value="1">
     <label><span class="label">City</span><input id="retry-city" type="text" name="city" required></label>
-    <label><span class="label">State / province</span><input id="retry-state" type="text" name="state" required placeholder="e.g. NC or BC"></label>
+    <label><span class="label">State / province</span><input id="retry-state" type="text" name="state" required placeholder="e.g. NC, BC or New South Wales"></label>
     <button class="btn btn-primary" type="submit">Run with this market</button>
   </form>
   {% endif %}

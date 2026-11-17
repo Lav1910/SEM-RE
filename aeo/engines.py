@@ -42,14 +42,62 @@ US_CODES = set(STATE_CODES.values())
 PROVINCE_CODES = {"Alberta": "AB", "British Columbia": "BC", "Manitoba": "MB", "New Brunswick": "NB", "Newfoundland and Labrador": "NL",
                   "Nova Scotia": "NS", "Northwest Territories": "NT", "Nunavut": "NU", "Ontario": "ON", "Prince Edward Island": "PE",
                   "Quebec": "QC", "Saskatchewan": "SK", "Yukon": "YT"}
+# change 60: Australian states and territories. WA (Washington / Western Australia) and NT (Northwest Territories /
+# Northern Territory) are shared codes, so a location's country always travels with it; full state names are unique.
+AU_STATE_CODES = {"New South Wales": "NSW", "Victoria": "VIC", "Queensland": "QLD", "Western Australia": "WA",
+                  "South Australia": "SA", "Tasmania": "TAS", "Australian Capital Territory": "ACT", "Northern Territory": "NT"}
+US_STATE_CODES = dict(STATE_CODES)
+REGIONS = {"US": US_STATE_CODES, "CA": PROVINCE_CODES, "AU": AU_STATE_CODES}
 STATE_CODES.update(PROVINCE_CODES)
-COUNTRY_NAMES = {"US": "United States", "CA": "Canada"}
+STATE_CODES.update(AU_STATE_CODES)  # full name -> code (names never repeat across countries)
+COUNTRY_OF_STATE = {name: c for c, d in REGIONS.items() for name in d}
+COUNTRY_NAMES = {"US": "United States", "CA": "Canada", "AU": "Australia"}
+COUNTRY_ADJ = {"US": "US", "CA": "Canadian", "AU": "Australian"}
+# code -> full name, the US first, then Canada, then Australia (shared codes WA and NT read as US / Canada unless
+# the country is known: use region_name(code, country) wherever it is)
+STATE_NAMES = {}
+for _c in ("AU", "CA", "US"):
+    STATE_NAMES.update({cd: name for name, cd in REGIONS[_c].items()})
+
+
+def normalize_country(x):
+    """'AU', 'Australia', 'AUS', 'au' -> 'AU'. None when it isn't one of ours."""
+    t = (x or "").strip().lower().rstrip(".")
+    return {"us": "US", "usa": "US", "united states": "US", "united states of america": "US", "america": "US",
+            "ca": "CA", "can": "CA", "canada": "CA", "au": "AU", "aus": "AU", "australia": "AU"}.get(t)
+
+
+def region_name(value, country=None):
+    """The full state/province name for a code or name, or ''. country breaks ties for shared codes (WA, NT);
+    without one, the US and then Canada win."""
+    v = (value or "").strip()
+    if not v:
+        return ""
+    for name in COUNTRY_OF_STATE:
+        if name.lower() == v.lower():
+            return name
+    code = v.upper().rstrip(".")
+    order = ([country] if country in REGIONS else []) + [c for c in ("US", "CA", "AU") if c != country]
+    for c in order:
+        for name, cd in REGIONS[c].items():
+            if cd == code:
+                return name
+    return ""
 
 
 def country_of(market):
-    """'US' or 'CA' for a market or location dict (older audits have no country: they're all US)."""
+    """'US', 'CA' or 'AU' for a market or location dict (older audits have no country: they're all US)."""
     m = market or {}
-    return m.get("country") or ("CA" if m.get("state_code") in PROVINCE_CODES.values() else "US")
+    if m.get("country") in REGIONS:
+        return m["country"]
+    if m.get("state") in COUNTRY_OF_STATE:
+        return COUNTRY_OF_STATE[m["state"]]
+    code = m.get("state_code")
+    if code in PROVINCE_CODES.values() and code != "NT":
+        return "CA"
+    if code in AU_STATE_CODES.values() and code not in ("WA", "NT"):
+        return "AU"
+    return "US"
 
 
 def country_name(market):
@@ -156,7 +204,7 @@ def parse_gemini(resp):
 
 
 def ask_gemini(q, market):
-    prompt = f"I live in {market['city']}, {market['state']}" + (", Canada" if country_of(market) == "CA" else "") + f". {q['prompt']}"
+    prompt = f"I live in {market['city']}, {market['state']}" + ({"CA": ", Canada", "AU": ", Australia"}.get(country_of(market), "")) + f". {q['prompt']}"
     payload = {"model": config.SETTINGS["GEMINI_MODEL"], "input": prompt, "tools": [{"type": "google_search"}]}
     resp = _post("https://generativelanguage.googleapis.com/v1beta/interactions", payload,
                  {"x-goog-api-key": config.key("GEMINI_API_KEY"), "Api-Revision": config.SETTINGS["GEMINI_API_REVISION"]})

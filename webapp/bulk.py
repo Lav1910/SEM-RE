@@ -190,10 +190,11 @@ def bulk_start():
     now = time.time()
     db.x("INSERT INTO batches (id, user_id, name, depth, status, total, created_at) VALUES (?,?,?,?, 'running', ?, ?)",
          (bid, g.user["id"], name, depth, len(rows), now))
-    from aeo.engines import STATE_CODES
+    from aeo.engines import region_name
     for i, r in enumerate(rows):
         st = r["state"].strip()
-        st_name = next((n for n, c in STATE_CODES.items() if c == st.upper() or n.lower() == st.lower()), None) if st else None
+        hint = "AU" if r["domain"].endswith(".au") else ("CA" if r["domain"].endswith(".ca") else None)  # change 60: WA / NT
+        st_name = region_name(st, hint) or None if st else None
         db.x("""INSERT INTO audits (id, user_id, url, domain, scope, city, state, test_mode, depth, status, stage, progress, share_token,
                 created_at, batch_id) VALUES (?,?,?,?, 'root', ?, ?, ?, 'quick', 'queued', 'Waiting to start', 0, ?, ?, ?)""",
              (uuid.uuid4().hex[:12], g.user["id"], r["norm"], r["domain"], r["city"] or None, st_name if r["city"] else None,

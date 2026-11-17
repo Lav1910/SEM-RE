@@ -33,9 +33,9 @@ class AuditError(Exception):
     """A problem the salesperson can fix (bad URL, unknown market)."""
 
 
-def _typed_location(label):
-    """A place typed on the dashboard, like "Mason, OH"."""
-    return locations.typed(label)
+def _typed_location(label, country=None):
+    """A place typed on the dashboard, like "Mason, OH" or "Parramatta, NSW"."""
+    return locations.typed(label, "entered", country)
 
 
 def _stepper(progress):
@@ -97,7 +97,8 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     hs = profile["homepage_status"]
     if not hs or hs in (404, 410):  # no such site or page: the address is wrong
         raise AuditError(f"Could not load the homepage (HTTP {hs or 'no response'}). Check the URL.")
-    blocked = hs >= 400 and profile.get("word_count", 0) < 50  # change 26: the site turns away automated visitors
+    # change 26: the site turns away automated visitors (change 60: including CDN / bot-check error pages)
+    blocked = (hs >= 400 and profile.get("word_count", 0) < 50) or bool(profile.get("error_page"))
     if blocked:
         profile["site_blocked"] = hs
         profile["name"] = site.name_from_domain(profile["domain"])
@@ -112,7 +113,7 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
     f_biz = biz_pool.submit(business.cached, profile, profile["domain"]) if not blocked else None
     preset = locations.preset_for(profile["domain"])
     if preset and not city:  # change 56: a set main market (HBM: San Diego) when none was typed in
-        city, state = preset["city"], preset["state_code"]
+        city, state = preset["city"], preset.get("state") or preset["state_code"]
     market = site.market_from(profile, city, state)
     if (not market["city"] or not market["state"]) and pm.get("city") and pm.get("state_code"):  # the market from the last audit
         market = site.market_from(profile, pm["city"], pm["state_code"])
@@ -156,7 +157,7 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         by_label = {l["label"].lower(): l for l in found}
         pool_locs = [found[0]]
         for lab in locations_chosen:
-            l = by_label.get(lab.lower()) or _typed_location(lab)
+            l = by_label.get(lab.lower()) or _typed_location(lab, engines.country_of(market))
             if l and l["label"].lower() != found[0]["label"].lower() and l not in pool_locs:
                 pool_locs.append(l)
     else:

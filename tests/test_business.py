@@ -327,3 +327,38 @@ class Names59(unittest.TestCase):
                          ["Creative Bath Renovations", "JDL Homes Vancouver", "Katz Builders"])
         self.assertTrue(analyze.same_business("Dave Fox Design Build", "Dave Fox Design-Build"))
         self.assertFalse(analyze.same_business("Katz Builders", "Kerr Design Build"))
+
+
+class Australia(unittest.TestCase):
+    """change 60: Australian businesses audit like US and Canadian ones; shared codes (WA, NT) follow the country."""
+    def test_states_and_shared_codes(self):
+        from aeo import engines, site
+        self.assertEqual(site._validated("perth", "WA", "x", "AU")["state"], "Western Australia")
+        self.assertEqual(site._validated("seattle", "WA", "x")["state"], "Washington")
+        self.assertEqual(site._validated("darwin", "NT", "x", "AU")["country"], "AU")
+        self.assertEqual(site._validated("Sydney", "NSW", "x")["country"], "AU")  # NSW is only Australian
+        self.assertEqual(engines.country_of({"state": "Western Australia", "state_code": "WA"}), "AU")
+        self.assertEqual(engines._dfs_location({"city": "Sydney", "state": "New South Wales", "state_code": "NSW"}), "Sydney,New South Wales,Australia")
+        self.assertEqual(engines._captured_locations("gemini", {"city": "Sydney", "state": "New South Wales", "state_code": "NSW"})[0],
+                         "Sydney,New South Wales,Australia")
+
+    def test_country_hints_and_phones(self):
+        from aeo import site
+        self.assertEqual(site.country_hint("mojohomes.com.au"), "AU")
+        self.assertEqual(site.country_hint("x.com", {"addressCountry": "AU"}), "AU")
+        self.assertIsNone(site.country_hint("x.com"))
+        self.assertEqual(site.phone_numbers("(02) 9876 5432, +61 412 345 678, 1300 123 456, (512) 555-0101"),
+                         ["0298765432", "0412345678", "1300123456", "5125550101"])
+        self.assertEqual(site.format_phone("0298765432"), "02 9876 5432")
+
+    def test_places_and_search_data(self):
+        from aeo import locations, semrush, engines
+        self.assertEqual(locations.typed("Fremantle, WA", "entered", "AU")["state"], "Western Australia")
+        self.assertEqual(locations.typed("Spokane, WA")["state"], "Washington")
+        self.assertEqual(semrush.database({"state": "Victoria", "state_code": "VIC"}), "au")
+        self.assertEqual(engines.COUNTRY_ADJ[engines.country_of({"state_code": "QLD"})], "Australian")
+
+    def test_error_pages_are_not_names(self):
+        from aeo import site
+        self.assertTrue(site.ERROR_PAGE.search("ERROR: The request could not be satisfied"))
+        self.assertFalse(site.ERROR_PAGE.search("Mojo Homes | Custom Home Builders Sydney"))
