@@ -25,6 +25,17 @@
     </section>
   </div>
 
+  <section class="card" id="answer-source">{# change 59 #}
+    <div class="status-row"><h2 style="margin:0">ChatGPT and Gemini answers</h2>
+      <span class="small muted">{{ 'From the consumer apps via DataForSEO, about $0.004 an answer' if answers_captured else 'From the official APIs, about $0.11 (ChatGPT) and $0.05 (Gemini) an answer' }}</span></div>
+    <form method="post" action="{{ url_for('admin_answers') }}" class="ai-admin">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label class="chk"><input type="checkbox" name="captured" value="1" {{ 'checked' if answers_captured }}> Use the answers chatgpt.com and the Gemini app show people (captured by DataForSEO)</label>
+      <button class="btn btn-ghost btn-small" type="submit">Save</button>
+    </form>
+    <p class="small muted" style="margin:10px 0 0">If DataForSEO doesn't answer, that question is asked through the official API instead, so audits never lose a platform. Untick to always use the official APIs.</p>
+  </section>
+
   <section class="card" id="ai-connections">{# change 50 #}
     <div class="status-row"><h2 style="margin:0">AI connections (MCP)</h2>
       <span class="small muted">{{ ai.connections }} active connection{{ 's' if ai.connections != 1 }} · {{ ai.agent_audits }} agent audit{{ 's' if ai.agent_audits != 1 }} and {{ ai.calls }} agent action{{ 's' if ai.calls != 1 }} in the last 24 hours</span></div>

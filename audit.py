@@ -257,6 +257,17 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
             "found": [l for l in found if l not in pool_locs]}
 
 
+def _answer_sources(answers):
+    """Per platform, where its answers came from: {"chatgpt": {"dataforseo": 11, "api (fallback)": 1}, ...}."""
+    out = {}
+    for a in answers:
+        if a.get("status") in ("ok", "no_answer"):
+            src = a.get("source") or "api"
+            out.setdefault(a["engine"], {}).setdefault(src, 0)
+            out[a["engine"]][src] += 1
+    return out
+
+
 def _biz_sig(b):
     """Same business type and services: the questions from a head start are still the right ones."""
     b = b or {}
@@ -401,6 +412,7 @@ def finish(S, progress=None):
                    "perplexity": "Agent API, effort " + config.SETTINGS["PERPLEXITY_EFFORT"],
                    "google_aio": ("Google results via DataForSEO" if config.key("DATAFORSEO_LOGIN") else "Google AI Overview sources and Maps pack via Semrush (US snapshot)"), "google_ai_mode": "Google AI Mode via DataForSEO"},
         "cost_usd_reported": round(sum(a["cost_usd"] or 0 for a in answers), 4),
+        "answer_sources": _answer_sources(answers),  # change 59: chatgpt.com / Gemini app via DataForSEO, or the official API
         "seconds": round(time.time() - t0, 1),
     }
     step("Building the report", 97, event="Writing the report, PDF layout and Loom talking points")

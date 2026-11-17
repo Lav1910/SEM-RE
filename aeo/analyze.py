@@ -48,7 +48,35 @@ GENERIC_WORDS = ["Best", "Top", "Custom", "New", "Luxury", "Local", "Ranch", "Ho
 LEAD_WORDS = {"the", "a", "an", "for", "with", "and", "or", "in", "at", "consider", "try", "contact", "check", "call", "visit",
               "including", "include", "like", "such", "both", "also", "however", "additionally", "options", "notably", "here",
               "some", "many", "see", "ask", "choose", "look", "recommended", "top", "best", "firms", "companies", "builders",
-              "while", "if", "when", "as", "other", "local", "reputable", "established", "popular", "well-known", "among"}
+              "while", "if", "when", "as", "other", "local", "reputable", "established", "popular", "well-known", "among", "one",
+              "about", "our", "featured", "management", "dedicated", "focused", "exceptional", "luxurious", "years", "true"}
+
+
+# change 59: words that only describe a business. A "name" made of nothing else is a heading or a phrase from the
+# answer ("Expert Austin Custom Home Builders", "Full-Service Design-Build"), not a company.
+DESCRIPTORS = set("""best top custom luxury local expert experts high-end highend highly rated top-rated toprated full-service fullservice
+premier leading trusted reliable affordable quality professional professionals experienced award-winning awardwinning crafting
+reputable established popular notable licensed certified insured family-owned familyowned boutique modern contemporary
+the a an and & of for in your our new home homes house houses residential commercial general design build design-build designbuild
+builders builder building construction contractor contractors remodel remodeling remodelers remodeler renovation renovations
+kitchen kitchens bath baths bathroom bathrooms basement basements finishing roofing roofers plumbing hvac electric electrical
+landscaping pools pool services service solutions company companies group pros options choices firms teams team
+small medium large semi-custom semicustom production luxury-home luxuryhome specialty specialized specialist specialists
+quick-turnaround quickturnaround mid-sized midsized mid-size large-scale small-scale one-stop onestop go-to
+exceptional luxurious featured dedicated focused true fully integrated architect-led architectled mid-to-high system-based
+beautiful high low right premium elite top-tier toptier upscale high-quality highquality value-focused budget-friendly
+builds projects years experience management canadian american national regional independent smaller larger""".split())
+# names containing these are organisations, lists or sources, not competing businesses
+NOT_A_BUSINESS = re.compile(r"\b(?:Registry|Association|Associations|Council|Board|Department|Directory|Magazine|Guide|Guides|List|Lists|"
+                            r"Awards?|Chamber|Institute|Bureau|Ministry|Authority|Reviews?|Ratings?|Forum|Portfolio|Gallery|Projects|Examples)\b", re.I)
+
+
+def descriptive(name, extra=()):
+    """True when every word of the name just describes (no distinctive word), e.g. 'Highly Rated Local Contractors'."""
+    words = [re.sub(r"[^a-z&-]", "", w.lower()) for w in re.split(r"[\s/]+", name) if w.strip()]
+    words = [w for w in words if w]
+    plain = DESCRIPTORS | {w.lower() for w in extra}
+    return bool(words) and all(w in plain or w.replace("-", "") in plain for w in words)
 
 
 def generic_rx(market_words, ends=BUILDER_WORDS):
@@ -57,8 +85,10 @@ def generic_rx(market_words, ends=BUILDER_WORDS):
 
 
 def norm_name(n):
+    n = re.split(r"\s+[-–—|]\s+", n)[0]  # change 59: a listing's tagline ("Mik Homes - Kitchen and Bath Remodeling")
     n = re.sub(r"[’']s\b", "", n)
-    n = re.sub(r"\b(LLC|Inc|Co)\.?$", "", n).strip(" .,")
+    n = re.sub(r"(?:,?\s*\b(?:LLC|Inc|Co|Ltd|Corp)\.?)+$", "", n).strip(" .,")
+    n = re.sub(r"\s*(?:&|\band)$", "", n).strip(" .,")  # "J.S. Brown & Co." -> "J.S. Brown"
     return re.sub(r"\s+", " ", n)
 
 
@@ -82,8 +112,9 @@ def brand_patterns(profile, ends=BUILDER_WORDS):
     return re.compile("|".join(pats), re.I)
 
 
-def find_builders(text, known, generic, rx=None):
-    """Builder (or other business) names in an answer: known candidates (Maps pack titles etc.) plus name-shaped phrases."""
+def find_builders(text, known, generic, rx=None, plain=()):
+    """Builder (or other business) names in an answer: known candidates (Maps pack titles etc.) plus name-shaped phrases.
+    plain: market and service words that, on their own, don't make a name distinctive (change 59)."""
     found = collections.OrderedDict()
     low = text.lower()
     for k in known:
@@ -99,11 +130,50 @@ def find_builders(text, known, generic, rx=None):
             if words[0] == "The" and len(words) == 3:  # keep "The Bold Company"
                 break
             words = words[1:]
+        while words and words[-1].lower().strip(",") in ("&", "and", "of", "the", "for"):
+            words = words[:-1]  # "J.S. Brown &" -> "J.S. Brown"
         n = " ".join(words)
         if generic.match(n) or len(n) < 6 or len(words) < 2 or (words[0].lower() in LEAD_WORDS and words[0] != "The"):
             continue
+        if descriptive(n, plain) or NOT_A_BUSINESS.search(n):
+            continue
         found.setdefault(n, m.start())
-    return [n for n, _ in sorted(found.items(), key=lambda x: x[1])]
+    names = [n for n, _ in sorted(found.items(), key=lambda x: x[1])]
+    # "Ash Creek and Seven Custom Homes" when "Seven Custom Homes" is named on its own: two businesses run together
+    names = [n for n in names if not any(o != n and re.search(r"\s(?:and|&)\s" + re.escape(o) + r"$", n) for o in names)]
+    return dedupe_names(names, known)
+
+
+def same_business(a, b):
+    """'Creative Bath' / 'Creative Bath Renovations', 'Alair Homes' / 'Alair Homes Vancouver', 'Lanefab Design' /
+    'Lanefab Design/Build': one name extends the other and they share the opening word."""
+    ka, kb = name_key(a), name_key(b)
+    if not ka or not kb:
+        return False
+    if ka == kb:
+        return True
+    ra, rb = re.sub(r"[^a-z]", "", a.lower()), re.sub(r"[^a-z]", "", b.lower())  # 'JDL Homes' / 'JDL Homes Vancouver'
+    rs, rl = (ra, rb) if len(ra) <= len(rb) else (rb, ra)
+    if len(rs) >= 7 and rl.startswith(rs) and a.split()[0].lower() == b.split()[0].lower():
+        return True
+    fa, fb = re.sub(r"[^a-z]", "", a.split()[0].lower()), re.sub(r"[^a-z]", "", b.split()[0].lower())
+    short, long_ = (ka, kb) if len(ka) <= len(kb) else (kb, ka)
+    return fa == fb and len(short) >= 5 and long_.startswith(short)
+
+
+def dedupe_names(names, known=()):
+    """Keep one entry per business, preferring a known listing title, else the longer, fuller name."""
+    known_l = {k.lower() for k in known}
+    out = []
+    for n in names:
+        hit = next((i for i, o in enumerate(out) if same_business(n, o)), None)
+        if hit is None:
+            out.append(n)
+        else:
+            o = out[hit]
+            if (n.lower() in known_l and o.lower() not in known_l) or (len(n) > len(o) and o.lower() not in known_l):
+                out[hit] = n
+    return out
 
 
 def analyze(profile, market, questions, answers, checks, semrush):
@@ -119,8 +189,10 @@ def analyze(profile, market, questions, answers, checks, semrush):
     generic = generic_rx([market["city"], market["state"], market["state_code"]] +
                          [w for a in profile["areas_served"] + [q.get("area") or "" for q in questions] + W["services"]
                           for w in re.findall(r"[A-Z][a-z]+", a or "")], ends)
-    known = sorted({p["title"] for a in answers for p in a.get("local_pack", []) if p.get("title") and "." not in p["title"]},
-                   key=len, reverse=True)
+    plain = {w.lower() for w in [market["city"], market["state"], market["state_code"]] + [q.get("area") or "" for q in questions]
+             + W["services"] + profile["areas_served"] for w in re.findall(r"[A-Za-z][A-Za-z'-]+", w or "")}
+    known = sorted({p["title"] for a in answers for p in (a.get("local_pack") or []) + (a.get("cards") or [])
+                    if p.get("title") and "." not in p["title"]}, key=len, reverse=True)
 
     cells = []  # one per (question, engine)
     comp = collections.defaultdict(lambda: {"mentions": 0, "engines": set(), "questions": set(), "pack": 0, "domain": ""})
@@ -135,8 +207,15 @@ def analyze(profile, market, questions, answers, checks, semrush):
             cited_domains = [c["domain"] for c in a["citations"]]
             cell["cited"] = any(mine(c.get("url") or c.get("domain")) for c in a["citations"])
             m = brand_rx.search(text)
-            cell["mentioned"] = bool(m) or cell["cited"]
-            builders = [b for b in find_builders(text, known, generic, rx) if not brand_rx.search(b)]
+            cards = a.get("cards") or []  # change 59: the business cards chatgpt.com shows with its answer
+            in_cards = any(brand_rx.search(c.get("title") or "") or on_site(c.get("domain")) for c in cards)
+            cell["mentioned"] = bool(m) or cell["cited"] or in_cards
+            builders = [b for b in find_builders(text, known, generic, rx, plain) if not brand_rx.search(b)]
+            have = {name_key(b) for b in builders}
+            for c in cards:  # card businesses the text didn't name are still recommended to the reader
+                t = norm_name(c.get("title") or "")
+                if t and not brand_rx.search(t) and not on_site(c.get("domain")) and name_key(t) not in have:
+                    builders.append(t); have.add(name_key(t))
             if m:
                 cell["rank"] = 1 + sum(1 for b in builders if text.find(b) < m.start())
             cell["competitors"] = builders[:12]
@@ -177,6 +256,7 @@ def analyze(profile, market, questions, answers, checks, semrush):
     merged = {}
     for n, c in sorted(comp.items(), key=lambda kv: -kv[1]["mentions"]):
         k = name_key(n) or n
+        k = next((mk for mk, mv in merged.items() if same_business(n, mv["name"])), k)  # change 59: name variants
         if "." in n:  # a pack entry that is only a domain
             label = n.split(".")[0].replace("-", "")
             k = next((name_key(m) for m in comp if "." not in m and name_key(m) and name_key(m) in label), k)

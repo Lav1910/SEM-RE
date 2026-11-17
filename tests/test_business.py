@@ -251,3 +251,79 @@ class Canada(unittest.TestCase):
                          "Infinity West Development Group")
         self.assertEqual(site.name_in_text("© 2026 Infinity West. All rights reserved", "infinitywestdevelopment.com"), "Infinity West")
         self.assertIsNone(site.name_in_text("Nothing related here", "acme.com"))
+
+
+class CapturedAnswers(unittest.TestCase):
+    """change 59: ChatGPT and Gemini as the consumer apps answer, via DataForSEO, with the official APIs as backup."""
+    M = {"city": "Columbus", "state": "Ohio", "state_code": "OH", "country": "US"}
+    Q = {"id": "q1", "prompt": "Who are the best bathroom remodelers in Columbus, OH?", "keyword": "x", "kind": "discovery"}
+    RESP = {"tasks": [{"status_code": 20000, "cost": 0.004, "result": [{"model": "gpt-6", "markdown": "Try **Creative Bath Renovations**.",
+            "sources": [{"url": "https://www.houzz.com/x", "title": "Houzz"}],
+            "items": [{"type": "chat_gpt_local_businesses", "items": [{"title": "Shower King LLC", "url": "https://showerking.com", "rating": {"value": 4.9}}]}]}]}]}
+
+    def setUp(self):
+        from aeo import engines, kv
+        self.e = engines
+        kv.update("answers", lambda d: {"captured": True}, {})
+        p = mock.patch.object(engines, "_dfs_ready", return_value=True); p.start(); self.addCleanup(p.stop)
+
+    def test_captured_answer(self):
+        with mock.patch.object(self.e, "_post", return_value=self.RESP) as post:
+            r = self.e._ask("chatgpt", self.Q, self.M)
+        body = post.call_args[0][1][0]
+        self.assertEqual((body["location_name"], body["force_web_search"]), ("United States", True))
+        self.assertEqual((r["status"], r["source"], r["cost_usd"], r["model"]), ("ok", "dataforseo", 0.004, "gpt-6"))
+        self.assertEqual(r["cards"][0]["title"], "Shower King LLC")
+        self.assertEqual(r["citations"][0]["domain"], "houzz.com")
+
+    def test_gemini_asks_from_the_city(self):
+        self.assertEqual(self.e._captured_locations("gemini", self.M)[0], "Columbus, OH,Ohio,United States")
+        self.assertEqual(self.e._captured_locations("gemini", {"city": "Vancouver", "state": "British Columbia", "state_code": "BC"})[0],
+                         "Vancouver,British Columbia,Canada")
+        self.assertEqual(self.e._captured_locations("chatgpt", self.M), ["United States"])
+
+    def test_falls_back_to_the_official_api(self):
+        api = lambda q, m: self.e._record("chatgpt", q, text="From the API", cost_usd=None)
+        with mock.patch.object(self.e, "ask_captured", side_effect=RuntimeError("DataForSEO 50000: down")), \
+                mock.patch.dict(self.e.ASK, {"chatgpt": api}), mock.patch.object(self.e.config, "key", return_value="k"):
+            r = self.e._ask("chatgpt", self.Q, self.M)
+        self.assertEqual((r["status"], r["text"], r["source"]), ("ok", "From the API", "api (fallback)"))
+        self.assertIn("down", r["dfs_error"])
+
+    def test_admin_can_switch_it_off(self):
+        from aeo import kv
+        kv.update("answers", lambda d: {"captured": False}, {})
+        api = lambda q, m: self.e._record("chatgpt", q, text="API")
+        with mock.patch.dict(self.e.ASK, {"chatgpt": api}), mock.patch.object(self.e, "ask_captured") as cap, \
+                mock.patch.object(self.e.config, "key", return_value="k"):
+            r = self.e._ask("chatgpt", self.Q, self.M)
+        cap.assert_not_called()
+        self.assertEqual(r["text"], "API")
+
+    def test_cards_count_as_named_and_as_competitors(self):
+        P = {"name": "Shower King", "domain": "showerking.com", "areas_served": [], "services": []}
+        qs = [{"id": "q1", "prompt": "Who are the best bathroom remodelers in Columbus, OH?", "keyword": "x", "kind": "discovery", "weight": 10}]
+        ans = [{"engine": "chatgpt", "question_id": "q1", "status": "ok", "citations": [], "local_pack": [], "organic": [],
+                "text": "Try Creative Bath Renovations.", "cards": [{"title": "Shower King LLC", "domain": "showerking.com"},
+                                                                    {"title": "Re-Bath of Columbus", "domain": "rebath.com"}]}]
+        X = analyze.analyze(P, self.M, qs, ans, [], None)
+        self.assertTrue(X["cells"][0]["mentioned"])  # only in a card, not in the text
+        self.assertIn("Re-Bath of Columbus", X["cells"][0]["competitors"])
+
+
+class Names59(unittest.TestCase):
+    def test_descriptive_phrases_are_not_businesses(self):
+        for n in ["Expert Austin Custom Home Builders", "Full-Service Design-Build", "Highly Rated Local Contractors",
+                  "Specialized & Highly Rated Mid-Sized Remodelers", "Exceptional New Construction"]:
+            self.assertTrue(analyze.descriptive(n, ["austin"]), n)
+        for n in ["Katz Builders", "Mosier Luxury Homes", "Creative Bath Renovations", "Dave Fox Design-Build"]:
+            self.assertFalse(analyze.descriptive(n, ["austin"]), n)
+        self.assertTrue(analyze.NOT_A_BUSINESS.search("Housing Public Registry of Residential Builders"))
+
+    def test_variants_merge_and_suffixes_go(self):
+        self.assertEqual(analyze.norm_name("J.S. Brown & Co."), "J.S. Brown")
+        self.assertEqual(analyze.norm_name("Mik Homes - Kitchen and Bath Remodeling"), "Mik Homes")
+        self.assertEqual(analyze.dedupe_names(["Creative Bath", "Creative Bath Renovations", "JDL Homes", "JDL Homes Vancouver", "Katz Builders"]),
+                         ["Creative Bath Renovations", "JDL Homes Vancouver", "Katz Builders"])
+        self.assertTrue(analyze.same_business("Dave Fox Design Build", "Dave Fox Design-Build"))
+        self.assertFalse(analyze.same_business("Katz Builders", "Kerr Design Build"))

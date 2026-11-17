@@ -960,6 +960,17 @@ def admin_ctx():
                 calls=db.q("SELECT COUNT(*) AS n FROM agent_log WHERE t>?", (now - 86400,), one=True)["n"])
 
 
+@app.route("/admin/answers", methods=["POST"])
+@admin_required
+def admin_answers():
+    """change 59: where ChatGPT and Gemini answers come from (consumer apps via DataForSEO, or the official APIs)."""
+    captured = bool(request.form.get("captured"))
+    kv.update("answers", lambda d: dict(d or {}, captured=captured), {})
+    security_event("answer_source", g.user["email"], f"captured={captured}")
+    flash("Answer source saved.", "good")
+    return redirect(url_for("admin") + "#answer-source")
+
+
 @app.route("/admin/ai", methods=["POST"])
 @admin_required
 def admin_ai():

@@ -282,7 +282,7 @@ def render(A, ov=None):
  {ph("06", "Report notes and sources", "Where every number came from and how to read it", ["ai", "search", "site"])}
  <div class="notes">
   <div><h4>Questions asked</h4><p>{K["questions"]} questions {"a home buyer" if W["is_builder"] else "a customer"} near {e(M["city"])} might ask, built from the services and areas on {e(P["domain"])}{"" if W["is_builder"] else " (" + e(business.service_phrase(BZ, 6)) + ")"}. Each was asked once per platform with the location set to {e(M["city"])}, {e(M["state_code"])}.</p></div>
-  <div><h4>AI answer data</h4><p>Collected {e(date)} from {e(", ".join(ENGINE_LABELS[k] for k in measured))}. Answers can differ slightly from the consumer apps, which personalize results.</p></div>
+  <div><h4>AI answer data</h4><p>Collected {e(date)} from {e(", ".join(ENGINE_LABELS[k] for k in measured))}. {"ChatGPT and Gemini answers are the ones their consumer apps (chatgpt.com, the Gemini app) gave, captured through DataForSEO. " if any("dataforseo" in (v or {}) for k, v in (A.get("answer_sources") or {}).items() if k in ("chatgpt", "gemini")) else ""}Answers can differ slightly from what one person sees, since the apps personalize results.</p></div>
   <div><h4>Google search data</h4><p>Maps 3-pack and rankings come from a live Google results page for {e(M["city"])}. Search volumes and site-wide AI Overview counts come from the latest {"Canadian" if country_of(M) == "CA" else "US"} Google search data.</p></div>
   <div><h4>Website checks</h4><p>{"Not run: the website turns away automated visitors." if P.get("site_blocked") else "The homepage, robots.txt, llms.txt and sitemap were read on " + e(date) + ". Nothing on the site was changed."}</p></div>
  </div>
