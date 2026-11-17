@@ -173,7 +173,8 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
 
     step("Getting search demand and the Google profile", 20, event="Pulling search demand and keyword difficulty")
     from concurrent.futures import ThreadPoolExecutor
-    city_kw = {l["label"]: questions.city_keyword(profile["business"]).format(kw=questions.loc_kw(l)).lower() for l in pool_locs[1:9]}
+    city_kw = {l["label"]: questions.city_keyword(profile["business"], engines.country_of(market)).format(kw=questions.loc_kw(l)).lower()
+               for l in pool_locs[1:9]}
     kws = list(dict.fromkeys([q["keyword"] for q in qs] + list(city_kw.values())))
     pool = ThreadPoolExecutor(max_workers=2)  # Semrush and DataWise run side by side
     ctry = engines.country_of(market)  # change 58: search data from the right country's database

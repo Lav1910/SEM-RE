@@ -362,3 +362,36 @@ class Australia(unittest.TestCase):
         from aeo import site
         self.assertTrue(site.ERROR_PAGE.search("ERROR: The request could not be satisfied"))
         self.assertFalse(site.ERROR_PAGE.search("Mojo Homes | Custom Home Builders Sydney"))
+
+
+class AustralianWording(unittest.TestCase):
+    """change 60: Australian builders are asked the way Australians search."""
+    M = {"city": "Sydney", "state": "New South Wales", "state_code": "NSW", "country": "AU"}
+
+    def test_builder_questions(self):
+        P = {"name": "Mojo Homes", "services": ["knockdown rebuild", "duplex", "build on your lot"], "areas_served": []}
+        prompts = [q["prompt"] for q in questions.build(P, self.M, 14)]
+        self.assertIn("Where can I find house and land packages in Sydney?", prompts)
+        self.assertIn("Which builders in Sydney do knockdown rebuilds?", prompts)
+        self.assertIn("Which builders in Sydney will build a home on my own block of land?", prompts)
+        self.assertIn("How much does it cost to build a house in Sydney, NSW?", prompts)
+        self.assertFalse([p for p in prompts if "new construction" in p or "own land?" in p])
+
+    def test_us_questions_unchanged(self):
+        P = {"name": "Acme Homes", "services": [], "areas_served": []}
+        prompts = [q["prompt"] for q in questions.build(P, {"city": "Austin", "state": "Texas", "state_code": "TX"}, 14)]
+        self.assertIn("Where can I find new construction homes in Austin?", prompts)
+
+    def test_suburb_sets_and_services(self):
+        from aeo import locations, site
+        loc = locations.typed("Parramatta, NSW", "entered", "AU")
+        qs = questions.for_location(loc, 3)
+        self.assertEqual([q["keyword"] for q in qs], ["home builders parramatta", "house and land packages parramatta", "knock down rebuild parramatta"])
+        import re
+        self.assertTrue(re.search(site.SERVICE_WORDS["knockdown rebuild"], "We specialise in Knock Down Rebuild projects", re.I))
+        self.assertTrue(re.search(site.SERVICE_WORDS["build on your lot"], "build on your own block", re.I))
+
+    def test_australian_spelling_in_content_rules(self):
+        from aeo import strategy
+        self.assertIn("Australian spelling", strategy._rules(None, "AU"))
+        self.assertIn("US spelling", strategy._rules(None, "US"))

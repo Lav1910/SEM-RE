@@ -21,6 +21,24 @@ TEMPLATES = [
     ("brand_good", "Is {brand} a good home builder?", "{brand} reviews", None, "brand"),
     ("brand_vs", "How does {brand} compare with other builders in {city}?", "{brand} vs", None, "brand"),
 ]
+# change 60: Australian home buyers search differently ("house and land", "knockdown rebuild", "single storey",
+# "build on my block", "cost to build a house"). Same ids where the question means the same thing, so history lines up.
+AU_TEMPLATES = [
+    ("best_custom", "Who are the best custom home builders in {city}, {st}?", "custom home builders {city}", None, "discovery"),
+    ("custom", "I want to build a new home in {city}. Which builders should I talk to?", "new home builders {city}", None, "discovery"),
+    ("home_builders", "What are the top-rated home builders in the {city} area?", "home builders {city}", None, "discovery"),
+    ("luxury", "Recommend a luxury home builder in {city}, {st}.", "luxury home builders {city}", "luxury homes", "discovery"),
+    ("own_lot", "Which builders in {city} will build a home on my own block of land?", "build on my block {city}", "build on your lot", "discovery"),
+    ("kdr", "Which builders in {city} do knockdown rebuilds?", "knock down rebuild {city}", "knockdown rebuild", "discovery"),
+    ("ranch", "Who builds single storey homes in the {city} area?", "single storey home builders {city}", "single storey homes", "discovery"),
+    ("new_construction", "Where can I find house and land packages in {city}?", "house and land packages {city}", None, "discovery"),
+    ("duplex", "Who builds duplexes in {city}?", "duplex builders {city}", "duplex", "discovery"),
+    ("cost", "How much does it cost to build a house in {city}, {st}?", "cost to build a house {city}", None, "research"),
+    ("timeline", "How long does it take to build a house in {city}?", "how long to build a house {city}", None, "research"),
+    ("brand_good", "Is {brand} a good builder?", "{brand} reviews", None, "brand"),
+    ("brand_vs", "How does {brand} compare with other builders in {city}?", "{brand} vs", None, "brand"),
+]
+AU_AREA_TEMPLATE = ("area_{slug}", "Who are the best home builders in {area}?", "home builders {area}", None, "discovery")
 AREA_TEMPLATE = ("area_{slug}", "Who are the best custom home builders in {area}?", "custom home builders {area}", None, "discovery")
 FLOOR_WEIGHT = 10
 
@@ -39,8 +57,9 @@ def build(profile, market, max_questions=14):
         services = [s["key"] for s in biz["services"] if s.get("key")]
     brand = short_brand(profile["name"])
     vals = {"city": market["city"], "st": market["state_code"], "state": market["state"], "brand": brand}
+    au = _country(market) == "AU"
     qs = []
-    for qid, p, k, need, kind in TEMPLATES:
+    for qid, p, k, need, kind in (AU_TEMPLATES if au else TEMPLATES):
         if need and need not in services:
             continue
         qs.append({"id": qid, "prompt": p.format(**vals), "keyword": k.format(**vals).lower(), "kind": kind})
@@ -48,8 +67,13 @@ def build(profile, market, max_questions=14):
     extra = [s for s in (biz or {}).get("services") or [] if s.get("added") and not s.get("key")]
     for i, s in enumerate(extra[:3]):
         qs.insert(min(len(qs), 3 + i), _svc_best(s, vals))
-    _add_areas(qs, profile, market, AREA_TEMPLATE)
+    _add_areas(qs, profile, market, AU_AREA_TEMPLATE if au else AREA_TEMPLATE)
     return qs[:max_questions]
+
+
+def _country(market):
+    from .engines import country_of
+    return country_of(market)
 
 
 def _add_areas(qs, profile, market, template):
@@ -168,10 +192,17 @@ LOCATION_TEMPLATES = [
 CITY_KEYWORD = "custom home builders {kw}"
 
 
-def location_templates(biz=None):
-    """change 53: the per-city set for this kind of business."""
+AU_LOCATION_TEMPLATES = [
+    ("best", "Who are the best home builders in {area}?", "home builders {kw}"),
+    ("new", "Where can I find house and land packages in {area}?", "house and land packages {kw}"),
+    ("lot", "Which builders in {area} do knockdown rebuilds?", "knock down rebuild {kw}"),
+]
+
+
+def location_templates(biz=None, country=None):
+    """change 53: the per-city set for this kind of business (change 60: Australian wording for Australian builders)."""
     if not biz or biz.get("kind") != "service":
-        return LOCATION_TEMPLATES
+        return AU_LOCATION_TEMPLATES if country == "AU" else LOCATION_TEMPLATES
     S = biz.get("services") or []
     nouns = biz.get("nouns") or "companies"
     w0 = _pros(S[0]) if S else None
@@ -185,8 +216,8 @@ def location_templates(biz=None):
     return out
 
 
-def city_keyword(biz=None):
-    return location_templates(biz)[0][2]
+def city_keyword(biz=None, country=None):
+    return location_templates(biz, country)[0][2]
 
 
 def loc_slug(loc):
@@ -194,10 +225,12 @@ def loc_slug(loc):
 
 
 def loc_kw(loc):
+    if _country(loc) == "AU":  # Australians search the suburb on its own: "home builders parramatta"
+        return loc["name"].lower()
     return (f"{loc['name']} {loc['city']}" if loc.get("kind") == "neighbourhood" else f"{loc['name']} {loc['state_code']}").lower()
 
 
 def for_location(loc, n=3, biz=None):
     from .locations import market_for
     return [{"id": f"loc_{loc_slug(loc)}_{tid}", "prompt": p.format(area=loc["label"]), "keyword": k.format(kw=loc_kw(loc)).lower(),
-             "kind": "discovery", "area": loc["label"], "loc": market_for(loc)} for tid, p, k in location_templates(biz)[:n]]
+             "kind": "discovery", "area": loc["label"], "loc": market_for(loc)} for tid, p, k in location_templates(biz, _country(loc))[:n]]

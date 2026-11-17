@@ -21,10 +21,13 @@ MCP_CALL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"
 AI_BOTS = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "PerplexityBot", "ClaudeBot", "Google-Extended", "CCBot"]
 SERVICE_WORDS = {
-    "custom homes": r"custom home", "build on your lot": r"(build|building) on your (own )?(lot|land)",
+    "custom homes": r"custom home", "build on your lot": r"(build|building) on your (own )?(lot|land|block)",
     "luxury homes": r"luxury", "ranch homes": r"ranch", "new construction": r"new construction|new homes",
     "townhomes": r"townhome|townhouse", "condos": r"\bcondo", "floor plans": r"floor plan",
     "communities": r"communit(y|ies)", "remodeling": r"remodel|renovat",
+    # change 60: Australian builder services
+    "knockdown rebuild": r"knock[\s-]?down[\s-]?(?:and[\s-]|&[\s-]?)?re[\s-]?build|\bKDR\b", "house and land": r"house\s*(?:and|&)\s*land",
+    "single storey homes": r"single[\s-]stor(?:e)?y", "duplex": r"\bduplex|dual\s+occupancy",
 }
 
 
