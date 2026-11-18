@@ -96,7 +96,12 @@ def prepare(url, city=None, state=None, max_q=14, only=None, use_semrush=True, p
         profile["domain"] = sc["domain"]
     hs = profile["homepage_status"]
     if not hs or hs in (404, 410):  # no such site or page: the address is wrong
-        raise AuditError(f"Could not load the homepage (HTTP {hs or 'no response'}). Check the URL.")
+        host = sc["host"] or profile["domain"]
+        if not hs and not site.domain_exists(host):  # change 61: a typo or a lapsed domain, say so and offer look-alikes
+            raise AuditError(site.missing_domain_message(host, site.lookalikes(host)))
+        if not hs:
+            raise AuditError(f"{host} didn't respond. The site may be down or very slow; try again in a few minutes.")
+        raise AuditError(f"Could not load the homepage of {host} (HTTP {hs}). Check the address.")
     # change 26: the site turns away automated visitors (change 60: including CDN / bot-check error pages)
     blocked = (hs >= 400 and profile.get("word_count", 0) < 50) or bool(profile.get("error_page"))
     if blocked:

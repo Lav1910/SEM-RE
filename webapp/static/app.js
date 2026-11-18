@@ -208,6 +208,15 @@
         summarize();
         if (d.error) note.textContent = d.error;
         else if (d.source === 'last audit') note.textContent += ' · from the last audit';
+        if (d.missing) {  // change 61: the address doesn't exist; offer the live look-alikes as one-click fixes
+          btnText.textContent = 'No such website'; sReset('No such website'); sBtn.classList.remove('loading');
+          (d.suggestions || []).forEach(function (sg) {
+            var b = document.createElement('button'); b.type = 'button'; b.className = 'link-btn small sug-btn';
+            b.textContent = 'Use ' + sg.domain; if (sg.title) b.title = sg.title;
+            b.addEventListener('click', function () { urlIn.value = sg.domain; lastUrl = ''; load(); });
+            note.appendChild(document.createTextNode(' ')); note.appendChild(b);
+          });
+        }
       });
   }
   urlIn.addEventListener('blur', function () { setTimeout(load, 150); });

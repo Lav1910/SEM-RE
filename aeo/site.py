@@ -46,6 +46,62 @@ def fetch(url, timeout=25):
         return 0, "", "", url
 
 
+def domain_exists(host):
+    """change 61: False only when DNS says the name doesn't exist (a typo, or a lapsed domain)."""
+    import socket
+    try:
+        socket.getaddrinfo(host, 443)
+        return True
+    except socket.gaierror as e:
+        return e.errno not in (socket.EAI_NONAME, getattr(socket, "EAI_NODATA", -5)) and "not known" not in str(e).lower()
+    except Exception:
+        return True  # can't tell: don't block the audit
+
+
+LOOKALIKE_WORDS = ["services", "service", "solutions", "construction", "builders", "building", "group", "homes", "company", "co", "pty", "ltd"]
+
+
+def lookalikes(domain, limit=3):
+    """Live sites close to a domain that doesn't exist: other endings (.com / .com.au), or the name without a
+    trailing word ('rmbuildingservices.com.au' -> 'rmbuilding.com.au'). [{"domain", "title"}], best first."""
+    from concurrent.futures import ThreadPoolExecutor
+    host = re.sub(r"^www\.", "", (domain or "").lower().strip("."))
+    if "." not in host:
+        return []
+    label, _, tld = host.partition(".")
+    tlds = [tld] + [t for t in ("com.au", "com", "net.au", "ca", "net", "co") if t != tld]
+    labels = [label] + ([label.replace("-", "")] if "-" in label else [])
+    for w in LOOKALIKE_WORDS:
+        if label.endswith(w) and len(label) - len(w) >= 4:
+            labels.append(label[: -len(w)].rstrip("-"))
+    cands = []
+    for lab in labels:  # same ending first, then the others
+        for t in tlds:
+            d = f"{lab}.{t}"
+            if d != host and d not in cands:
+                cands.append(d)
+    cands = sorted(cands[:24], key=lambda d: (d.split(".", 1)[1] != tld, cands.index(d)))
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        live = [d for d, ok in zip(cands, ex.map(domain_exists, cands)) if ok]
+    def title_of(d):
+        code, _, dom, _ = fetch("https://" + d + "/", timeout=8)
+        if not code or code >= 400:
+            return None
+        t = (re.findall(r"<title[^>]*>(.*?)</title>", dom, re.S | re.I) or [""])[0]
+        return {"domain": d, "title": re.sub(r"\s+", " ", H.unescape(t)).strip()[:80]}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        found = [r for r in ex.map(title_of, live[:6]) if r]
+    return found[:limit]
+
+
+def missing_domain_message(host, suggestions):
+    msg = f"{host} doesn't exist: there's no website at that address. Check the spelling."
+    if suggestions:
+        ds = [x["domain"] for x in suggestions]
+        msg += " Did you mean " + (ds[0] if len(ds) == 1 else ", ".join(ds[:-1]) + " or " + ds[-1]) + "?"
+    return msg
+
+
 def visible_text(dom):
     t = re.sub(r"<script.*?</script>|<style.*?</style>|<noscript.*?</noscript>", " ", dom, flags=re.S | re.I)
     return re.sub(r"\s+", " ", H.unescape(re.sub(r"<[^>]+>", " ", t))).strip()

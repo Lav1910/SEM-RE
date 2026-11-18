@@ -13,7 +13,17 @@
   {% set need_market = 'city and state' in (a.error or '') %}
   {% if need_market and not can('admin') %}{# change 30: Sales get a plain question, not an error #}
   <div class="flash ask" style="margin:18px 0 0">We couldn't confirm where this business is based. Enter their city and state to continue.</div>
-  {% else %}<div class="flash bad" style="margin:18px 0 0">{{ a.error }}</div>{% endif %}
+  {% else %}<div class="flash bad" style="margin:18px 0 0">{{ a.error }}</div>
+  {% set sugs = a.error|suggested_domains %}
+  {% if sugs %}{# change 61: run the audit on the right address in one click #}
+  <div class="sug-row">{% for d in sugs %}
+    <form method="post" action="{{ url_for('create_audit') }}">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="url" value="{{ d }}">
+      <input type="hidden" name="depth" value="{{ depth_of(a) }}">
+      <button class="btn btn-ghost btn-small" type="submit">Run on {{ d }}</button>
+    </form>{% endfor %}
+  </div>{% endif %}
+  {% endif %}
   {% if need_market %}
   <form class="retry-market" method="post" action="{{ url_for('create_audit') }}">
     <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="url" value="{{ a.url }}"><input type="hidden" name="scope" value="{{ a.scope or 'root' }}"><input type="hidden" name="confirm_duplicate" value="1">
