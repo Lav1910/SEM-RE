@@ -6,6 +6,8 @@ the prospect, and grab Loom talking points. Admins manage users, see platform st
 import collections
 import datetime
 import functools
+import hashlib
+import hmac
 import io
 import json
 import logging
@@ -26,6 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from aeo import budget, business, config, engines, semrush, site  # noqa: E402
 from aeo import dates  # noqa: E402
+from aeo import kv  # noqa: E402
 from aeo import scope as scopes  # noqa: E402
 from . import auth, db, jobs, mailer, markdown, pdf, status, store, views  # noqa: E402
 
@@ -293,6 +296,7 @@ def _start_session(u, method):
     session.clear(); session.permanent = True; session["uid"] = u["id"]; session["csrf"] = secrets.token_hex(16)
     db.x("UPDATE users SET last_login=? WHERE id=?", (time.time(), u["id"]))
     security_event("login", u["email"], method, u["id"])
+    _remember_net(_visitor_net())  # change 62: client-link visits from a teammate's network for the next 30 days aren't the client
 
 
 def _safe_next(nxt):
@@ -1297,9 +1301,12 @@ def _client_audit(token):
 
 
 def _team_viewer():
-    """change 41: a signed-in HBM teammate testing the link isn't counted as the client."""
+    """change 41: a signed-in HBM teammate testing the link isn't counted as the client. change 62: nor is any browser that has
+    ever signed in here (a year-long cookie that outlasts the 7-day sign-in)."""
     uid = session.get("uid")
-    return bool(uid and db.q("SELECT 1 FROM users WHERE id=? AND active=1", (uid,), one=True))
+    if uid and db.q("SELECT 1 FROM users WHERE id=? AND active=1", (uid,), one=True):
+        return True
+    return hmac.compare_digest(request.cookies.get(TEAM_COOKIE, ""), _team_token())
 
 
 def _device():
@@ -1309,8 +1316,120 @@ def _device():
     return "Phone" if re.search(r"Mobi|iPhone|Android", ua) else "Desktop"
 
 
-def _alert_owner(a):
-    """change 41: email whoever sent the link when the client first opens it, then at most once a day."""
+# ---------------- change 62: only real opens count ----------------
+# Email security scanners and link previews load the link before the client does, mostly from data centres in Ashburn, VA.
+# A visit counts (alert email, view totals, Report tracking, AI agents) only once the page has been on screen 10+ seconds AND
+# the visitor scrolled, clicked or opened a second page. Visits that never qualify are kept, marked, and listed as "not counted".
+TEAM_COOKIE = "hbm_team"
+REAL_SECONDS = 10
+BOT_UA = re.compile(r"bot\b|bot/|crawl|spider|slurp|preview|scanner|headless|phantom|python|curl|wget|java/|go-http|okhttp|axios|"
+                    r"barracuda|proofpoint|mimecast|safelinks|urldefense|forcepoint|symantec|sophos|"
+                    r"facebookexternalhit|slack|whatsapp|telegram|discord|linkedin|skype", re.I)
+SKIP_LABELS = {"scanner": "Bot or email scanner", "ashburn": "Ashburn, VA (data centre)", "team": "HBM network",
+               "marked": "Marked as not the client"}
+
+
+def _team_token():
+    return hmac.new(str(app.secret_key).encode(), b"hbm-team-browser", "sha256").hexdigest()[:32]
+
+
+@app.after_request
+def remember_team_browser(resp):
+    """change 62: once someone signs in on a browser, that browser's visits to client links never count as the client."""
+    if g.get("user") and request.cookies.get(TEAM_COOKIE) != _team_token():
+        resp.set_cookie(TEAM_COOKIE, _team_token(), max_age=365 * 86400, secure=SECURE, httponly=True, samesite="Lax")
+    return resp
+
+
+def _visitor_net():
+    """A one-way fingerprint of the visitor's network (never the address itself), to recognise the team's office or home wifi."""
+    ip = ""
+    if os.environ.get("VERCEL"):  # Vercel sets these itself; visitors can't
+        ip = request.headers.get("X-Real-IP") or request.headers.get("X-Vercel-Forwarded-For", "").split(",")[0]
+    ip = (ip or client_ip()).strip()
+    return hashlib.sha256(f"{app.secret_key}|net|{ip}".encode()).hexdigest()[:20] if ip else None
+
+
+def _team_nets():
+    now = time.time()
+    return {k: v for k, v in (kv.get("team_nets") or {}).items() if v > now}
+
+
+def _remember_net(net, days=30):
+    if not net:
+        return
+    try:
+        kv.update("team_nets", lambda d: {**{k: v for k, v in (d or {}).items() if v > time.time()}, net: time.time() + days * 86400}, {})
+    except Exception:
+        logging.getLogger("hbm").warning("could not save a team network", exc_info=True)
+
+
+def _forget_net(net):
+    if net:
+        kv.update("team_nets", lambda d: {k: v for k, v in (d or {}).items() if k != net}, {})
+
+
+def _is_ashburn(city, region):
+    return (city or "").strip().lower() == "ashburn" and (region or "VA").upper() == "VA"
+
+
+def _skip_reason(city, region, net):
+    ua = request.headers.get("User-Agent", "")
+    if not ua or BOT_UA.search(ua):
+        return "scanner"
+    if _is_ashburn(city, region):
+        return "ashburn"
+    if net and net in _team_nets():
+        return "team"
+    return None
+
+
+def _qualifies(v):
+    return bool(not v["skip"] and (v["seconds"] or 0) >= REAL_SECONDS
+                and (v["scrolled"] or (v["pages"] or 1) > 1 or json.loads(v["actions"] or "[]")))
+
+
+def _recount(aid):
+    r = db.q("SELECT COUNT(*) AS n, MAX(started_at) AS last FROM client_visits WHERE audit_id=? AND counted=1", (aid,), one=True)
+    db.x("UPDATE audits SET client_views=?, client_last_view=? WHERE id=?", ((r["n"] if r else 0) or 0, r["last"] if r else None, aid))
+
+
+def _maybe_count(a, vid):
+    """The visit just crossed the line from 'page loaded' to 'a person is reading it': count it and tell the sender."""
+    v = db.q("SELECT * FROM client_visits WHERE id=? AND audit_id=?", (vid, a["id"]), one=True)
+    if not v or v["counted"] or not _qualifies(v):
+        return False
+    first = not db.q("SELECT 1 FROM client_visits WHERE audit_id=? AND counted=1", (a["id"],), one=True)
+    db.x("UPDATE client_visits SET counted=1 WHERE id=?", (vid,))
+    _recount(a["id"])
+    _alert_owner(get_audit_row(a["id"]) or a, v, first)
+    return True
+
+
+def get_audit_row(aid):
+    return db.q("SELECT * FROM audits WHERE id=?", (aid,), one=True)
+
+
+def _retro_visits():
+    """change 62, once: apply the new rules to visits recorded before them, and fix every link's view count."""
+    if kv.get("visits62"):
+        return
+    kv.update("visits62", lambda _: True, False)
+    aids = set()
+    for v in db.q("SELECT * FROM client_visits"):
+        aids.add(v["audit_id"])
+        skip = v["skip"] or ("ashburn" if _is_ashburn(v["city"], v["region"]) else None)
+        secs = json.loads(v["sections"] or "{}")
+        scrolled = 1 if (v["scrolled"] or len(secs) >= 2) else 0  # time on two parts of the report means they scrolled
+        real = not skip and (v["seconds"] or 0) >= REAL_SECONDS and (scrolled or (v["pages"] or 1) > 1 or json.loads(v["actions"] or "[]"))
+        db.x("UPDATE client_visits SET skip=?, scrolled=?, counted=? WHERE id=?", (skip, scrolled, 1 if real else 0, v["id"]))
+    for aid in aids:
+        _recount(aid)
+
+
+def _alert_owner(a, v, first):
+    """change 41: email whoever sent the link when the client first opens it, then at most once a day.
+    change 62: only for a visit that counts, so scanners and quick bounces never trigger it."""
     if a["client_alerted_at"] and time.time() - a["client_alerted_at"] < 86400:
         return
     u = db.q("SELECT email, name FROM users WHERE id=?", (a["client_by"] or a["user_id"],), one=True)
@@ -1318,11 +1437,12 @@ def _alert_owner(a):
         return
     db.x("UPDATE audits SET client_alerted_at=? WHERE id=?", (time.time(), a["id"]))
     name = a["builder_name"] or a["domain"]
-    first = not (a["client_views"] or 0)
     link = (PUBLIC_URL or request.host_url.rstrip("/")) + url_for("audit_view", aid=a["id"], view="tracking")
+    where = ", ".join(x for x in (v["city"], v["region"]) if x) or v["country"]
+    how = " · ".join(x for x in ((v["device"] or "").lower(), where) if x)
     subject = f"{name} {'just opened' if first else 'is back on'} their AEO Snapshot"
-    text = (f"{name} {'opened their AEO Snapshot for the first time' if first else 'opened their AEO Snapshot again'} "
-            f"({_device().lower()}). See what they looked at: {link}")
+    text = (f"{name} {'opened their AEO Snapshot for the first time' if first else 'opened their AEO Snapshot again'}"
+            f"{f' ({how})' if how else ''}. See what they looked at: {link}")
     try:
         mailer.send(u["email"], subject, text, f"<p>{escape(text)}</p><p><a href=\"{escape(link)}\">Open client activity</a></p>")
     except Exception:
@@ -1346,17 +1466,20 @@ def client_view(token, view="overview"):
     mine = seen.get(token) if isinstance(seen.get(token), dict) else None
     if not team and (not mine or time.time() - mine.get("t", 0) > 1800):  # a new visit (30 min apart), not every click
         h = request.headers
-        db.x("""INSERT INTO client_visits (audit_id, token, started_at, last_at, device, city, region, country, sections, actions)
-                VALUES (?,?,?,?,?,?,?,?, '{}', '[]')""",
-             (a["id"], token, time.time(), time.time(), _device(), urllib.parse.unquote(h.get("X-Vercel-IP-City", ""))[:60] or None,
-              h.get("X-Vercel-IP-Country-Region", "")[:10] or None, h.get("X-Vercel-IP-Country", "")[:4] or None))
+        city = urllib.parse.unquote(h.get("X-Vercel-IP-City", ""))[:60] or None
+        region = h.get("X-Vercel-IP-Country-Region", "")[:10] or None
+        net = _visitor_net()
+        # change 62: recorded, but it only counts (and emails the sender) once it looks like a real person reading
+        db.x("""INSERT INTO client_visits (audit_id, token, started_at, last_at, device, city, region, country, sections, actions, skip, net)
+                VALUES (?,?,?,?,?,?,?,?, '{}', '[]', ?, ?)""",
+             (a["id"], token, time.time(), time.time(), _device(), city, region, h.get("X-Vercel-IP-Country", "")[:4] or None,
+              _skip_reason(city, region, net), net))
         vid = db.q("SELECT MAX(id) AS id FROM client_visits WHERE audit_id=? AND token=?", (a["id"], token), one=True)["id"]
-        _alert_owner(a)
-        db.x("UPDATE audits SET client_views=COALESCE(client_views, 0)+1, client_last_view=? WHERE id=?", (time.time(), a["id"]))
         mine = {"t": time.time(), "v": vid}
     elif mine and not team:
         mine["t"] = time.time()
         db.x("UPDATE client_visits SET pages=pages+1, last_at=? WHERE id=?", (time.time(), mine.get("v")))
+        _maybe_count(a, mine.get("v"))
     if mine:
         seen[token] = mine
         session["cv"] = {k: v for k, v in seen.items() if isinstance(v, dict) and time.time() - v.get("t", 0) < 86400}
@@ -1409,8 +1532,10 @@ def client_ping(token):
         if isinstance(x, dict) and x.get("k"):
             acts.append({"k": str(x["k"])[:30], "d": str(x.get("d", ""))[:80], "t": int(time.time())})
     total = int(min(sum(secs.values()), 6 * 3600))
-    db.x("UPDATE client_visits SET sections=?, actions=?, seconds=?, last_at=? WHERE id=?",
-         (json.dumps(secs), json.dumps(acts[-300:]), total, time.time(), v["id"]))
+    scrolled = 1 if (v["scrolled"] or d.get("sc")) else 0
+    db.x("UPDATE client_visits SET sections=?, actions=?, seconds=?, scrolled=?, last_at=? WHERE id=?",
+         (json.dumps(secs), json.dumps(acts[-300:]), total, scrolled, time.time(), v["id"]))
+    _maybe_count(a, v["id"])
     return ("", 204)
 
 
@@ -1568,12 +1693,16 @@ def client_docx(token):
 
 
 # ---------------- client link tracking (change 41) ----------------
-def _visit_rows(aid):
+def _visit_rows(aid, counted=True):
+    """change 62: counted visits by default; counted=False gives the ones that didn't count (scanners, team, quick bounces)."""
     out = []
-    for v in db.q("SELECT * FROM client_visits WHERE audit_id=? ORDER BY started_at DESC", (aid,)):
+    for v in db.q("SELECT * FROM client_visits WHERE audit_id=? AND counted=? ORDER BY started_at DESC", (aid, 1 if counted else 0)):
         r = dict(v)
         r["sections"] = json.loads(v["sections"] or "{}")
         r["actions"] = json.loads(v["actions"] or "[]")
+        if not counted:
+            r["why"] = (SKIP_LABELS.get(v["skip"]) or ("Still open" if time.time() - (v["last_at"] or 0) < 1800 and (v["seconds"] or 0) < 600
+                        else f"Under {REAL_SECONDS} seconds" if (v["seconds"] or 0) < REAL_SECONDS else "No scroll or click"))
         out.append(r)
     return out
 
@@ -1620,6 +1749,7 @@ def links_home():
 
 def _tracking_ctx(a):
     s_ = _link_summary(a["id"])
+    s_["filtered"] = _visit_rows(a["id"], counted=False)[:50]
     days = collections.OrderedDict()
     for i in range(13, -1, -1):  # views per day, last 14 days
         days[datetime.date.today() - datetime.timedelta(days=i)] = 0
@@ -1636,6 +1766,34 @@ def _tracking_ctx(a):
             "max_day": max(days.values()) or 1, "max_sec": (s_["sections"][0][1] if s_["sections"] else 1) or 1}
 
 
+@app.route("/audits/<aid>/visits/<int:vid>", methods=["POST"])
+@login_required
+def visit_mark(aid, vid):
+    """change 62: "Not the client" hides a visit (and that network's visits for 30 days); "Count it" undoes that."""
+    get_audit(aid)
+    if not auth.can(g.user, "share"):
+        abort(403)
+    v = db.q("SELECT * FROM client_visits WHERE id=? AND audit_id=?", (vid, aid), one=True)
+    if not v:
+        abort(404)
+    same = db.q("SELECT id, audit_id FROM client_visits WHERE net=?", (v["net"],)) if v["net"] else []
+    rows = {(r["id"], r["audit_id"]) for r in same} | {(v["id"], v["audit_id"])}
+    if request.form.get("action") == "count":
+        if v["skip"] == "marked":
+            _forget_net(v["net"])
+            for rid, _ in rows:
+                db.x("UPDATE client_visits SET skip=NULL WHERE id=? AND skip='marked'", (rid,))
+                r = db.q("SELECT * FROM client_visits WHERE id=?", (rid,), one=True)
+                db.x("UPDATE client_visits SET counted=? WHERE id=?", (1 if _qualifies(r) else 0, rid))
+    else:
+        _remember_net(v["net"])
+        for rid, _ in rows:
+            db.x("UPDATE client_visits SET skip='marked', counted=0 WHERE id=?", (rid,))
+    for a_id in {r[1] for r in rows}:
+        _recount(a_id)
+    return redirect(url_for("audit_view", aid=aid, view="tracking") + "#visits")
+
+
 @app.route("/links/<aid>")
 @login_required
 def links_detail(aid):
@@ -1650,10 +1808,10 @@ def _links_new():
         return 0
     since = time.time() - 86400
     if auth.can(g.user, "admin"):
-        r = db.q("SELECT COUNT(DISTINCT audit_id) AS n FROM client_visits WHERE started_at>?", (since,), one=True)
+        r = db.q("SELECT COUNT(DISTINCT audit_id) AS n FROM client_visits WHERE started_at>? AND counted=1", (since,), one=True)
     else:
         r = db.q("""SELECT COUNT(DISTINCT v.audit_id) AS n FROM client_visits v JOIN audits a ON a.id=v.audit_id
-                    WHERE v.started_at>? AND COALESCE(a.client_by, a.user_id)=?""", (since, g.user["id"]), one=True)
+                    WHERE v.started_at>? AND v.counted=1 AND COALESCE(a.client_by, a.user_id)=?""", (since, g.user["id"]), one=True)
     return r["n"] if r else 0
 
 
@@ -1782,6 +1940,11 @@ def create_app():
         raise SystemExit("This host has no lasting disk: add a Postgres database (Vercel → Storage → Neon) so DATABASE_URL is set.")
     db.init()
     _bootstrap_admins()
+    try:
+        _retro_visits()
+    except Exception:
+        logging.getLogger("hbm").warning("change 62 visit clean-up failed; it will retry on the next start", exc_info=True)
+        kv.update("visits62", lambda _: False, False)
     if os.environ.get("APP_ENV") == "production":
         if not os.environ.get("SECRET_KEY") and not os.path.exists(os.path.join(db.DATA_DIR, "secret_key")):
             logging.getLogger("hbm").warning("SECRET_KEY not set; a random key was saved in the data folder")

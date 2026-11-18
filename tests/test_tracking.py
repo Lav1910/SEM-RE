@@ -164,3 +164,134 @@ class Tracking(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(os.path.exists(SAMPLE), "needs a sample audit (set HBM_SAMPLE_AUDIT)")
+class RealOpens(Tracking):
+    """change 62: the "opened" alert and view counts only for opens that look like a real person reading."""
+    UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15"}
+
+    def setUp(self):
+        super().setUp()
+        from aeo import kv
+        kv.update("team_nets", lambda _: {}, {})
+        self.n = 0
+
+    def visitor(self, ip=None, **headers):
+        self.n += 1
+        c = self.app.test_client()
+        c.environ_base.update({"REMOTE_ADDR": ip or f"203.0.113.{uuid.uuid4().int % 250}"})
+        c.hdr = {**self.UA, **headers}
+        return c
+
+    def open_(self, c, l, view="overview"):
+        return c.get(self.path(l, view), headers=c.hdr)
+
+    def ping(self, c, l, secs, scroll=False, acts=()):
+        with c.session_transaction() as s:
+            csrf = s["csrf"]
+        c.post(self.path(l, "ping"), data={"csrf": csrf, "d": json.dumps({"s": {"Top of report": secs}, "a": list(acts), "sc": 1 if scroll else 0})},
+               headers=c.hdr)
+
+    def views(self):
+        return self.db.q("SELECT client_views FROM audits WHERE id=?", (self.aid,), one=True)["client_views"]
+
+    def test_load_alone_short_or_idle_never_alerts(self):
+        from webapp import mailer
+        l = self.link()
+        with mock.patch.object(mailer, "configured", return_value=True), mock.patch.object(mailer, "send") as sent:
+            just_loaded = self.visitor(); self.open_(just_loaded, l)
+            short = self.visitor(); self.open_(short, l); self.ping(short, l, 9, scroll=True)
+            idle = self.visitor(); self.open_(idle, l); self.ping(idle, l, 45)
+            self.assertEqual(sent.call_count, 0)
+            self.assertEqual(self.views(), 0)
+            reader = self.visitor(); self.open_(reader, l); self.ping(reader, l, 6, scroll=True); self.ping(reader, l, 6)
+            self.assertEqual(sent.call_count, 1)  # 12 seconds and a scroll: a real open
+            self.assertIn("just opened", sent.call_args[0][1])
+            clicker = self.visitor(); self.open_(clicker, l); self.ping(clicker, l, 11, acts=[{"k": "tab", "d": "Competitors"}])
+            tabber = self.visitor(); self.open_(tabber, l); self.ping(tabber, l, 11); self.open_(tabber, l, "competitors")
+            self.assertEqual(self.views(), 3)
+            self.assertEqual(sent.call_count, 1)  # still at most one email a day
+        self.db.x("UPDATE client_visits SET last_at=last_at-3600 WHERE audit_id=?", (self.aid,))  # those visits have ended
+        page = self.client("trrep").get(f"/audits/{self.aid}/tracking").get_data(as_text=True)
+        self.assertIn("3 visits not counted", page)
+        self.assertIn("Under 10 seconds", page)
+        self.assertIn("No scroll or click", page)
+
+    def test_ashburn_and_scanners_never_count(self):
+        from webapp import mailer
+        l = self.link()
+        with mock.patch.object(mailer, "configured", return_value=True), mock.patch.object(mailer, "send") as sent:
+            ash = self.visitor(**{"X-Vercel-IP-City": "Ashburn", "X-Vercel-IP-Country-Region": "VA"})
+            self.open_(ash, l); self.ping(ash, l, 60, scroll=True); self.open_(ash, l, "competitors")
+            for ua in ("Mozilla/5.0 (compatible; Barracuda Sentinel)", "Mozilla/5.0 HeadlessChrome/120.0", "Slackbot-LinkExpanding 1.0", ""):
+                bot = self.visitor(**{"User-Agent": ua})
+                self.open_(bot, l); self.ping(bot, l, 60, scroll=True)
+            ga = self.visitor(**{"X-Vercel-IP-City": "Ashburn", "X-Vercel-IP-Country-Region": "GA"})  # Ashburn, Georgia is a real town
+            self.open_(ga, l); self.ping(ga, l, 20, scroll=True)
+            self.assertEqual(sent.call_count, 1)
+        self.assertEqual(self.views(), 1)
+        why = {r["skip"] for r in self.db.q("SELECT skip FROM client_visits WHERE audit_id=?", (self.aid,))}
+        self.assertEqual(why, {"ashburn", "scanner", None})
+        page = self.client("trrep").get(f"/audits/{self.aid}/tracking").get_data(as_text=True)
+        self.assertIn("Ashburn, VA (data centre)", page)
+        self.assertIn("Bot or email scanner", page)
+
+    def test_team_browser_and_network(self):
+        from webapp import app as appmod
+        l = self.link()
+        teammate = self.client("trboss")
+        teammate.get("/")  # signed in once: the browser is remembered
+        self.assertIn(appmod.TEAM_COOKIE, teammate.get_cookie(appmod.TEAM_COOKIE).key)
+        with teammate.session_transaction() as s:
+            s.clear()  # signed out (or the 7-day sign-in ran out)
+        teammate.get(self.path(l), headers=self.UA)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS n FROM client_visits WHERE audit_id=?", (self.aid,), one=True)["n"], 0)
+        # a teammate's phone on the same office wifi, never signed in
+        with appmod.app.test_request_context("/", environ_base={"REMOTE_ADDR": "198.51.100.7"}):
+            appmod._remember_net(appmod._visitor_net())
+        phone = self.visitor(ip="198.51.100.7")
+        self.open_(phone, l); self.ping(phone, l, 30, scroll=True)
+        self.assertEqual(self.views(), 0)
+        self.assertEqual(self.db.q("SELECT skip FROM client_visits WHERE audit_id=?", (self.aid,), one=True)["skip"], "team")
+
+    def test_not_the_client_hides_and_undo(self):
+        l = self.link()
+        me = self.visitor(ip="192.0.2.44")
+        self.open_(me, l); self.ping(me, l, 20, scroll=True)
+        self.assertEqual(self.views(), 1)
+        vid = self.db.q("SELECT id FROM client_visits WHERE audit_id=?", (self.aid,), one=True)["id"]
+        rep = self.client("trrep")
+        r = rep.post(f"/audits/{self.aid}/visits/{vid}", data={"csrf": "t", "action": "hide"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.views(), 0)
+        again = self.visitor(ip="192.0.2.44")  # the same network later: ignored for 30 days
+        self.open_(again, l); self.ping(again, l, 20, scroll=True)
+        self.assertEqual(self.views(), 0)
+        page = rep.get(f"/audits/{self.aid}/tracking").get_data(as_text=True)
+        self.assertIn("Marked as not the client", page)
+        rep.post(f"/audits/{self.aid}/visits/{vid}", data={"csrf": "t", "action": "count"})
+        self.assertEqual(self.views(), 1)
+        anon = self.app.test_client()  # signed out: can't touch it
+        self.assertNotEqual(anon.post(f"/audits/{self.aid}/visits/{vid}", data={"csrf": "t", "action": "hide"}).status_code, 200)
+        self.assertEqual(self.views(), 1)
+
+    def test_old_visits_cleaned_up_once(self):
+        from aeo import kv
+        from webapp import app as appmod
+        l = self.link()
+        now = time.time() - 86400
+        rows = [("Ashburn", "VA", 300, 3, '{"A": 200, "B": 100}', "[]"),   # scanner farm
+                ("Austin", "TX", 4, 1, '{"A": 4}', "[]"),                    # bounced
+                ("Austin", "TX", 90, 1, '{"A": 60, "B": 30}', "[]"),         # read and scrolled
+                ("Austin", "TX", 40, 2, '{"A": 40}', "[]")]                  # opened a second tab
+        for city, region, secs, pages, sections, acts in rows:
+            self.db.x("""INSERT INTO client_visits (audit_id, token, started_at, last_at, seconds, device, city, region, sections, actions, pages)
+                         VALUES (?,?,?,?,?, 'Desktop', ?,?,?,?,?)""", (self.aid, "x", now, now, secs, city, region, sections, acts, pages))
+        self.db.x("UPDATE audits SET client_views=4 WHERE id=?", (self.aid,))
+        kv.update("visits62", lambda _: False, False)
+        appmod._retro_visits()
+        self.assertEqual(self.views(), 2)
+        appmod._retro_visits()  # runs once
+        self.assertEqual(self.views(), 2)
+        self.assertTrue(l)

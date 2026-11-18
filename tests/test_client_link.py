@@ -72,7 +72,12 @@ class ClientLink(unittest.TestCase):
         path = link["url"].split("localhost", 1)[-1]
         anon = self.app.test_client()
         anon.get(path); anon.get(path + "?platform=gemini"); anon.get(path.replace("/overview", "/competitors"))
-        self.app.test_client().get(path)  # a second person
+        other = self.app.test_client()
+        other.get(path)  # a second person
+        for c in (anon, other):  # change 62: a visit counts once they've read for 10+ seconds and scrolled or clicked
+            with c.session_transaction() as s:
+                csrf = s["csrf"]
+            c.post(path.replace("/overview", "/ping"), data={"csrf": csrf, "d": json.dumps({"s": {"Top of report": 15}, "sc": 1})})
         row = self.db.q("SELECT client_views FROM audits WHERE id=?", (self.aid,), one=True)
         self.assertEqual(row["client_views"], 2)
         self.assertEqual(self.make_link()["views"], 2)  # the same link is reused and shows the count

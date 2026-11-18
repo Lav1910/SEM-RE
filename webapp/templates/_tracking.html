@@ -2,7 +2,7 @@
 <div class="stack">
   <section class="card">
     <div class="status-row">
-      <div><h2 style="margin:0">Client link {{ tip("The interactive report you send the business. Everything below comes from their visits; visits from signed-in HBM teammates don't count.") }}</h2>
+      <div><h2 style="margin:0">Client link {{ tip("The interactive report you send the business. Everything below comes from their visits. A visit counts once the page has been on screen 10+ seconds and they scrolled, clicked or opened another tab. Email scanners, Ashburn VA data centres and HBM teammates don't count.") }}</h2>
         <p class="small muted" style="margin:2px 0 0">{% if a.client_created_at or a.client_token %}Sent {{ (a.client_created_at or (a.client_expires or 0) - 2592000)|ago }}{% if sender %} by {{ sender.name }}{% endif %} · {% endif %}
           {% if client %}<b>active</b>, expires {{ client.expires|datefmt }}{% elif a.client_token %}expired{% elif a.client_created_at %}turned off{% else %}not sent yet{% endif %}</p></div>
       <div class="row-actions">
@@ -42,16 +42,29 @@
     {% else %}<p class="muted" style="margin:0">No clicks recorded yet.</p>{% endif %}
   </section>
 
-  <section class="card">
-    <h2 style="margin:0 0 10px">Every visit</h2>
+  <section class="card" id="visits">
+    <h2 style="margin:0 0 10px">Every visit {{ tip("Visits that count: 10+ seconds on screen plus a scroll, click or second tab. Use Not the client to hide a visit from you or a teammate; that network's visits are ignored for 30 days.") }}</h2>
     {% if s.visits %}
     <div class="tw"><table>
-      <thead><tr><th>When</th><th>Device</th><th>Where</th><th class="r">Time</th><th class="r">Pages</th><th>Spent most time on</th></tr></thead>
+      <thead><tr><th>When</th><th>Device</th><th>Where</th><th class="r">Time</th><th class="r">Pages</th><th>Spent most time on</th><th></th></tr></thead>
       <tbody>{% for v in s.visits %}{% set top = (v.sections|dictsort(by='value', reverse=true))[:1] %}
         <tr><td style="white-space:nowrap">{{ v.started_at|datefmt }}</td><td>{{ v.device or '—' }}</td>
           <td>{{ ([v.city, v.region] | select | join(', ')) or v.country or '—' }}</td>
           <td class="r tnum">{{ v.seconds|dur if v.seconds else '<1m' }}</td><td class="r tnum">{{ v.pages }}</td>
-          <td>{{ top[0][0] if top else '—' }}</td></tr>{% endfor %}</tbody></table></div>
-    {% else %}<p class="muted" style="margin:0">Not opened yet. You'll get an email the moment they do.</p>{% endif %}
+          <td>{{ top[0][0] if top else '—' }}</td>
+          <td class="r"><form method="post" action="{{ url_for('visit_mark', aid=a.id, vid=v.id) }}" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+            <button class="btn btn-ghost btn-small" name="action" value="hide" title="This was you or a teammate: hide it and ignore this network for 30 days">Not the client</button></form></td></tr>{% endfor %}</tbody></table></div>
+    {% else %}<p class="muted" style="margin:0">Not opened yet. You'll get an email once they spend 10+ seconds on it and scroll or click.</p>{% endif %}
+    {% if s.filtered %}
+    <details class="trk-filtered" style="margin-top:12px"><summary class="small muted">{{ s.filtered|length }}{{ '+' if s.filtered|length >= 50 }} visit{{ 's' if s.filtered|length != 1 }} not counted (scanners, teammates, quick bounces)</summary>
+      <div class="tw" style="margin-top:8px"><table>
+        <thead><tr><th>When</th><th>Device</th><th>Where</th><th class="r">Time</th><th>Why it didn't count</th><th></th></tr></thead>
+        <tbody>{% for v in s.filtered %}
+          <tr><td style="white-space:nowrap">{{ v.started_at|datefmt }}</td><td>{{ v.device or '—' }}</td>
+            <td>{{ ([v.city, v.region] | select | join(', ')) or v.country or '—' }}</td>
+            <td class="r tnum">{{ (v.seconds ~ 's') if v.seconds else '0s' }}</td><td>{{ v.why }}</td>
+            <td class="r">{% if v.skip == 'marked' %}<form method="post" action="{{ url_for('visit_mark', aid=a.id, vid=v.id) }}" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+              <button class="btn btn-ghost btn-small" name="action" value="count">Undo</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+    </details>{% endif %}
   </section>
 </div>
