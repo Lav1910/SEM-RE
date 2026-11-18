@@ -640,7 +640,7 @@ def t_create_client_link(a):
     _note("Created client link · " + au["domain"], au["id"])
     return {"audit_id": au["id"], "builder": au["builder_name"], "url": info["url"], "expires": _ts(info["expires"]), "views": info["views"],
             "note": "The client sees the Overview, Competitors, Strategy, Content and Fixes tabs without signing in. Every deliverable is "
-                    "being written now (about 1-2 minutes). You get an email when they first open it; use get_link_tracking to see visits."}
+                    "being written now (about 1-2 minutes). You get an email when they first read it (10+ seconds plus a scroll or click; email scanners and teammates are ignored); use get_link_tracking to see visits."}
 
 
 def t_get_link_tracking(a):

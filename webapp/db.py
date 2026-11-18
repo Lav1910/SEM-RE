@@ -132,6 +132,8 @@ LATER_COLUMNS = {
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
               ("last_login", "REAL"), ("avatar_at", "REAL")],
     "strategy_content": [("lease_until", "REAL")],
+    # change 62: a visit counts (email alert, view totals) only once it looks like a real person; skip says why it never will
+    "client_visits": [("counted", "INTEGER NOT NULL DEFAULT 0"), ("scrolled", "INTEGER NOT NULL DEFAULT 0"), ("skip", "TEXT"), ("net", "TEXT")],
 }
 
 

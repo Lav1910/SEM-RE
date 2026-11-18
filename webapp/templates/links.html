@@ -5,7 +5,7 @@
 {# change 41: every client link sent, how often it was opened, when, and where clients spend their time #}
 <div class="crumbs"><a href="{{ url_for('dashboard') }}">Audits</a> <span>›</span> Report tracking</div>
 <section class="card">
-  <div class="status-row"><h2 style="margin:0">Report tracking {{ tip("Every interactive link sent to a prospect: how often they opened it, when, how long they stayed and what they looked at most. Visits from signed-in HBM teammates don't count.") }}</h2>
+  <div class="status-row"><h2 style="margin:0">Report tracking {{ tip("Every interactive link sent to a prospect: how often they opened it, when, how long they stayed and what they looked at most. A visit counts once the page has been on screen 10+ seconds and they scrolled, clicked or opened another tab; email scanners, Ashburn VA data centres and HBM teammates don't count.") }}</h2>
   </div>
   <div class="links-bar">
     <div class="seg">{% for k, lab in (('all','All'), ('active','Active'), ('opened','Opened'), ('unopened','Not opened yet')) %}<a class="seg-item {{ 'on' if show == k }}" href="{{ url_for('links_home', show=k, sort=sort) }}">{{ lab }}</a>{% endfor %}</div>

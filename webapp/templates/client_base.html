@@ -70,6 +70,9 @@
 (function () {  // change 41: which parts of the report the client spends time on, and what they click. No personal data.
   var url = {{ url_for('client_ping', token=a.client_token)|tojson }}, csrf = {{ session.csrf|tojson }};
   var secs = {}, acts = [], ratios = new Map(), seenTips = {};
+  // change 62: a visit only counts once the page has been in front 10+ seconds and they scrolled or clicked
+  var scrolled = false, acted = false, shown = 0, sentReal = false;
+  window.addEventListener('scroll', function () { if (!scrolled && (window.scrollY || document.documentElement.scrollTop || 0) > 120) scrolled = true; }, {passive: true});
   function nameOf(el) {
     var h = el.querySelector('h2, h3'); if (!h) return null;
     var c = h.cloneNode(true); c.querySelectorAll('.info, .muted, .small').forEach(function (x) { x.remove(); });
@@ -85,11 +88,13 @@
     if (document.visibilityState !== 'visible') return;
     var best = null, bv = 0; ratios.forEach(function (v, el) { if (v > bv) { bv = v; best = el; } });
     var n = best ? nameOf(best) : 'Top of report'; if (n) secs[n] = (secs[n] || 0) + 1;
+    shown++;
+    if (!sentReal && shown >= 10 && (scrolled || acted)) { sentReal = true; flush(); }  // tell the server as soon as it counts
   }, 1000);
-  function act(k, d) { acts.push({k: k, d: (d || '').trim().slice(0, 80)}); }
+  function act(k, d) { acted = true; acts.push({k: k, d: (d || '').trim().slice(0, 80)}); }
   function flush() {
     if (!Object.keys(secs).length && !acts.length) return;
-    var fd = new FormData(); fd.append('csrf', csrf); fd.append('d', JSON.stringify({s: secs, a: acts}));
+    var fd = new FormData(); fd.append('csrf', csrf); fd.append('d', JSON.stringify({s: secs, a: acts, sc: scrolled ? 1 : 0}));
     secs = {}; acts = [];
     if (navigator.sendBeacon) navigator.sendBeacon(url, fd); else fetch(url, {method: 'POST', body: fd, keepalive: true, credentials: 'same-origin'});
   }
@@ -100,6 +105,7 @@
   if (plat) plat.addEventListener('change', function () { act('platform', plat.options[plat.selectedIndex].text); flush(); });
   document.addEventListener('click', function (e) {
     var t = e.target.closest('a, button, .info'); if (!t) return;
+    acted = true;
     if (t.closest('.client-tabs')) act('tab', t.textContent);
     else if (t.closest('.area-tabs')) act('area', t.textContent.replace(/\d+\s*$/, ''));
     else if (t.classList.contains('info')) { var h = t.closest('.metric, h2, h3, th, span'); var k = h ? h.textContent.replace(/\bi\b/g, '').trim() : ''; if (!seenTips[k]) { seenTips[k] = 1; act('tip', k); } }
