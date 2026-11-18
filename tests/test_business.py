@@ -395,3 +395,38 @@ class AustralianWording(unittest.TestCase):
         from aeo import strategy
         self.assertIn("Australian spelling", strategy._rules(None, "AU"))
         self.assertIn("US spelling", strategy._rules(None, "US"))
+
+
+class MissingDomain(unittest.TestCase):
+    """change 61: a domain that doesn't exist gets a plain message and live look-alikes."""
+    def test_lookalikes_and_message(self):
+        from aeo import site
+        live = {"rmbuilding.com.au", "rmbuildingservices.com"}
+        with mock.patch.object(site, "domain_exists", side_effect=lambda d: d in live), \
+                mock.patch.object(site, "fetch", side_effect=lambda u, timeout=25: (200, "text/html", "<title>RM Building Services</title>", u)):
+            sug = site.lookalikes("rmbuildingservices.com.au")
+        self.assertEqual([x["domain"] for x in sug], ["rmbuilding.com.au", "rmbuildingservices.com"])
+        msg = site.missing_domain_message("rmbuildingservices.com.au", sug)
+        self.assertIn("doesn't exist", msg)
+        self.assertIn("Did you mean rmbuilding.com.au or rmbuildingservices.com?", msg)
+
+    def test_dashboard_scan_says_so(self):
+        from webapp import app as appmod, db
+        appmod.app.config["TESTING"] = True
+        uid = db.x("INSERT INTO users (email, name, password_hash, role, created_at) VALUES (?,?,?,?,?)",
+                   (f"md{uuid.uuid4().hex[:6]}@homebuildermarketers.com", "MD", "x", "sales", time.time()))
+        c = appmod.app.test_client()
+        with c.session_transaction() as s:
+            s["uid"] = uid; s["csrf"] = "t"
+        sug = [{"domain": "rmbuilding.com.au", "title": "RM Building Services"}]
+        with mock.patch.object(appmod.site, "domain_exists", return_value=False), mock.patch.object(appmod.site, "lookalikes", return_value=sug):
+            d = c.get("/api/locations?url=rmbuildingservices.com.au").get_json()
+        self.assertTrue(d["missing"])
+        self.assertEqual(d["suggestions"][0]["domain"], "rmbuilding.com.au")
+        self.assertIn("doesn't exist", d["error"])
+        aid = "m" + uuid.uuid4().hex[:11]
+        db.x("""INSERT INTO audits (id, user_id, url, domain, status, error, created_at, share_token) VALUES (?,?,?,?, 'failed', ?, ?, ?)""",
+             (aid, uid, "https://rmbuildingservices.com.au/", "rmbuildingservices.com.au", site_msg := "rmbuildingservices.com.au doesn't exist: there's no website at that address. Check the spelling. Did you mean rmbuilding.com.au?", time.time(), uuid.uuid4().hex))
+        page = c.get(f"/audits/{aid}").get_data(as_text=True)
+        self.assertIn("Run on rmbuilding.com.au", page)
+        db.x("DELETE FROM audits WHERE id=?", (aid,))

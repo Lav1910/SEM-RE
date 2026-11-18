@@ -72,7 +72,7 @@ class BlockedSite(unittest.TestCase):
         with mock.patch.object(site, "fetch", side_effect=_fake_fetch(404)):
             with self.assertRaises(audit.AuditError) as cm:
                 audit.prepare("https://nosuchbuilder.com/", "Cincinnati", "OH", max_q=6, only=[], use_semrush=False)
-        self.assertIn("Check the URL", str(cm.exception))
+        self.assertIn("Check the address", str(cm.exception))  # change 61 wording
 
     @unittest.skipUnless(os.path.exists(SAMPLE), "needs a sample audit (set HBM_SAMPLE_AUDIT)")
     def test_report_says_not_checked(self):

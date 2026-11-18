@@ -1156,3 +1156,7 @@ html.wm-first .wm-t { -webkit-mask-image:linear-gradient(90deg, #000 0%, #000 46
 .client-hero-top .wm.client-wm { padding:0; flex:none; align-self:center; }
 .client-hero-top .wm.client-wm .wm-t { font-size:16px; }
 @media (max-width: 640px) { .client-hero-top .wm.client-wm .wm-t { font-size:13px; } }
+
+/* change 61: look-alike addresses when the typed domain doesn't exist */
+.sug-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.sug-btn { margin-left:2px; font-weight:600; }

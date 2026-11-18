@@ -247,7 +247,9 @@ def tip(text):
 app.jinja_env.globals["tip"] = tip
 app.jinja_env.filters["datefmt"] = lambda ts: dates.date_time(ts) if ts else "—"
 app.jinja_env.globals["engine_labels"] = engines.ENGINE_LABELS
-app.jinja_env.globals["biz"] = business.words  # change 53: {{ biz(A).noun }} is "builder", "remodeler", ...
+app.jinja_env.globals["biz"] = business.words
+app.jinja_env.filters["suggested_domains"] = lambda err: re.findall(r"([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?=[,?]| or )",
+                                                                   (err or "").split("Did you mean", 1)[1]) if "Did you mean" in (err or "") else []  # change 53: {{ biz(A).noun }} is "builder", "remodeler", ...
 
 
 def platform_logo(engine, size=18):
@@ -744,6 +746,10 @@ def api_locations():
     hit = _loc_cache.get(domain)
     if hit and time.time() - hit[0] < 6 * 3600:
         return jsonify(dict(meta, **hit[1]))
+    host = sc["host"] or domain
+    if not site.domain_exists(host):  # change 61: say so straight away, with live look-alikes to pick from
+        sug = site.lookalikes(host)
+        return jsonify(dict(meta, error=site.missing_domain_message(host, sug), suggestions=sug, locations=[], missing=True))
     from concurrent.futures import ThreadPoolExecutor
     pool = ThreadPoolExecutor(max_workers=1)
     try:
