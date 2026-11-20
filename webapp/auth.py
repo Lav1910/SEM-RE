@@ -73,21 +73,34 @@ def check_code(db, user, code, secret_key):
                (user["id"], time.time()), one=True)
     if not row:
         return False
-    if row["attempts"] >= CODE_ATTEMPTS:
+    # change 80: the try is counted before the code is compared, in one atomic step, so many guesses sent at the same
+    # moment still get only CODE_ATTEMPTS chances; and only one request can use a right code
+    if not db.changed("UPDATE login_codes SET attempts=attempts+1 WHERE id=? AND used=0 AND attempts<? RETURNING id",
+                    (row["id"], CODE_ATTEMPTS)):
         db.x("UPDATE login_codes SET used=1 WHERE id=?", (row["id"],))
         return False
-    good = secrets.compare_digest(row["code_hash"], _digest(secret_key, f"{user['id']}:{(code or '').strip()}"))
-    db.x("UPDATE login_codes SET attempts=attempts+1, used=? WHERE id=?", (1 if good else 0, row["id"]))
-    return good
+    if not secrets.compare_digest(row["code_hash"], _digest(secret_key, f"{user['id']}:{(code or '').strip()}")):
+        return False
+    return bool(db.changed("UPDATE login_codes SET used=1 WHERE id=? AND used=0 RETURNING id", (row["id"],)))
 
 
 def check_link(db, token, secret_key):
     """Returns the user id for a valid, unused, unexpired link token (and burns it), else None."""
     row = db.q("SELECT * FROM login_codes WHERE link_hash=? AND used=0 AND expires>?", (_digest(secret_key, token or ""), time.time()), one=True)
-    if not row:
-        return None
-    db.x("UPDATE login_codes SET used=1 WHERE id=?", (row["id"],))
+    if not row or not db.changed("UPDATE login_codes SET used=1 WHERE id=? AND used=0 RETURNING id", (row["id"],)):
+        return None  # change 80: a link opened twice at once signs in only once
     return row["user_id"]
+
+
+def client_ip(request):
+    """The visitor's address, for rate limits (change 80). On Vercel every request arrives from Vercel's own proxy, and
+    Vercel replaces X-Real-IP / X-Forwarded-For with the real visitor, so those are trusted there and only there.
+    Elsewhere remote_addr is right when Waitress trusts the proxy in front (TRUSTED_PROXY); raw headers never are."""
+    if os.environ.get("VERCEL"):
+        ip = (request.headers.get("X-Real-IP") or (request.headers.get("X-Forwarded-For") or "").split(",")[0]).strip()
+        if ip:
+            return ip[:64]
+    return request.remote_addr or ""
 
 
 def allowed_email(email):

@@ -37,6 +37,11 @@
       <h1 style="margin:2px 0 6px">Allow <span class="oauth-app">{{ client.name }}</span> to use AEO Snapshot?</h1>
       <p class="sub" style="margin:0">It will act as <b>{{ g.user.name }}</b> ({{ g.user.email }}), with the same access you have.</p>
     </div>
+    <div class="oauth-dest{{ '' if known else ' warn' }}">
+      <span>Access goes to</span><b>{{ app_host }}</b>
+      {% if not known %}<p>This isn't an AI app we recognise. The name "{{ client.name }}" was typed by whoever set up the connector.
+        Only allow it if you added this connector yourself, just now, and you trust {{ app_host }}.</p>{% endif %}
+    </div>
     <ul class="oauth-list">
       <li><b>See audits</b><span>{{ "Yours and your team's" if can('team_audits') else 'Yours' }}: scores, competitors, strategy, fixes and content</span></li>
       <li><b>Run audits</b><span>Quick, Standard or Full. They count toward the team's spending cap{% if daily %} and your limit of {{ daily }} agent audits a day{% endif %}.</span></li>
@@ -49,7 +54,7 @@
     {% for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
     <div class="oauth-actions">
       <button class="btn btn-ghost" type="submit" name="decision" value="deny">Cancel</button>
-      <button class="btn btn-primary" type="submit" name="decision" value="allow" autofocus>Allow</button>
+      <button class="btn btn-primary" type="submit" name="decision" value="allow"{{ ' autofocus' if known }}>Allow</button>
     </div>
     <p class="small muted" style="margin:0">You'll go back to {{ app_host }}.</p>
   </form>

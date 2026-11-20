@@ -62,8 +62,7 @@ WINDOW = 900  # rate-limit window (15 minutes); counts come from the security lo
 
 
 def client_ip():
-    # remote_addr is the real client when Waitress trusts the proxy in front (TRUSTED_PROXY); never trust raw headers
-    return request.remote_addr or ""
+    return auth.client_ip(request)
 
 
 def security_event(event, email=None, detail=None, user_id=None):
@@ -135,7 +134,8 @@ def headers(resp):
         resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if request.path.startswith("/r/"):
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
-        resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'"
+        if not resp.headers.get("Content-Security-Policy", "").startswith("default-src 'none'"):  # change 80: a locked report keeps its own
+            resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'"
     else:
         resp.headers["X-Frame-Options"] = "DENY"
         if not resp.headers.get("Content-Security-Policy", "").startswith("default-src 'none'"):
@@ -404,7 +404,9 @@ def login_verify():
     if not email:
         return redirect(url_for("login"))
     if request.method == "POST":
-        if db.recent_count("login_failed", time.time() - WINDOW, ip=client_ip()) >= 8:
+        since = time.time() - WINDOW
+        if (db.recent_count("login_failed", since, ip=client_ip()) >= 8
+                or db.recent_count("login_failed", since, email=email) >= 10):  # change 80: per address too, whatever the IP
             flash("Too many attempts. Wait 15 minutes and try again.", "bad")
             return render_template("login_code.html", email=email), 429
         u = db.q("SELECT * FROM users WHERE email=? AND active=1", (email,), one=True)
@@ -1152,12 +1154,27 @@ def api_status(aid):
     return jsonify(data)
 
 
+def report_csp(nonce=None):
+    """change 80: report pages are built from scraped and AI-written text, so they may run no script at all
+    (only the print helper below, by nonce), load nothing but Google Fonts and inline images, and post nowhere."""
+    return ("default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; "
+            "img-src 'self' data:; " + (f"script-src 'nonce-{nonce}'; " if nonce else "") +
+            "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+
+
+def _report_response(html):
+    resp = app.response_class(html, mimetype="text/html")
+    resp.headers["Content-Security-Policy"] = report_csp()
+    return resp
+
+
 def _print_page(html):
     """Report HTML that opens the browser's print dialog, for hosts without a PDF engine."""
-    snippet = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},400)})</script>'
+    nonce = secrets.token_urlsafe(16)
+    snippet = f'<script nonce="{nonce}">window.addEventListener("load",function(){{setTimeout(function(){{window.print()}},400)}})</script>'
     body = html.replace("</body>", snippet + "</body>") if "</body>" in html else html + snippet
     resp = app.response_class(body, mimetype="text/html")
-    resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'"
+    resp.headers["Content-Security-Policy"] = report_csp(nonce)
     return resp
 
 
@@ -1180,7 +1197,7 @@ def audit_report(aid):
     A = store.load_json(aid) if a["status"] == "done" else None
     if A is None:
         abort(404)
-    return app.response_class(_report_html(a, A), mimetype="text/html")
+    return _report_response(_report_html(a, A))
 
 
 @app.route("/audits/<aid>/data.json")
@@ -1837,7 +1854,7 @@ def shared_report(token):
     A = store.load_json(a["id"]) if a else None
     if A is None:
         abort(404)
-    return app.response_class(_report_html(a, A), mimetype="text/html")
+    return _report_response(_report_html(a, A))
 
 
 @app.route("/logo.webp")
