@@ -794,3 +794,13 @@ body:has(.cc) .flash.leaving { opacity:0; transform:translateY(-6px); transition
 .acc-role { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0; }
 .acc-role p { flex:1 1 100%; margin:0; font-size:12.5px; color:var(--ink2, var(--muted)); line-height:1.45; }
 .acc-role .link-btn { flex:0 0 auto; }
+
+/* change 85: Keystone by HBM wordmark at the top of the Delivery menu: light lowercase name with a teal full stop,
+   then a short teal line and BY HBM in spaced monospace capitals */
+.wm.ks-wm { display:block; padding:12px 10px 22px; text-decoration:none; }
+.ks-name { display:block; font-family:'Unbounded', 'Poppins', sans-serif; font-weight:300; font-size:19px; line-height:1; letter-spacing:.04em; color:#EAF6F6; }
+.ks-dot { color:#3FD6D8; }
+.ks-by { display:flex; align-items:center; gap:8px; margin-top:9px; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:10px; line-height:1;
+  letter-spacing:.3em; color:#7FA9AA; }
+.ks-by i { display:block; width:20px; height:1px; background:#3FD6D8; }
+.wm.ks-wm:hover .ks-by i { width:28px; transition:width .2s; }
