@@ -5,6 +5,7 @@ _os.environ.setdefault("HBM_KV_DIR", _tf.mkdtemp(prefix="hbm-kv-test-"))  # keep
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from aeo import analyze, engines, questions, site  # noqa: E402
@@ -172,3 +173,36 @@ class ScopeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GoogleLocationFallback(unittest.TestCase):
+    """Change 81: a town DataForSEO doesn't list is asked from its province, then the country."""
+
+    def test_falls_back_to_province(self):
+        from aeo import engines
+        market = {"city": "Glenella", "state": "Manitoba", "state_code": "MB", "country": "CA"}
+        self.assertEqual(engines._dfs_locations(market), ["Glenella,Manitoba,Canada", "Manitoba,Canada", "Canada"])
+        sent = []
+
+        def fake_post(url, payload, headers, retries=3):
+            loc = payload[0]["location_name"]
+            sent.append(loc)
+            if loc.startswith("Glenella"):
+                return {"tasks": [{"status_code": 40501, "status_message": "Invalid Field: 'location_name'."}]}
+            return {"cost": 0.002, "tasks": [{"status_code": 20000, "result": [{"items": [{"type": "ai_overview", "markdown": "Answer", "references": []}]}]}]}
+        with mock.patch.object(engines, "_post", fake_post), mock.patch.object(engines.config, "key", return_value="x"):
+            rec = engines.ask_google_ai_mode({"id": "q1", "prompt": "best cabinet maker near me", "keyword": "cabinets"}, market)
+        self.assertEqual((rec["status"], rec["location"]), ("ok", "Manitoba,Canada"))
+        self.assertEqual(sent, ["Glenella,Manitoba,Canada", "Manitoba,Canada"])
+
+    def test_other_errors_are_not_retried(self):
+        from aeo import engines
+        calls = []
+
+        def fake_post(url, payload, headers, retries=3):
+            calls.append(1)
+            return {"tasks": [{"status_code": 40101, "status_message": "Internal SE Server Error."}]}
+        with mock.patch.object(engines, "_post", fake_post), mock.patch.object(engines.config, "key", return_value="x"):
+            with self.assertRaises(RuntimeError):
+                engines.ask_google_aio({"id": "q1", "prompt": "p", "keyword": "k"}, {"city": "Austin", "state": "Texas", "state_code": "TX", "country": "US"})
+        self.assertEqual(len(calls), 1)
