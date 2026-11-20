@@ -802,5 +802,15 @@ body:has(.cc) .flash.leaving { opacity:0; transform:translateY(-6px); transition
 .ks-dot { color:#3FD6D8; }
 .ks-by { display:flex; align-items:center; gap:8px; margin-top:9px; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:10px; line-height:1;
   letter-spacing:.3em; color:#7FA9AA; }
-.ks-by i { display:block; width:20px; height:1px; background:#3FD6D8; }
-.wm.ks-wm:hover .ks-by i { width:28px; transition:width .2s; }
+.ks-by i { display:block; width:20px; height:1px; background:#3FD6D8; transform-origin:left center; transition:width .2s; }
+.wm.ks-wm:hover .ks-by i { width:28px; }
+/* first Delivery page of a visit: the name writes in left to right (like AEO Snapshot), then the line draws and BY HBM fades in */
+html.ks-first .ks-name { -webkit-mask-image:linear-gradient(90deg, #000 0%, #000 46%, transparent 54%, transparent 100%);
+  mask-image:linear-gradient(90deg, #000 0%, #000 46%, transparent 54%, transparent 100%);
+  -webkit-mask-size:240% 100%; mask-size:240% 100%; -webkit-mask-position:100% 0; mask-position:100% 0;
+  animation:wm-write 1.5s cubic-bezier(.45,.05,.2,1) .15s forwards; }
+html.ks-first .ks-by i { animation:ks-line .55s cubic-bezier(.3,.7,.2,1) 1.25s both; }
+html.ks-first .ks-by span { animation:ks-by .6s ease-out 1.55s both; }
+@keyframes ks-line { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+@keyframes ks-by { from { opacity:0; transform:translateX(-4px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { html.ks-first .ks-name, html.ks-first .ks-by i, html.ks-first .ks-by span { animation:none; -webkit-mask-image:none; mask-image:none; } }
