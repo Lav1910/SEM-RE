@@ -51,12 +51,15 @@ def person_for_clickup(user):
 
 
 def aeo_latest(domain):
-    """Latest finished AEO Snapshot audit for this domain (any teammate's)."""
+    """Latest finished AEO Snapshot audit for this domain (any teammate's).
+    change 82: one read for every client (the portfolio used to ask once per client); the page request remembers it."""
     dom = root_domain(domain)
     if not dom:
         return None
-    return db.q("""SELECT id, score, finished_at FROM audits WHERE status='done' AND test_mode=0 AND (domain=? OR domain=?)
-                   ORDER BY finished_at DESC LIMIT 1""", (dom, "www." + dom), one=True)
+    for r in db.q("SELECT id, score, finished_at, domain FROM audits WHERE status='done' AND test_mode=0 ORDER BY finished_at DESC"):
+        if root_domain(r["domain"]) == dom:
+            return {"id": r["id"], "score": r["score"], "finished_at": r["finished_at"]}
+    return None
 
 
 # ---------------------------------------------------------------- loading
@@ -67,8 +70,10 @@ def _group(rows, key="client_id"):
     return out
 
 
-def contexts(client_ids=None):
-    """Everything health and the screens need, for many clients, in a handful of queries (pages read the DB only)."""
+def contexts(client_ids=None, light=False):
+    """Everything health and the screens need, for many clients, in a handful of queries (pages read the DB only).
+    light=True (change 82): metric numbers without their stored JSON (Search Console, Analytics and Business Profile
+    detail), which only a client's own page shows; the portfolio would otherwise pull every client's detail each view."""
     where, args = "", []
     if client_ids is not None:
         if not client_ids:
@@ -84,7 +89,8 @@ def contexts(client_ids=None):
                      args + [since]))
     tasks = _group(db.q("SELECT * FROM cc_tasks" + where, args))
     srcs = _group(db.q("SELECT * FROM cc_sources" + where, args))
-    mets = _group(db.q("SELECT * FROM cc_metrics" + where, args))
+    mets = _group(db.q(("SELECT client_id, source, metric, period, value, NULL AS text, fetched_at FROM cc_metrics" if light
+                        else "SELECT * FROM cc_metrics") + where, args))
     flags = _group(db.q("SELECT * FROM cc_flags" + (where + " AND" if where else " WHERE") + " resolved_at IS NULL", args))
     out = {}
     t, n, start = today(), now(), track_from()

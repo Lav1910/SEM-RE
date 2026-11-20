@@ -26,7 +26,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from aeo import budget, business, config, engines, semrush, site  # noqa: E402
+from aeo import budget, business, config, engines, kv, semrush, site  # noqa: E402
 from aeo import dates  # noqa: E402
 from aeo import kv  # noqa: E402
 from aeo import scope as scopes  # noqa: E402
@@ -90,6 +90,20 @@ OLD_HOSTS = {h.strip().lower() for h in os.environ.get("HBM_OLD_HOSTS", "hbm-ai-
 
 
 @app.before_request
+def page_memo():
+    """change 82: a page request remembers its reads until it ends (webapp.db.memo_start). Agents, the job runner and
+    form posts read fresh every time."""
+    g._t0 = time.perf_counter()
+    if request.method in ("GET", "HEAD") and not request.path.startswith(API_PATHS + ("/api/",)):
+        db.memo_start(); kv.memo_start()
+
+
+@app.teardown_request
+def page_memo_end(_exc=None):
+    db.memo_stop(); kv.memo_stop()
+
+
+@app.before_request
 def to_public_host():
     """The app moved to PUBLIC_URL (aeosnapshot.homebuildermarketers.com): pages opened on the old production address
     (old client links, bookmarks) go to the same page there. AI agents, OAuth and the job runner keep working on the old
@@ -127,6 +141,15 @@ CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 
 @app.after_request
 def headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
+    if g.get("user") and g.get("_t0"):  # change 82: where a signed-in page's time went (browser dev tools > Timing)
+        st, ks = getattr(db._local, "stats", None), getattr(kv._local, "stats", None)
+        parts = []
+        if st:
+            parts.append(f'db;desc="{st[0]} reads, {st[2]} remembered";dur={st[1] * 1000:.1f}')
+        if ks:
+            parts.append(f'kv;desc="{ks[0]} settings";dur={ks[1] * 1000:.1f}')
+        parts.append(f"app;dur={(time.perf_counter() - g._t0) * 1000:.1f}")
+        resp.headers["Server-Timing"] = ", ".join(parts)
     resp.headers.setdefault("Referrer-Policy", "same-origin")  # a client link sets no-referrer itself
     resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
@@ -258,7 +281,11 @@ app.jinja_env.filters["suggested_domains"] = lambda err: re.findall(r"([a-z0-9-]
 
 def platform_logo(engine, size=18):
     from markupsafe import Markup, escape
-    return Markup(f'<img class="eng-logo" src="/static/logos/{escape(engine)}.svg" width="{size}" height="{size}" alt="" aria-hidden="true">')
+    try:  # change 82: versioned like every other static file, so the browser keeps it instead of asking again each page
+        src = url_for("static", filename=f"logos/{engine}.svg")
+    except RuntimeError:
+        src = f"/static/logos/{engine}.svg"
+    return Markup(f'<img class="eng-logo" src="{escape(src)}" width="{size}" height="{size}" alt="" aria-hidden="true">')
 
 
 app.jinja_env.globals["platform_logo"] = platform_logo

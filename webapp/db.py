@@ -278,17 +278,70 @@ def init():
                     c.execute("UPDATE audits SET out_dir=? WHERE id=?", (cand, r["id"]))
 
 
-def q(sql, args=(), one=False):
+# ---------------------------------------------------------------- per-page read memo (change 82)
+# Within one page request the same read often runs several times (the newest audit for the menu, each client's AEO
+# score...). On Vercel every read is a network trip to Postgres, so a page request remembers its reads until it ends.
+# Any write in that request clears the memo, so a page always sees its own changes. Only page requests turn it on
+# (webapp.app): background threads, the job runner and AI agents always read fresh.
+import time as _time
+
+
+def memo_start():
+    _local.memo, _local.stats = {}, [0, 0.0, 0]  # memo, [reads run, seconds in the database, reads answered from memo]
+
+
+def memo_stop():
+    st = getattr(_local, "stats", None)
+    _local.memo = _local.stats = None
+    return st
+
+
+def _forget():
+    if getattr(_local, "memo", None):
+        _local.memo.clear()
+
+
+def _timed(fn, *a):
+    st = getattr(_local, "stats", None)
+    if st is None:
+        return fn(*a)
+    t = _time.perf_counter()
+    try:
+        return fn(*a)
+    finally:
+        st[0] += 1
+        st[1] += _time.perf_counter() - t
+
+
+def _read(sql, args):
     if PG:
-        rows = _run_pg(sql, args, True) or []
+        return _run_pg(sql, args, True) or []
+    with connect() as c:
+        return c.execute(sql, args).fetchall()
+
+
+def q(sql, args=(), one=False):
+    memo = getattr(_local, "memo", None)
+    key = (sql, tuple(args)) if memo is not None else None
+    if key is not None and key in memo:
+        _local.stats[2] += 1
+        rows = memo[key]
     else:
-        with connect() as c:
-            rows = c.execute(sql, args).fetchall()
+        rows = _timed(_read, sql, args)
+        if key is not None:
+            memo[key] = rows
+    if key is not None and rows and isinstance(rows[0], dict):
+        rows = [dict(r) for r in rows]  # Postgres rows are dicts: a caller changing one mustn't change the remembered copy
     return (rows[0] if rows else None) if one else rows
 
 
 def x(sql, args=()):
     """Run a write. Returns the new row id for an INSERT into a table with an id column (both backends)."""
+    _forget()
+    return _timed(_x, sql, args)
+
+
+def _x(sql, args):
     if PG:
         if sql.lstrip().upper().startswith("INSERT") and "RETURNING" not in sql.upper() and _has_serial(sql):
             rows = _run_pg(sql.rstrip().rstrip(";") + " RETURNING id", args, True)
@@ -302,6 +355,7 @@ def x(sql, args=()):
 def changed(sql, args=()):
     """A write that RETURNs the rows it changed (UPDATE ... WHERE <condition> RETURNING ...): an atomic check-and-change,
     so two requests at the same moment can't both pass the same check (change 80). Both backends."""
+    _forget()
     if PG:
         return _run_pg(sql, args, True) or []
     with _lock, connect() as c:
@@ -316,6 +370,7 @@ def _has_serial(sql):
 
 def upsert(table, data, keys):
     """Insert or replace one row identified by `keys` (both backends)."""
+    _forget()
     cols = list(data)
     ph = ", ".join("?" for _ in cols)
     if PG:
@@ -333,6 +388,7 @@ def upsert(table, data, keys):
 def claim(table, where, args, order, lease_seconds, key="id", extra_set="", extra_args=()):
     """Atomically take one row that nobody holds (lease expired) and lease it. Returns the row or None.
     Works across processes and serverless instances: Postgres uses FOR UPDATE SKIP LOCKED, SQLite a write lock."""
+    _forget()
     now = time.time()
     if PG:
         keys = key.split(",")

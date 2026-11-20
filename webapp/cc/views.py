@@ -191,7 +191,7 @@ SEV_RANK = {"red": 0, "amber": 1, "green": 2, "paused": 3, None: 1}
 @cc_required
 def cc_portfolio():
     P = data.people()
-    rows = [_row(ctx, P) for ctx in data.contexts().values()]
+    rows = [_row(ctx, P) for ctx in data.contexts(light=True).values()]
     f_am, f_owner, f_pkg, f_flag, f_status = (request.args.get(k, "") for k in ("am", "owner", "package", "flag", "status"))
     f_status = f_status or "active"
     allrows = rows
