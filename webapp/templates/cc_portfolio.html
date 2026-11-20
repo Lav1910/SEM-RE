@@ -5,7 +5,7 @@
 {% block cc_sub %}Every SEO client for {{ month_label(month, True) }}, worst first. Red needs action, amber is at risk or missing data, green is on track. Click a client to open its dashboard.{% endblock %}
 {% block cc_meta %}
   Last sync {{ fmt_ago(last_sync) }}{% if running %} · {{ running }} job{{ 's' if running != 1 }} queued{% endif %}
-  <form method="post" action="{{ url_for('cc_sync') }}" style="display:inline;margin-left:8px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-ghost btn-small" type="submit">Sync all now</button></form>
+  <form method="post" action="{{ url_for('cc_sync') }}" class="cc-allow" style="display:inline;margin-left:8px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-ghost btn-small" type="submit">Sync all now</button></form>
 {% endblock %}
 {% block cc %}
 {% if not clickup_on %}

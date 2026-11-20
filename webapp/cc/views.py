@@ -15,7 +15,7 @@ from webapp import db, jobs
 from webapp.app import PUBLIC_URL, app
 from . import data, health, ledger, sync
 from .core import (EVERY, SYNC_SOURCES, CLIENT_STATUSES, GRID_ITEMS, ITEM_LABEL, ITEM_SHORT, ITEMS, PACKAGES, ROLES, SOURCES, STATUS_LABEL, STATUSES,
-                   access_emails, add_months, can_open, enabled, gbp_live, month_label, reply_days, track_from, month_of, now, parse_date, root_domain, today, ts_date)
+                   access_emails, add_months, can_edit, can_open, enabled, gbp_live, month_label, reply_days, track_from, month_of, now, parse_date, root_domain, today, ts_date)
 from .sources import clickup
 
 
@@ -29,6 +29,25 @@ def cc_required(f):
 
 
 app.jinja_env.globals["cc_can_open"] = lambda: can_open(getattr(g, "user", None))
+
+# change 78: viewers see everything and may refresh data; only owners change anything
+VIEWER_POSTS = {"cc_sync", "cc_client_sync"}  # "Sync now" only reads the sources again
+OWNER_GETS = {"cc_gbp_connect", "cc_gbp_callback", "cc_ga4_connect", "cc_ga4_callback", "cc_export", "cc_transfer"}
+
+
+@app.before_request
+def _cc_view_only():
+    ep = request.endpoint or ""
+    if not ep.startswith("cc_"):
+        return None
+    user = getattr(g, "user", None)
+    if not can_open(user) or can_edit(user):
+        return None  # no access at all is answered by cc_required (404); owners may do anything
+    if (request.method == "POST" and ep not in VIEWER_POSTS) or ep in OWNER_GETS:
+        flash("You have view-only access to the Command Center, so nothing was changed. Ask Lav if this needs doing.", "bad")
+        back = request.referrer or ""
+        return redirect(back if back.startswith(request.host_url) else url_for("cc_portfolio"))
+    return None
 
 
 def _me():
@@ -47,7 +66,7 @@ def _cc_ctx():
     return {"ITEMS": ITEMS, "ITEM_LABEL": ITEM_LABEL, "ITEM_SHORT": ITEM_SHORT, "GRID_ITEMS": GRID_ITEMS, "STATUS_LABEL": STATUS_LABEL,
             "STATUSES": STATUSES, "PACKAGES": PACKAGES, "CLIENT_STATUSES": CLIENT_STATUSES, "ROLES": ROLES, "SOURCES": SOURCES,
             "month_label": month_label, "fmt_date": _fmt_date, "fmt_ago": _fmt_ago, "cc_tab": request.endpoint,
-            "cc_nav": _nav, "cc_track_from": track_from}
+            "cc_nav": _nav, "cc_track_from": track_from, "cc_edit": can_edit(getattr(g, "user", None))}
 
 
 SPACE_ORDER = ["Growth", "Organic", "Scale"]  # as the team reads them in ClickUp; any other space follows, A to Z

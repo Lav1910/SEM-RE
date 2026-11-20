@@ -77,6 +77,12 @@ def access_emails():
     return {e.strip().lower() for e in os.environ.get("COMMAND_CENTER_EMAILS", "").split(",") if e.strip()}
 
 
+def can_edit(user):
+    """Owners (change 78): the emails in COMMAND_CENTER_EMAILS, a server setting only the account owner can change.
+    Everyone else who can open the panel (granted on the People page) can see it but not change it."""
+    return can_open(user) and user["email"].lower() in access_emails()
+
+
 def can_open(user):
     if not enabled() or not user:
         return False

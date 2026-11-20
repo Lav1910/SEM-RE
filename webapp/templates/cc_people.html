@@ -34,9 +34,9 @@
   <p class="small muted">Admins only, and only those listed here. Everyone else gets "page not found", in the app and through its API.</p>
   <table class="cc-table"><tbody>{% for u in admins %}
     <tr><td>{{ u.name }}<span class="cc-sub">{{ u.email }}</span></td>
-      <td class="nowrap">{% if u.email|lower in env_emails %}<span class="tag green">Always</span><span class="cc-sub">server setting</span>
+      <td class="nowrap">{% if u.email|lower in env_emails %}<span class="tag green">Owner</span><span class="cc-sub">can see and change everything · set in the server settings</span>
         {% else %}<form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="user_id" value="{{ u.id }}">
-          {% if u.cc_access %}<span class="tag green">Granted</span> <button class="link-btn danger" name="action" value="revoke">Remove</button>{% else %}<button class="link-btn" name="action" value="grant">Grant access</button>{% endif %}</form>{% endif %}</td></tr>
+          {% if u.cc_access %}<span class="tag blue">Can view</span><span class="cc-sub">sees everything, can refresh data, can't change anything</span> <button class="link-btn danger" name="action" value="revoke">Remove</button>{% else %}<button class="link-btn" name="action" value="grant">Grant access</button>{% endif %}</form>{% endif %}</td></tr>
   {% endfor %}</tbody></table>
 </section>
 </div>
