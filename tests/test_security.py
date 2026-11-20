@@ -220,3 +220,74 @@ class WebApp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Change80(unittest.TestCase):
+    """Change 80: security review fixes."""
+
+    @classmethod
+    def setUpClass(cls):
+        from webapp import app as appmod, db
+        cls.db, cls.app, cls.appmod = db, appmod.app, appmod
+        appmod.app.config["TESTING"] = True
+        db.init()
+
+    def test_ai_wording_cannot_carry_markup(self):
+        from aeo import business
+        W = business.words({"kind": "service", "label": 'roof "co" <b>', "noun": "<script>alert(1)</script>", "nouns": "roofers",
+                            "customers": "home`owners'", "services": [{"name": '<img src=x onerror="alert(1)">Decks'}, {"name": "<>"}]})
+        for v in [W["noun"], W["Noun"], W["label"], W["a_label"], W["customers"], *W["services"]]:
+            self.assertFalse(set(v) & set("<>\"'`="), v)
+        self.assertEqual(len(W["services"]), 1)  # a name that was nothing but markup is dropped
+        self.assertEqual(business._clean("Kitchen & bath remodeling, decks (custom)"), "Kitchen & bath remodeling, decks (custom)")
+
+    def test_report_pages_cannot_run_scripts(self):
+        with self.app.test_request_context("/r/x"):
+            r = self.appmod._report_response("<html><body>x</body></html>")
+            csp = r.headers["Content-Security-Policy"]
+            self.assertTrue(csp.startswith("default-src 'none'")); self.assertNotIn("script-src", csp)
+            self.assertIn("form-action 'none'", csp)
+            p = self.appmod._print_page("<html><body>x</body></html>")
+            nonce = p.headers["Content-Security-Policy"].split("'nonce-")[1].split("'")[0]
+            self.assertIn(f'<script nonce="{nonce}">', p.get_data(as_text=True))
+        # the shared-link header pass keeps the locked policy instead of loosening it
+        resp = self.app.response_class("x")
+        resp.headers["Content-Security-Policy"] = self.appmod.report_csp()
+        with self.app.test_request_context("/r/abc"):
+            out = self.app.process_response(resp)
+        self.assertTrue(out.headers["Content-Security-Policy"].startswith("default-src 'none'"))
+        self.assertEqual(out.headers["X-Robots-Tag"], "noindex, nofollow")
+
+    def _code(self, email):
+        if not self.db.q("SELECT 1 FROM users WHERE email=?", (email,), one=True):
+            self.db.x("INSERT INTO users (email, name, password_hash, is_admin, role, created_at) VALUES (?,?,?,?,?,?)",
+                      (email, email, "!", 0, "sales", time.time()))
+        u = self.db.q("SELECT * FROM users WHERE email=?", (email,), one=True)
+        code, _link = auth.new_code(self.db, u, self.app.secret_key, "127.0.0.1")
+        return u, code
+
+    def test_code_attempts_counted_before_checking(self):
+        u, code = self._code("race@homebuildermarketers.com")
+        for _ in range(auth.CODE_ATTEMPTS):
+            self.assertFalse(auth.check_code(self.db, u, "x" + code, self.app.secret_key))
+        self.assertFalse(auth.check_code(self.db, u, code, self.app.secret_key))  # out of tries: even the right code fails
+        u, code = self._code("race@homebuildermarketers.com")
+        self.assertTrue(auth.check_code(self.db, u, code, self.app.secret_key))
+        self.assertFalse(auth.check_code(self.db, u, code, self.app.secret_key))  # used once only
+
+    def test_vercel_client_ip(self):
+        with self.app.test_request_context("/", headers={"X-Real-IP": "203.0.113.9", "X-Forwarded-For": "198.51.100.1"},
+                                           environ_base={"REMOTE_ADDR": "10.0.0.1"}):
+            from flask import request
+            with mock.patch.dict(os.environ, {"VERCEL": ""}):
+                self.assertEqual(auth.client_ip(request), "10.0.0.1")  # headers are ignored off Vercel
+            with mock.patch.dict(os.environ, {"VERCEL": "1"}):
+                self.assertEqual(auth.client_ip(request), "203.0.113.9")
+
+    def test_consent_page_flags_unknown_destinations(self):
+        from webapp import mcp
+        for u in ("https://claude.ai/api/mcp/auth_callback", "https://chatgpt.com/connector_platform_oauth_redirect",
+                  "http://127.0.0.1:5555/callback", "cursor://anysphere.cursor-retrieval/oauth"):
+            self.assertTrue(mcp.known_app(u), u)
+        for u in ("https://claude.ai.evil.example/cb", "https://evil-claude.ai/cb", "https://example.com/cb"):
+            self.assertFalse(mcp.known_app(u), u)

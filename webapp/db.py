@@ -299,6 +299,15 @@ def x(sql, args=()):
         return c.execute(sql, args).lastrowid
 
 
+def changed(sql, args=()):
+    """A write that RETURNs the rows it changed (UPDATE ... WHERE <condition> RETURNING ...): an atomic check-and-change,
+    so two requests at the same moment can't both pass the same check (change 80). Both backends."""
+    if PG:
+        return _run_pg(sql, args, True) or []
+    with _lock, connect() as c:
+        return c.execute(sql, args).fetchall()
+
+
 def _has_serial(sql):
     t = sql.split("INTO", 1)[1].strip().split()[0].lower() if "INTO" in sql.upper() else ""
     return t in ("users", "login_codes", "security_log", "feedback", "todos", "api_tokens", "agent_log",

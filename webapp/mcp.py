@@ -170,6 +170,23 @@ def _ok_redirect(u):
     return bool(re.fullmatch(r"[a-z][a-z0-9+.\-]{1,40}", p.scheme or "")) and p.scheme not in BAD_SCHEMES
 
 
+# change 80: AI apps we recognise. Anyone can register a connector under any name ("Claude"), so the Allow page shows
+# where the access will really go, and warns when that's somewhere else: a fake connector can't pass as a known app.
+KNOWN_APP_HOSTS = ("claude.ai", "claude.com", "anthropic.com", "chatgpt.com", "openai.com", "cursor.com", "cursor.sh",
+                   "perplexity.ai", "copilot.microsoft.com", "githubcopilot.com", "vscode.dev", "windsurf.com", "codeium.com")
+KNOWN_APP_SCHEMES = ("cursor", "vscode", "vscode-insiders", "claude", "windsurf")
+
+
+def known_app(u):
+    p = urllib.parse.urlsplit(u or "")
+    if _loopback(u):
+        return True  # an app on this computer (Claude Code, Cursor ...)
+    if p.scheme == "https":
+        h = (p.hostname or "").lower()
+        return any(h == k or h.endswith("." + k) for k in KNOWN_APP_HOSTS)
+    return p.scheme in KNOWN_APP_SCHEMES
+
+
 def _loopback(u):
     p = urllib.parse.urlsplit(u)
     return p.scheme == "http" and p.hostname in ("localhost", "127.0.0.1", "::1")
@@ -197,7 +214,7 @@ def oauth_register():
         return "", 204
     if not settings()["enabled"]:
         return _oauth_error("access_denied", "AI connections are turned off for this team.", 403)
-    ip = request.remote_addr or ""
+    ip = auth.client_ip(request)
     if db.recent_count("oauth_register", time.time() - 3600, ip=ip) >= 30:
         return _oauth_error("too_many_requests", "Too many registrations. Try again later.", 429)
     body = request.get_json(silent=True) or {}
@@ -276,7 +293,7 @@ def oauth_authorize():
     if "redirect_uri" not in fields:
         fields["redirect_uri"] = uri
     return render_template("oauth_consent.html", client=client, fields=fields, app_host=urllib.parse.urlsplit(uri).netloc or uri.split(":")[0],
-                           daily=settings()["daily"])
+                           daily=settings()["daily"], known=known_app(uri))
 
 
 # ---------------------------------------------------------------- OAuth: tokens

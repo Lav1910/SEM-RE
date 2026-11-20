@@ -149,6 +149,8 @@ def apply(payload, by):
         ex = _match_client(c)
         vals = {f: c.get(f) for f in CLIENT_FIELDS}
         vals["domain"] = root_domain(vals["domain"]) or None
+        if not str(vals.get("scope_doc") or "").startswith(("http://", "https://")):
+            vals["scope_doc"] = None  # change 80: a link, never a javascript: or data: address (same rule as the Setup form)
         vals["gbp_how"] = vals["gbp_how"] or "auto"
         vals["ga4_how"] = vals["ga4_how"] or "auto"
         for role, col in ROLE_FIELDS.items():

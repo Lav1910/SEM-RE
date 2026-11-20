@@ -53,8 +53,12 @@ BUILDER_DEFAULT = {"kind": "home_builder", "label": "home builder", "noun": "bui
                    "customers": "home buyers", "services": [], "source": "default"}
 
 
+_UNSAFE = re.compile(r"[^\w\s&/,.()+\-\u2019]")  # change 80: AI-written wording keeps words and plain punctuation only
+
+
 def _clean(s, n=60):
-    return re.sub(r"\s+", " ", str(s or "")).strip(" .,;:-")[:n]
+    """Wording from the AI ends up in reports: no characters that could form markup or break out of an attribute."""
+    return re.sub(r"\s+", " ", _UNSAFE.sub("", str(s or ""))).strip(" .,;:-")[:n]
 
 
 def _plural_to_singular(p):
@@ -227,8 +231,13 @@ def of(obj):
 
 
 def words(obj):
-    """Wording for reports and screens: {{ W.noun }} = 'builder' or 'remodeler', etc."""
-    b = of(obj)
+    """Wording for reports and screens: {{ W.noun }} = 'builder' or 'remodeler', etc.
+    Cleaned again on the way out (change 80), so audits saved before the fix can't carry markup either."""
+    b = dict(of(obj))
+    for k, n in (("noun", 40), ("nouns", 40), ("customers", 40), ("label", 60)):
+        if b.get(k):
+            b[k] = _clean(b[k], n) or BUILDER_DEFAULT.get(k) or "business"
+    b["services"] = [{**s, "name": _clean(s.get("name"))} for s in (b.get("services") or []) if isinstance(s, dict) and _clean(s.get("name"))]
     label = b.get("label") or b["noun"]
     return {"kind": b["kind"], "is_builder": b["kind"] == "home_builder", "noun": b["noun"], "nouns": b["nouns"],
             "Noun": b["noun"][:1].upper() + b["noun"][1:], "Nouns": b["nouns"][:1].upper() + b["nouns"][1:],
