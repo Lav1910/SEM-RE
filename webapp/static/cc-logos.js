@@ -137,7 +137,20 @@
     });
   }
 
+  // view-only (change 78): fields read-only, change buttons gone; "Sync now" stays. The server refuses changes anyway.
+  function viewOnly() {
+    if (!document.querySelector('.cc[data-edit="0"]')) return;
+    document.querySelectorAll('.cc form').forEach(function (f) {
+      if (f.classList.contains('cc-allow') || (f.getAttribute('method') || '').toLowerCase() !== 'post') return;
+      f.classList.add('ro');
+      f.querySelectorAll('input, select, textarea').forEach(function (el) { if (el.type !== 'hidden') el.disabled = true; });
+      f.querySelectorAll('button, input[type=submit]').forEach(function (b) { b.remove(); });
+    });
+    document.querySelectorAll('.cc-owner-only, details.dl-actions').forEach(function (e) { e.remove(); });
+  }
+
   function run() {
+    viewOnly();
     flashes();
     // blog cards: an image that won't load leaves the drawn cover showing
     document.querySelectorAll('.pc-visual img').forEach(function (im) {

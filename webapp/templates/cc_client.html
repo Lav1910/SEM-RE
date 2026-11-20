@@ -103,7 +103,7 @@
     <td class="nowrap">{{ (P.get(x.owner_id) or {}).get('name') or '—' }}</td>
     <td>{% if x.blocker %}<span class="need red">{{ x.blocker }}</span><span class="cc-sub">{{ (P.get(x.blocker_owner_id) or {}).get('name') or 'no owner' }} · since {{ fmt_date(x.blocked_since) }}</span>{% else %}<span class="dash">—</span>{% endif %}</td>
     <td class="nowrap">
-      <details class="cc-more"><summary>Actions</summary>
+      <details class="cc-more dl-actions"><summary>Actions</summary>
         <form method="post" action="{{ url_for('cc_deliverable', cid=c.id, did=x.id) }}" class="cc-inline" style="margin-top:6px">
           <input type="hidden" name="csrf" value="{{ session.csrf }}">
           {% if x.verified_at %}<button class="link-btn danger" name="action" value="unverify">Remove verification</button>
@@ -190,9 +190,10 @@
     </div>
   </div>
   <div class="acts">
+    {% if not cc_edit %}<span class="view-pill" title="You can see everything here; only an owner can change it">View only</span>{% endif %}
     <div class="cc-health-big {{ h }}">{{ m.icon(h) }}{{ {'red':'Red','amber':'Amber','green':'Green','paused':'Paused'}[h] }}</div>
     {% if c.scope_doc %}<a class="btn btn-ghost btn-small" href="{{ c.scope_doc }}" target="_blank" rel="noopener noreferrer">Scope doc</a>{% endif %}
-    <form method="post" action="{{ url_for('cc_client_sync', cid=c.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" type="submit">Sync now</button></form>
+    <form method="post" action="{{ url_for('cc_client_sync', cid=c.id) }}" class="cc-allow"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" type="submit">Sync now</button></form>
   </div>
 </div>
 

@@ -1114,5 +1114,41 @@ class CopySetup(WithApp):
                 transfer.parse(bad)
 
 
+class ViewOnly(WithApp):
+    """Change 78: owners (COMMAND_CENTER_EMAILS) change things; people granted on the People page can only look and refresh."""
+    def test_viewer_sees_everything_but_cannot_change_anything(self):
+        cid = self.new_client(name="View Homes", domain="view-homes.example")
+        viewer = self.ids["ccadmin2"]
+        self.db.x("UPDATE users SET cc_access=1 WHERE id=?", (viewer,))
+        try:
+            with self.env():
+                v, o = self.client("ccadmin2"), self.client("ccboss")
+                page = v.get(f"/delivery/clients/{cid}").data.decode()
+                self.assertIn("View only", page)
+                self.assertIn('data-edit="0"', page)
+                self.assertEqual(v.get("/delivery").status_code, 200)
+                # changes are refused on the server
+                r = v.post(f"/delivery/clients/{cid}/scope", data={"csrf": "t", "blog": "9"})
+                self.assertEqual(r.status_code, 302)
+                self.assertFalse(self.db.q("SELECT 1 FROM cc_scope WHERE client_id=?", (cid,), one=True))
+                v.post("/delivery/people", data={"csrf": "t", "action": "grant", "user_id": self.ids["ccrep"]})
+                self.assertEqual(self.db.q("SELECT cc_access FROM users WHERE id=?", (self.ids["ccrep"],), one=True)["cc_access"], 0)
+                v.post("/delivery/people", data={"csrf": "t", "action": "revoke", "user_id": viewer})
+                self.assertEqual(self.db.q("SELECT cc_access FROM users WHERE id=?", (viewer,), one=True)["cc_access"], 1)
+                v.post(f"/delivery/clients/{cid}/edit", data={"csrf": "t", "name": "Renamed", "status": "active"})
+                self.assertEqual(self.db.q("SELECT name FROM cc_clients WHERE id=?", (cid,), one=True)["name"], "View Homes")
+                self.assertNotIn("accounts.google.com", v.get("/delivery/gbp/connect", headers={"Sec-Fetch-Site": "same-origin"}).headers.get("Location", ""))
+                self.assertNotEqual(v.get("/delivery/setup/export").mimetype, "application/json")
+                # refreshing data is allowed
+                self.assertEqual(v.post(f"/delivery/clients/{cid}/sync", data={"csrf": "t"}).status_code, 302)
+                self.assertTrue(self.db.q("SELECT 1 FROM cc_sync WHERE client_id=? AND status='queued'", (cid,), one=True))
+                # the owner still can
+                o.post(f"/delivery/clients/{cid}/scope", data={"csrf": "t", "blog": "4"})
+                self.assertTrue(self.db.q("SELECT 1 FROM cc_scope WHERE client_id=? AND item='blog'", (cid,), one=True))
+                self.assertNotIn("View only", o.get(f"/delivery/clients/{cid}").data.decode())
+        finally:
+            self.db.x("UPDATE users SET cc_access=0 WHERE id=?", (viewer,))
+
+
 if __name__ == "__main__":
     unittest.main()

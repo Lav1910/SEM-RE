@@ -4,7 +4,7 @@
 {% block cc_h1 %}Sources and sync{% endblock %}
 {% block cc_sub %}Where the numbers come from, whether each source is connected, and every sync that has run. Read-only: nothing is written to these tools.{% endblock %}
 {% block cc_meta %}Daily sync runs from 05:00 UK time{% if daily %} · last queued {{ daily }}{% endif %}
-  <form method="post" style="display:inline;margin-left:8px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" type="submit">Sync everything now</button></form>{% endblock %}
+  <form method="post" class="cc-allow" style="display:inline;margin-left:8px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" type="submit">Sync everything now</button></form>{% endblock %}
 {% block cc %}
 <div class="cc-connect">
 <section class="card gbp-connect" id="gbp">
@@ -17,12 +17,12 @@
      {{ gbp_dir }} profile{{ 's' if gbp_dir != 1 }} visible{% if gbp_dir_at %} (listed {{ fmt_ago(gbp_dir_at) }}){% endif %}.</p>
   {% if gbp_conn.detail %}<p class="need red">{{ gbp_conn.detail }}</p>{% endif %}
   <div class="cc-inline">
-    {% if gbp_conn.state == 'reauth' %}<a class="btn btn-primary btn-small" href="{{ url_for('cc_gbp_connect') }}">Connect again</a>{% endif %}
+    {% if gbp_conn.state == 'reauth' %}<a class="btn btn-primary btn-small cc-owner-only" href="{{ url_for('cc_gbp_connect') }}">Connect again</a>{% endif %}
     <form method="post" action="{{ url_for('cc_gbp_disconnect') }}" onsubmit="return confirm('Disconnect Google Business Profile? Profile numbers stop updating until someone connects again.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn danger" type="submit">Disconnect</button></form>
   </div>
   {% elif gbp_cfg %}
   <p>Sign in with the Google account that manages the client profiles (owner or manager). The app only reads: it never posts, replies or edits a profile.</p>
-  <a class="btn btn-primary btn-small" href="{{ url_for('cc_gbp_connect') }}">Connect Business Profile</a>
+  <a class="btn btn-primary btn-small cc-owner-only" href="{{ url_for('cc_gbp_connect') }}">Connect Business Profile</a>
   {% else %}
   <ol class="gc-steps">
     <li>In Google Cloud, create a project and enable: <i>My Business Account Management API</i>, <i>My Business Business Information API</i>, <i>Business Profile Performance API</i> and <i>Google My Business API</i> (reviews, posts, photos).</li>
@@ -42,13 +42,13 @@
      {{ ga4_dir }} propert{{ 'ies' if ga4_dir != 1 else 'y' }} visible{% if ga4_dir_at %} (listed {{ fmt_ago(ga4_dir_at) }}){% endif %}.</p>
   {% if ga4_conn.detail %}<p class="need red">{{ ga4_conn.detail }}</p>{% endif %}
   <div class="cc-inline">
-    {% if ga4_conn.state == 'reauth' %}<a class="btn btn-primary btn-small" href="{{ url_for('cc_ga4_connect') }}">Connect again</a>{% endif %}
+    {% if ga4_conn.state == 'reauth' %}<a class="btn btn-primary btn-small cc-owner-only" href="{{ url_for('cc_ga4_connect') }}">Connect again</a>{% endif %}
     <form method="post" action="{{ url_for('cc_ga4_disconnect') }}" onsubmit="return confirm('Disconnect Google Analytics? Analytics numbers stop updating until someone connects again.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn danger" type="submit">Disconnect</button></form>
   </div>
   {% elif gbp_cfg %}
   <p>Sign in with a Google account that has at least <b>Viewer</b> access to the clients' GA4 properties. The permission is read-only: Google itself blocks any change.</p>
   <p class="small muted">Before the first connect: in Google Cloud, enable <i>Google Analytics Data API</i> and <i>Google Analytics Admin API</i>, and add <code>{{ ga4_redirect }}</code> to the OAuth client's redirect URIs.</p>
-  <a class="btn btn-primary btn-small" href="{{ url_for('cc_ga4_connect') }}">Connect Analytics</a>
+  <a class="btn btn-primary btn-small cc-owner-only" href="{{ url_for('cc_ga4_connect') }}">Connect Analytics</a>
   {% else %}
   <p>Uses the same Google sign-in key as Business Profile. Set that up first (see the card above).</p>
   {% endif %}

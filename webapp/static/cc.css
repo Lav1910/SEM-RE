@@ -758,3 +758,10 @@ body:has(.cc) .flash.leaving { opacity:0; transform:translateY(-6px); transition
 .card h2 .brand { vertical-align:0; }
 .tr-list { margin:10px 0; padding-left:18px; font-size:13.5px; line-height:1.8; color:var(--ink2); }
 .tr-list b { color:var(--ink); }
+
+/* change 78: view-only access */
+.view-pill { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--info, #1B5FA8); background:var(--info-bg, #E9F1FB); border-radius:999px; padding:4px 10px; white-space:nowrap; }
+.view-pill::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.cc form.ro input:disabled, .cc form.ro select:disabled, .cc form.ro textarea:disabled { background-color:var(--soft) !important; color:var(--ink2);
+  border-color:var(--line) !important; box-shadow:none !important; cursor:default; opacity:1; }

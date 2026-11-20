@@ -11,7 +11,7 @@
   {% block side_client %}{% endblock %}
   <div class="side-group">Set up</div>
   <a class="side-link {{ 'on' if cc_tab == 'cc_scope' }}" href="{{ url_for('cc_scope') }}">Scope and owners</a>
-  <a class="side-link {{ 'on' if cc_tab == 'cc_import' }}" href="{{ url_for('cc_import') }}">Import clients</a>
+  {% if cc_edit %}<a class="side-link {{ 'on' if cc_tab == 'cc_import' }}" href="{{ url_for('cc_import') }}">Import clients</a>{% endif %}
   <div class="side-group">Data</div>
   <a class="side-link {{ 'on' if cc_tab == 'cc_sync' }}" href="{{ url_for('cc_sync') }}">Sources and sync</a>
   {% if nav.spaces %}
@@ -44,7 +44,7 @@
     d.addEventListener('toggle', function(){ shut[d.dataset.space]=!d.open; try{ localStorage.setItem('cc-spaces-shut', JSON.stringify(shut)) }catch(e){} });
   }); })();
 </script>
-<div class="cc">
+<div class="cc" data-edit="{{ '1' if cc_edit else '0' }}">
   {# under 1100 px the side menu hides (as everywhere in the app), so the same links show as a row here #}
   <nav class="cc-tabs cc-narrow" aria-label="Delivery sections">
     <a href="{{ url_for('cc_portfolio') }}" class="{{ 'on' if cc_tab in ('cc_portfolio','cc_client') }}">All clients</a>
@@ -60,7 +60,7 @@
       <h1>{% block cc_h1 %}Portfolio{% endblock %}</h1>
       <p class="sub">{% block cc_sub %}{% endblock %}</p>
     </div>
-    <div class="hc-acts">{% block cc_meta %}{% endblock %}</div>
+    <div class="hc-acts">{% if not cc_edit %}<span class="view-pill" title="You can see everything here; only an owner can change it">View only</span>{% endif %}{% block cc_meta %}{% endblock %}</div>
   </section>
   {% endblock %}
   {% block cc %}{% endblock %}
