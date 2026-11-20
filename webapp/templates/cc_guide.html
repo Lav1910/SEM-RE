@@ -1,0 +1,56 @@
+{% extends "cc_base.html" %}
+{% import "_cc.html" as m %}
+{% block cc_title %}How it works{% endblock %}
+{% block cc_h1 %}How the Command Center works{% endblock %}
+{% block cc_sub %}A two-minute guide: what you're looking at, what the colours mean, and what to do each day.{% endblock %}
+{% block cc_meta %}<a class="btn btn-primary btn-small" href="{{ url_for('cc_portfolio') }}">Go to all clients</a>{% endblock %}
+{% block cc %}
+<div class="cc-guide">
+  <section class="card">
+    <span class="g-num">1</span>
+    <h2>What it's for</h2>
+    <p>One place to see, for every SEO client, whether we delivered what they pay for this month and whether anything needs attention. It reads ClickUp, the client's website, Search Console, Google Analytics, Bing and Business Profile. It never posts, edits or changes anything in those tools.</p>
+  </section>
+  <section class="card">
+    <span class="g-num">2</span>
+    <h2>The colours</h2>
+    <ul class="g-list">
+      <li><span class="st red">{{ m.icon('red') }}Red</span> needs action now: something owed is short or late, or a key fact (scope, owner) is missing.</li>
+      <li><span class="st amber">{{ m.icon('amber') }}Amber</span> is at risk or unknown: overdue tasks, waiting on approval, or a data source that isn't connected.</li>
+      <li><span class="st green">{{ m.icon('green') }}Green</span> means everything owed is on track and every source is fresh.</li>
+    </ul>
+    <p class="small muted">A blank is never treated as fine. If we don't know something, it shows amber or red until someone fills it in.</p>
+  </section>
+  <section class="card">
+    <span class="g-num">3</span>
+    <h2>Delivered means verified</h2>
+    <ul class="g-list">
+      <li><b>Blog posts</b> count once the live page loads and can be indexed, not when a ClickUp task closes.</li>
+      <li><b>Business Profile posts, photos and review replies</b> count once Google shows them on the profile.</li>
+      <li><b>Monthly reports</b> count once the account manager marks them sent (due by the 7th).</li>
+      <li><b>Review replies</b> follow a rule rather than a count: every new review answered within 2 business days (1 on Scale and Organic Max).</li>
+    </ul>
+    <p class="small muted">"—" always means no data, never zero.</p>
+  </section>
+  <section class="card">
+    <span class="g-num">4</span>
+    <h2>Finding your way</h2>
+    <ul class="g-list">
+      <li><b>All clients</b> shows every client as a logo tile, worst first. Click one to open its dashboard.</li>
+      <li>A client's dashboard has a section for each channel: <i>Content &amp; SEO, Search Console, Business Profile, Analytics, Bing</i>, plus <i>Tasks &amp; reports</i>, <i>Setup</i> and <i>Notes</i>. They're listed in the side menu.</li>
+      <li><b>Setup</b> (on each client) is where scope, owners, dates, logo, rules and connections are fixed.</li>
+      <li><b>Sources and sync</b> shows which data sources are connected and every sync that ran.</li>
+    </ul>
+  </section>
+  <section class="card span-2">
+    <span class="g-num">5</span>
+    <h2>A simple routine</h2>
+    <div class="g-routine">
+      <div><b>Every day · 2 minutes</b><p>Open All clients, look only at the red tiles, open each and read the top flag. Nudge the named owner.</p></div>
+      <div><b>Every week</b><p>Filter by overdue deliverables and waiting on approval: that's what slips quietly.</p></div>
+      <div><b>Each month · by the 7th</b><p>Check every client's report is marked sent and last month's blogs and profile posts are verified.</p></div>
+    </div>
+    <p class="small muted" style="margin-top:12px">Data refreshes every morning (05:00 UK time). Any page can be refreshed straight away with <b>Sync now</b>.</p>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "cc_base.html" %}
+{% import "_cc.html" as m %}
+{% block cc_title %}Sources and sync{% endblock %}
+{% block cc_h1 %}Sources and sync{% endblock %}
+{% block cc_sub %}Where the numbers come from, whether each source is connected, and every sync that has run. Read-only: nothing is written to these tools.{% endblock %}
+{% block cc_meta %}Daily sync runs from 05:00 UK time{% if daily %} · last queued {{ daily }}{% endif %}
+  <form method="post" style="display:inline;margin-left:8px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" type="submit">Sync everything now</button></form>{% endblock %}
+{% block cc %}
+<div class="cc-connect">
+<section class="card gbp-connect" id="gbp">
+  <div class="gc-head">
+    <h2>{{ m.brand('gbp', 20) }} Google Business Profile</h2>
+    {% if gbp_conn and gbp_conn.state != 'reauth' %}<span class="tag green">Connected</span>{% elif gbp_conn %}<span class="tag red">Needs connecting again</span>{% elif gbp_cfg %}<span class="tag amber">Ready to connect</span>{% else %}<span class="tag amber">Not set up</span>{% endif %}
+  </div>
+  {% if gbp_conn %}
+  <p>Signed in as <b>{{ gbp_conn.email or 'a Google account' }}</b> by {{ (gbp_conn.by or '').split('@')[0] or '—' }}, {{ fmt_date(gbp_conn.connected_at, True) }}.
+     {{ gbp_dir }} profile{{ 's' if gbp_dir != 1 }} visible{% if gbp_dir_at %} (listed {{ fmt_ago(gbp_dir_at) }}){% endif %}.</p>
+  {% if gbp_conn.detail %}<p class="need red">{{ gbp_conn.detail }}</p>{% endif %}
+  <div class="cc-inline">
+    {% if gbp_conn.state == 'reauth' %}<a class="btn btn-primary btn-small" href="{{ url_for('cc_gbp_connect') }}">Connect again</a>{% endif %}
+    <form method="post" action="{{ url_for('cc_gbp_disconnect') }}" onsubmit="return confirm('Disconnect Google Business Profile? Profile numbers stop updating until someone connects again.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn danger" type="submit">Disconnect</button></form>
+  </div>
+  {% elif gbp_cfg %}
+  <p>Sign in with the Google account that manages the client profiles (owner or manager). The app only reads: it never posts, replies or edits a profile.</p>
+  <a class="btn btn-primary btn-small" href="{{ url_for('cc_gbp_connect') }}">Connect Business Profile</a>
+  {% else %}
+  <ol class="gc-steps">
+    <li>In Google Cloud, create a project and enable: <i>My Business Account Management API</i>, <i>My Business Business Information API</i>, <i>Business Profile Performance API</i> and <i>Google My Business API</i> (reviews, posts, photos).</li>
+    <li>Apply for access on Google's Business Profile API contact form ("Application for Basic API Access") from an email that manages the profiles. Until Google approves, the project's quota is 0.</li>
+    <li>Create an OAuth client (type: Web application) with this redirect URI: <code>{{ gbp_redirect }}</code></li>
+    <li>Add its client ID and secret to the server's settings: <code>GBP_OAUTH_CLIENT_ID</code> and <code>GBP_OAUTH_CLIENT_SECRET</code> (locally: <code>.venv/bin/python setup_keys.py</code>). Then come back here and connect.</li>
+  </ol>
+  {% endif %}
+</section>
+<section class="card gbp-connect" id="ga4">
+  <div class="gc-head">
+    <h2>{{ m.brand('ga4', 20) }} Google Analytics</h2>
+    {% if ga4_conn and ga4_conn.state != 'reauth' %}<span class="tag green">Connected</span>{% elif ga4_conn %}<span class="tag red">Needs connecting again</span>{% elif gbp_cfg %}<span class="tag amber">Ready to connect</span>{% else %}<span class="tag amber">Not set up</span>{% endif %}
+  </div>
+  {% if ga4_conn %}
+  <p>Signed in as <b>{{ ga4_conn.email or 'a Google account' }}</b> by {{ (ga4_conn.by or '').split('@')[0] or '—' }}, {{ fmt_date(ga4_conn.connected_at, True) }}.
+     {{ ga4_dir }} propert{{ 'ies' if ga4_dir != 1 else 'y' }} visible{% if ga4_dir_at %} (listed {{ fmt_ago(ga4_dir_at) }}){% endif %}.</p>
+  {% if ga4_conn.detail %}<p class="need red">{{ ga4_conn.detail }}</p>{% endif %}
+  <div class="cc-inline">
+    {% if ga4_conn.state == 'reauth' %}<a class="btn btn-primary btn-small" href="{{ url_for('cc_ga4_connect') }}">Connect again</a>{% endif %}
+    <form method="post" action="{{ url_for('cc_ga4_disconnect') }}" onsubmit="return confirm('Disconnect Google Analytics? Analytics numbers stop updating until someone connects again.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn danger" type="submit">Disconnect</button></form>
+  </div>
+  {% elif gbp_cfg %}
+  <p>Sign in with a Google account that has at least <b>Viewer</b> access to the clients' GA4 properties. The permission is read-only: Google itself blocks any change.</p>
+  <p class="small muted">Before the first connect: in Google Cloud, enable <i>Google Analytics Data API</i> and <i>Google Analytics Admin API</i>, and add <code>{{ ga4_redirect }}</code> to the OAuth client's redirect URIs.</p>
+  <a class="btn btn-primary btn-small" href="{{ url_for('cc_ga4_connect') }}">Connect Analytics</a>
+  {% else %}
+  <p>Uses the same Google sign-in key as Business Profile. Set that up first (see the card above).</p>
+  {% endif %}
+</section>
+<section class="card gbp-connect" id="bing">
+  <div class="gc-head"><h2>{{ m.brand('bing', 20) }} Bing Webmaster Tools</h2>{% if bing_on %}<span class="tag green">Key set</span>{% else %}<span class="tag amber">Not set up</span>{% endif %}</div>
+  {% if bing_on %}<p>{{ bing_sites }} site{{ 's' if bing_sites != 1 }} visible in the Bing Webmaster account{% if not bing_sites %} (listed on the next sync){% endif %}. The app only calls Bing's read methods.</p>
+  {% else %}<ol class="gc-steps">
+    <li>Sign in to <b>bing.com/webmasters</b> with the account that holds the client sites. If they aren't there yet, use <i>Import from Google Search Console</i> to add them all at once.</li>
+    <li>Open <b>Settings</b> (gear) → <b>API access</b> → <b>API Key</b> → <b>Generate</b>, and copy the key.</li>
+    <li>Add it to the server's settings as <code>BING_WEBMASTER_API_KEY</code> (locally: <code>.venv/bin/python setup_keys.py</code>).</li>
+  </ol>{% endif %}
+</section>
+</div>
+<div class="src-tiles">
+  {% for k, label, phase in SOURCES %}{% set st = states.get(k, {}) %}{% set ok = st.get('ok', 0) + st.get('partial', 0) %}
+  {% set pct = (ok * 100 / n_active)|round|int if n_active else 0 %}
+  {% set lvl = 'good' if n_active and ok == n_active else ('bad' if st.get('error') else ('warn' if ok else 'off')) %}
+  <div class="src-tile {{ lvl }}">
+    <div class="st-top">{{ m.brand(k, 18) }}<span class="st-name">{{ label }}</span><span class="st-dot" aria-hidden="true"></span></div>
+    <div class="st-num"><b>{{ ok }}</b><span>of {{ n_active }} clients</span></div>
+    <div class="st-bar" role="img" aria-label="{{ pct }}% of active clients connected"><i style="width:{{ pct }}%"></i></div>
+    <div class="st-note">{% if k == 'clickup' and not clickup_on %}Token not set{% else %}{% set bits = [] %}{% if st.get('partial') %}{% set _ = bits.append(st.partial ~ ' partial') %}{% endif %}{% if st.get('blocked') %}{% set _ = bits.append(st.blocked ~ ' blocked') %}{% endif %}{% if st.get('error') %}{% set _ = bits.append(st.error ~ ' failing') %}{% endif %}{% if st.get('not_connected') %}{% set _ = bits.append(st.not_connected ~ ' not linked') %}{% endif %}{{ bits|join(' · ') or ('All connected' if lvl == 'good' else 'Not synced yet') }}{% endif %}</div>
+  </div>{% endfor %}
+</div>
+<div class="cc-board">
+<table class="cc-table" style="min-width:900px">
+  <thead><tr><th style="padding-left:12px">Queued</th><th>Client</th><th>Source</th><th>Status</th><th>Why</th><th>Calls</th><th>Result</th><th>Took</th></tr></thead>
+  <tbody>{% for j in log %}<tr>
+    <td style="padding-left:12px" class="nowrap small">{{ fmt_ago(j.queued_at) }}</td>
+    <td>{% if j.client %}<a href="{{ url_for('cc_client', cid=j.client_id) }}">{{ j.client }}</a>{% else %}—{% endif %}</td>
+    <td class="nowrap src-cell">{{ m.brand(j.source, 14) }}{{ {'clickup':'ClickUp','wordpress':'WordPress','gsc':'Search Console','gbp':'Business Profile','ga4':'Analytics','bing':'Bing'}.get(j.source, j.source) }}</td>
+    <td>{% if j.status == 'done' %}<span class="tag green">Done</span>{% elif j.status == 'failed' %}<span class="tag red">Failed</span>{% elif j.status == 'skipped' %}<span class="tag amber">Skipped</span>{% else %}<span class="tag blue">{{ j.status|capitalize }}{% if j.attempts > 1 %} · try {{ j.attempts }}{% endif %}</span>{% endif %}</td>
+    <td class="small muted">{{ j.why }}</td>
+    <td class="small">{{ j.calls if j.calls is not none else '—' }}</td>
+    <td class="small">{% if j.error %}<span class="need red">{{ j.error }}</span>{% else %}{{ j.note or '' }}{% endif %}</td>
+    <td class="small nowrap">{% if j.finished_at and j.started_at %}{{ ((j.finished_at - j.started_at)|round(1)) }} s{% else %}—{% endif %}</td>
+  </tr>{% else %}<tr><td colspan="8" class="muted" style="padding:16px 12px">No sync jobs yet.</td></tr>{% endfor %}</tbody>
+</table>
+</div>
+<p class="small muted" style="margin-top:10px">Every job is retried up to 3 times with growing waits. Errors never include tokens. Read-only: no job writes to ClickUp, GBP or client sites.</p>
+{% endblock %}

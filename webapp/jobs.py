@@ -288,6 +288,10 @@ def work(seconds=TICK):
             did = True
             run_piece(piece)
             continue
+        from .cc import sync as cc_sync  # change 64: Command Center syncs (does nothing while the feature is off)
+        if cc_sync.work_one():
+            did = True
+            continue
         break
     return did
 
@@ -295,7 +299,12 @@ def work(seconds=TICK):
 def pending():
     return bool(db.q("""SELECT 1 FROM audits WHERE status IN ('queued','running')
                         AND (batch_id IS NULL OR batch_id IN (SELECT id FROM batches WHERE status='running')) LIMIT 1""", one=True) or
-                db.q("SELECT 1 FROM strategy_content WHERE status IN ('queued','running') LIMIT 1", one=True))
+                db.q("SELECT 1 FROM strategy_content WHERE status IN ('queued','running') LIMIT 1", one=True) or _cc_pending())
+
+
+def _cc_pending():
+    from .cc import sync as cc_sync
+    return cc_sync.pending()
 
 
 def kick(base_url=None, times=1):

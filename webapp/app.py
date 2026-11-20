@@ -138,7 +138,8 @@ def headers(resp):
         resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'"
     else:
         resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Content-Security-Policy"] = CSP
+        if not resp.headers.get("Content-Security-Policy", "").startswith("default-src 'none'"):
+            resp.headers["Content-Security-Policy"] = CSP  # change 64: a route's own locked-down policy (images, SVG logos) is kept
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     if (g.get("user") or request.path.startswith("/c/")) and resp.mimetype == "text/html":
         resp.headers["Cache-Control"] = "no-store"
@@ -1955,3 +1956,4 @@ def create_app():
 
 
 from . import bulk, todo, mcp  # noqa: E402,F401  (Bulk Analysis, To-do and AI agent (MCP) routes)
+from .cc import views as _cc_views  # noqa: E402,F401  (change 64: SEO Delivery Command Center, behind HBM_COMMAND_CENTER)

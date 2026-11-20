@@ -1,0 +1,43 @@
+{% extends "cc_base.html" %}
+{% block cc_title %}People{% endblock %}
+{% block cc_h1 %}People{% endblock %}
+{% block cc_sub %}Who does what (account managers, SEO owners, writers, developers) and who can open the Command Center.{% endblock %}
+{% block cc %}
+<div class="cc-grid">
+<section class="card span-8">
+  <h2>Team</h2>
+  <p class="small muted">ClickUp assignees appear here automatically after a sync. Give each person their roles so they show up in the owner lists. The full People view (what each person owns, what's overdue, what's waiting on them) comes in Phase 3.</p>
+  {% if people %}
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="save">
+    <table class="cc-table">
+      <thead><tr><th>Name</th>{% for r, label in ROLES %}<th style="text-align:center">{{ label.split()[0] if r != 'seo' else 'SEO' }}</th>{% endfor %}<th style="text-align:center">Active</th><th>Owns (active clients)</th></tr></thead>
+      <tbody>{% for p in people %}<tr {% if not p.active %}style="opacity:.55"{% endif %}>
+        <td><input type="hidden" name="p-{{ p.id }}" value="1"><input name="name-{{ p.id }}" value="{{ p.name }}" style="width:170px">{% if p.clickup_id %}<span class="cc-sub">from ClickUp{% if p.email %} · {{ p.email }}{% endif %}</span>{% elif p.email %}<span class="cc-sub">{{ p.email }}</span>{% endif %}</td>
+        {% for r, label in ROLES %}<td class="num"><input type="checkbox" name="role-{{ r }}-{{ p.id }}" {{ 'checked' if r in (p.roles or '').split(',') }} aria-label="{{ label }}: {{ p.name }}"></td>{% endfor %}
+        <td class="num"><input type="checkbox" name="active-{{ p.id }}" {{ 'checked' if p.active }} aria-label="Active: {{ p.name }}"></td>
+        <td class="small">{% for role, name, cid in owns.get(p.id, []) %}<a href="{{ url_for('cc_client', cid=cid) }}">{{ name }}</a> <span class="muted">({{ role|upper if role in ('am','seo') else role }})</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">—</span>{% endfor %}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn btn-primary btn-small" type="submit">Save people</button></div>
+  </form>
+  {% else %}<p class="need">Nobody yet. Sync ClickUp or add people below.</p>{% endif %}
+  <form method="post" class="cc-inline" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add">
+    <input name="name" placeholder="Name" required><input name="email" placeholder="Email (optional)">
+    {% for r, label in ROLES %}<label class="small"><input type="checkbox" name="roles" value="{{ r }}"> {{ label.split()[0] if r != 'seo' else 'SEO' }}</label>{% endfor %}
+    <button class="btn btn-ghost btn-small" type="submit">Add person</button>
+  </form>
+</section>
+<section class="card span-4">
+  <h2>Who can open the Command Center</h2>
+  <p class="small muted">Admins only, and only those listed here. Everyone else gets "page not found", in the app and through its API.</p>
+  <table class="cc-table"><tbody>{% for u in admins %}
+    <tr><td>{{ u.name }}<span class="cc-sub">{{ u.email }}</span></td>
+      <td class="nowrap">{% if u.email|lower in env_emails %}<span class="tag green">Always</span><span class="cc-sub">server setting</span>
+        {% else %}<form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="user_id" value="{{ u.id }}">
+          {% if u.cc_access %}<span class="tag green">Granted</span> <button class="link-btn danger" name="action" value="revoke">Remove</button>{% else %}<button class="link-btn" name="action" value="grant">Grant access</button>{% endif %}</form>{% endif %}</td></tr>
+  {% endfor %}</tbody></table>
+</section>
+</div>
+{% endblock %}

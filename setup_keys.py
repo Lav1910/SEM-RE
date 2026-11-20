@@ -24,6 +24,10 @@ PROMPTS = [
     ("DATAFORSEO_PASSWORD", "DataForSEO API password"),
     ("SEMRUSH_API_KEY", "Semrush API key (only needed on a server; this Mac already has it)"),
     ("DATAWISE_TOKEN", "DataWise personal token (datawiseseo.com > MCP & AI assistants > Create token, starts with dwmcp_)"),
+    ("GBP_OAUTH_CLIENT_ID", "Google OAuth client ID for Business Profile (Google Cloud > APIs & Services > Credentials, ends in .apps.googleusercontent.com)"),
+    ("GBP_OAUTH_CLIENT_SECRET", "Google OAuth client secret for Business Profile (same credential, starts with GOCSPX-)"),
+    ("BING_WEBMASTER_API_KEY", "Bing Webmaster Tools API key (bing.com/webmasters > Settings > API access > API Key)"),
+    ("CLICKUP_API_TOKEN", "ClickUp personal API token for the Command Center (ClickUp > Settings > Apps > API Token, starts with pk_)"),
 ]
 
 

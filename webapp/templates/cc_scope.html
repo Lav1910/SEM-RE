@@ -1,0 +1,43 @@
+{% extends "cc_base.html" %}
+{% block cc_title %}Scope{% endblock %}
+{% block cc_h1 %}Scope and owners{% endblock %}
+{% block cc_sub %}What each client is owed every month and who owns the work. A blank means it isn't written down, and it shows red until it is.{% endblock %}
+{% block cc_meta %}
+  <form method="post" action="{{ url_for('cc_track_from') }}" class="cc-inline cc-trackfrom" title="Delivery before this month isn't judged: no short, late or overdue flags for it">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label for="track_from" class="small muted">Tracking from</label>
+    <input type="month" id="track_from" name="track_from" value="{{ cc_track_from() }}" required>
+    <button class="btn btn-ghost btn-small" type="submit">Save</button>
+  </form>
+<form method="get" class="cc-filters" style="margin:0"><select name="status" onchange="this.form.submit()" aria-label="Status">{% for s in ['active','paused','churned','all'] %}<option value="{{ s }}" {{ 'selected' if status == s }}>{{ s|capitalize if s != 'all' else 'All statuses' }}</option>{% endfor %}</select></form>
+{% endblock %}
+{% block cc %}
+<div class="cc-banner note"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="currentColor"/><path d="M10 9v5" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="10" cy="6" r="1.2" fill="#fff"/></svg>
+<div>Monthly quantities per client. <b>Blank means not written down</b> and keeps the client red; <b>0 means not in the package</b>. The first scope you enter for an item applies from go-live, so past months are judged by it. Later changes apply from this month. Every change is logged.</div></div>
+{% if not clients %}
+<div class="card cc-empty"><h2>No clients here</h2><p><a class="btn btn-primary" href="{{ url_for('cc_import') }}">Import clients</a></p></div>
+{% else %}
+<form method="post">
+<input type="hidden" name="csrf" value="{{ session.csrf }}">
+<div class="cc-board">
+<table class="cc-table" style="min-width:1250px">
+  <thead><tr><th style="padding-left:12px">Client</th><th>Package</th><th>Domain</th><th>Go-live</th><th>AM</th><th>SEO owner</th>
+    {% for k, label in ITEMS %}<th style="text-align:center">{{ ITEM_SHORT[k] }}{% if k == 'report' %} <span title="0 or 1">(0/1)</span>{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>{% for c in clients %}<tr>
+    <td style="padding-left:12px"><input type="hidden" name="row-{{ c.id }}" value="1"><a href="{{ url_for('cc_client', cid=c.id) }}" style="font-weight:600;color:var(--ink);text-decoration:none">{{ c.name }}</a>{% if c.clickup_space %}<span class="cc-sub">{{ c.clickup_space }}</span>{% endif %}</td>
+    <td><select name="package-{{ c.id }}" class="{{ 'missing' if not c.package }}"><option value="">—</option>{% for pk in PACKAGES %}<option {{ 'selected' if c.package == pk }}>{{ pk }}</option>{% endfor %}{% if c.package and c.package not in PACKAGES %}<option selected>{{ c.package }}</option>{% endif %}</select></td>
+    <td><input name="domain-{{ c.id }}" value="{{ c.domain or '' }}" placeholder="example.com" style="width:170px" class="{{ 'missing' if not c.domain }}"></td>
+    <td><input type="date" name="go_live-{{ c.id }}" value="{{ c.go_live or '' }}" title="Optional"></td>
+    {% for role in ('am', 'seo') %}
+    <td><select name="{{ role }}_id-{{ c.id }}" class="{{ 'missing' if not c[role ~ '_id'] }}"><option value="">—</option>{% for pid, p in P.items() if p.active or pid == c[role ~ '_id'] %}<option value="{{ pid }}" {{ 'selected' if c[role ~ '_id'] == pid }}>{{ p.name }}</option>{% endfor %}</select></td>
+    {% endfor %}
+    {% for k, label in ITEMS %}{% set v = grid[c.id][k] %}
+    <td class="num">{% if k == 'review_reply' %}<select class="qty-sel {{ 'missing' if v is none }}" name="{{ k }}-{{ c.id }}" aria-label="Review replies for {{ c.name }}"><option value="" {{ 'selected' if v is none }}>?</option><option value="every" {{ 'selected' if v is not none and v < 0 }}>Every review</option><option value="0" {{ 'selected' if v == 0 }}>Not in package</option>{% if v is not none and v > 0 %}<option value="{{ v }}" selected>{{ v }} a month</option>{% endif %}</select>{% else %}<input class="qty" type="number" min="0" max="{{ 1 if k == 'report' else 99 }}" name="{{ k }}-{{ c.id }}" value="{{ v if v is not none }}" placeholder="?" aria-label="{{ label }} per month for {{ c.name }}">{% endif %}</td>
+    {% endfor %}
+  </tr>{% endfor %}</tbody>
+</table>
+</div>
+<div class="cc-sticky"><span class="small muted" style="align-self:center">People come from ClickUp assignees · <a href="{{ url_for('cc_people') }}">roles and access</a></span><button class="btn btn-primary" type="submit">Save all changes</button></div>
+</form>
+{% endif %}
+{% endblock %}

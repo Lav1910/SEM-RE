@@ -1,0 +1,117 @@
+{% extends "cc_base.html" %}
+{% import "_cc.html" as m %}
+{% block cc_title %}All clients{% endblock %}
+{% block cc_h1 %}All clients{% endblock %}
+{% block cc_sub %}Every SEO client for {{ month_label(month, True) }}, worst first. Red needs action, amber is at risk or missing data, green is on track. Click a client to open its dashboard.{% endblock %}
+{% block cc_meta %}
+  Last sync {{ fmt_ago(last_sync) }}{% if running %} · {{ running }} job{{ 's' if running != 1 }} queued{% endif %}
+  <form method="post" action="{{ url_for('cc_sync') }}" style="display:inline;margin-left:8px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-ghost btn-small" type="submit">Sync all now</button></form>
+{% endblock %}
+{% block cc %}
+{% if not clickup_on %}
+<div class="cc-banner amber">{{ m.icon('amber') }}<div><b>ClickUp isn't connected.</b> Deliverable tasks, owners and approvals can't be read, so every client stays amber or red until it is. Add <code>CLICKUP_API_TOKEN</code> to the server's settings (locally: <code>.venv/bin/python setup_keys.py</code>).</div></div>
+{% endif %}
+
+{% if not n_clients %}
+<div class="card cc-empty">
+  <h2>No clients yet</h2>
+  <p class="muted">Import your SEO clients from their ClickUp folders, then fill in each one's scope. Clients with no scope show red until it's filled in. That's on purpose.</p>
+  <p><a class="btn btn-primary" href="{{ url_for('cc_import') }}">Import from ClickUp or add by hand</a></p>
+</div>
+{% else %}
+<div class="cc-hint" id="cc-hint" hidden>
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4M12 16.8v.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  <span><b>New here?</b> <a href="{{ url_for('cc_guide') }}">How the Command Center works</a> takes two minutes: what the colours mean and what to check each day.</span>
+  <button class="link-btn" type="button" id="cc-hint-x">Got it</button>
+</div>
+<div class="cc-stats">
+  {% set items = [
+    (strip.red, 'Need attention', 'red', url_for('cc_portfolio'), ' of ' ~ strip.total),
+    (strip.overdue, 'Overdue deliverables', 'red', url_for('cc_portfolio', flag='short'), ''),
+    (strip.approvals, 'Waiting on approval', 'amber', url_for('cc_portfolio', flag='approval'), ''),
+    (strip.scope, 'Scope missing', 'red', url_for('cc_portfolio', flag='scope_missing'), ''),
+    (strip.sources, 'Data sources off', 'amber', url_for('cc_sync'), '')] %}
+  {% for n, label, sev, href, extra in items %}
+  <a class="cc-stat" href="{{ href }}"><span class="n">{{ n }}{% if extra %}<small>{{ extra }}</small>{% endif %}</span><span class="l"><i class="cc-dot {{ sev if n else 'green' }}" aria-hidden="true"></i>{{ label }}</span></a>
+  {% endfor %}
+</div>
+
+<form class="cc-filters" method="get" id="ccf">
+  <select name="status" aria-label="Status"><option value="active" {{ 'selected' if f.status=='active' }}>Active</option><option value="paused" {{ 'selected' if f.status=='paused' }}>Paused</option><option value="churned" {{ 'selected' if f.status=='churned' }}>Churned</option><option value="all" {{ 'selected' if f.status=='all' }}>All statuses</option></select>
+  <select name="am" aria-label="Account manager"><option value="">Any AM</option><option value="none" {{ 'selected' if f.am=='none' }}>No AM named</option>{% for pid, p in P.items() if 'am' in (p.roles or '') %}<option value="{{ pid }}" {{ 'selected' if f.am==pid|string }}>{{ p.name }}</option>{% endfor %}</select>
+  <select name="owner" aria-label="SEO owner"><option value="">Any SEO owner</option><option value="none" {{ 'selected' if f.owner=='none' }}>No owner named</option>{% for pid, p in P.items() if 'seo' in (p.roles or '') %}<option value="{{ pid }}" {{ 'selected' if f.owner==pid|string }}>{{ p.name }}</option>{% endfor %}</select>
+  <select name="package" aria-label="Package"><option value="">Any package</option><option value="none" {{ 'selected' if f.package=='none' }}>Package missing</option>{% for pk in PACKAGES %}<option {{ 'selected' if f.package==pk }}>{{ pk }}</option>{% endfor %}</select>
+  <select name="flag" aria-label="Flag"><option value="">Any flag</option>{% for code in flag_codes %}<option value="{{ code }}" {{ 'selected' if f.flag==code }}>{{ code|replace('_',' ')|capitalize }}</option>{% endfor %}</select>
+  {% if f.am or f.owner or f.package or f.flag or f.status != 'active' %}<a href="{{ url_for('cc_portfolio') }}" class="small">Clear filters</a>{% endif %}
+  <span class="count">{{ rows|length }} client{{ 's' if rows|length != 1 }} · worst first</span>
+  <span class="cc-seg" role="group" aria-label="View">
+    <button type="button" data-view="icons" aria-pressed="true" title="Large icons"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>Icons</button>
+    <button type="button" data-view="list" aria-pressed="false" title="List"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="3" rx="1"/><rect x="2" y="8.5" width="16" height="3" rx="1"/><rect x="2" y="14" width="16" height="3" rx="1"/></svg>List</button>
+  </span>
+</form>
+
+<div id="cc-views" data-view="icons">
+<div class="cc-tiles">
+  {% for r in rows %}{% set lg = L.get(r.c.id) %}
+  <a class="ctile {{ r.health }}" href="{{ url_for('cc_client', cid=r.c.id) }}" title="{{ r.status.reason }}">
+    <div class="tile-logo" data-bg="{{ lg.bg if lg and lg.bg in ('light', 'dark') else 'auto' }}">
+      {% if lg and lg.has %}<img src="{{ url_for('cc_logo', cid=r.c.id, v=lg.v) }}" alt="{{ r.c.name }} logo" loading="lazy"{% if lg.mime == 'image/svg+xml' %} data-type="svg"{% endif %}>{% else %}<span class="tile-initials" data-name="{{ r.c.name }}" aria-hidden="true">{{ r.initials }}</span>{% endif %}
+      <span class="tile-health st {{ r.health }}" title="{{ {'red':'Red: needs action','amber':'Amber: at risk or unknown','green':'Green: on track','paused':'Paused'}[r.health] }}">{{ m.icon(r.health) }}<span class="sr-only">{{ r.health|capitalize }}</span></span>
+    </div>
+    <div class="tile-body">
+      <div class="tile-name">{{ r.c.name }}</div>
+      <div class="tile-meta">{{ r.c.package or 'Package not set' }}{% if r.am %} · {{ r.am }}{% endif %}</div>
+      <div class="tile-status {{ r.status.sev }}">{{ m.icon(r.status.sev) }}<span>{{ r.status.text }}</span></div>
+    </div>
+  </a>
+  {% else %}
+  <p class="muted">No clients match these filters.</p>
+  {% endfor %}
+</div>
+
+<div class="cc-board">
+<table>
+  <thead><tr>
+    <th>Health</th><th>Client</th><th>AM · SEO owner</th>
+    <th title="This month: verified delivered / owed">Blogs</th><th title="This month: verified on the profile / owed">GBP posts</th><th title="This month's report: AM-confirmed sent / owed (due by the 7th)">Report</th>
+    <th>Last blog</th><th>GBP · reviews · GSC</th><th>Site</th><th>AEO</th><th>Top flag</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr class="{{ r.health }}">
+    <td>{{ m.health(r.health) }}</td>
+    <td class="cc-name"><a href="{{ url_for('cc_client', cid=r.c.id) }}">{{ r.c.name }}</a>
+      <small>{% if r.c.domain %}{{ r.c.domain }}{% else %}<span class="need red">no domain</span>{% endif %} · {% if r.c.package %}{{ r.c.package }}{% else %}<span class="need">package?</span>{% endif %}</small></td>
+    <td class="nowrap">{% if r.am %}{{ r.am }}{% else %}<span class="need">no AM</span>{% endif %}<span class="cc-sub">{% if r.seo %}{{ r.seo }}{% else %}<span class="need red">no SEO owner</span>{% endif %}</span></td>
+    <td>{{ m.bar(r.cells.blog) }}</td>
+    <td>{{ m.bar(r.cells.gbp_post) }}</td>
+    <td>{{ m.bar(r.cells.report) }}</td>
+    <td class="nowrap">{% if r.last_blog %}{{ fmt_date(r.last_blog) }}<span class="cc-sub">{{ fmt_ago(r.last_blog) }}</span>{% elif not r.c.domain %}<span class="need">— no domain</span>{% elif 'wordpress' in r.src_off %}<span class="need">— not readable</span>{% elif r.wp_state == 'partial' %}<span class="need" title="No WordPress posts feed: new posts are counted from the sitemap from the first sync, older dates can't be read">— unknown</span><span class="cc-sub">no posts feed</span>{% else %}<span class="need">— none in 12 mo</span>{% endif %}</td>
+    <td class="nowrap"><span class="dash" title="Google Business Profile and Search Console come in Phase 2">— · — · —</span><span class="cc-sub need">not connected</span></td>
+    <td class="nowrap">{% if r.home is none %}<span class="dash">—</span><span class="cc-sub need">not checked</span>{% elif r.home_fails >= 2 %}<span class="st red">{{ m.icon('red') }}Down</span><span class="cc-sub">{{ r.home or 'no response' }}</span>{% elif r.home_fails == 1 %}<span class="st amber">{{ m.icon('amber') }}1 failed check</span>{% else %}<span class="st green">{{ m.icon('green') }}Up</span><span class="cc-sub">{{ fmt_ago(r.home_at) }}</span>{% endif %}</td>
+    <td class="nowrap">{% if r.aeo and r.aeo.score is not none %}<b>{{ r.aeo.score }}</b><span class="cc-sub">{{ fmt_date(r.aeo.finished_at) }}</span>{% else %}<span class="dash">—</span><span class="cc-sub">no audit</span>{% endif %}</td>
+    <td>{% if r.top %}<div class="flag-top {{ r.top.severity }}">{{ m.icon(r.top.severity) }}<span>{{ r.top.reason }}</span></div>{% if r.flags|length > 1 %}<span class="flag-more">+{{ r.flags|length - 1 }} more ({{ r.reds }} red, {{ r.ambers }} amber)</span>{% endif %}{% else %}<span class="st green">{{ m.icon('green') }}On track</span>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="11" class="muted" style="padding:20px">No clients match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="small muted cc-listnote" style="margin-top:10px">Delivered means verified: a blog counts once its live URL is indexable, a GBP post once it's seen on the profile, a report once the AM confirms it was sent. Striped bars are marked done in ClickUp but not verified yet. "—" means no data, never zero.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script>
+(function(){ var h=document.getElementById('cc-hint'); if(!h) return; var seen=null; try{ seen=localStorage.getItem('cc-hint') }catch(e){}
+  if(!seen) h.hidden=false; document.getElementById('cc-hint-x').addEventListener('click', function(){ h.hidden=true; try{ localStorage.setItem('cc-hint','1') }catch(e){} }); })();
+document.querySelectorAll('#ccf select').forEach(function(s){s.addEventListener('change',function(){s.form.submit()})});
+(function(){
+  var box=document.getElementById('cc-views'); if(!box) return;
+  var btns=document.querySelectorAll('.cc-seg button');
+  function set(v){ box.setAttribute('data-view', v); btns.forEach(function(b){b.setAttribute('aria-pressed', b.dataset.view===v ? 'true':'false')});
+  }
+  set('icons');  // change 65: the portfolio always opens on the logo grid; List is one click away
+  btns.forEach(function(b){ b.addEventListener('click', function(){ set(b.dataset.view) }) });
+})();
+</script>{% endblock %}
