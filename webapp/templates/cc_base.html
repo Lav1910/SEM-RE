@@ -12,6 +12,7 @@
   <div class="side-group">Set up</div>
   <a class="side-link {{ 'on' if cc_tab == 'cc_scope' }}" href="{{ url_for('cc_scope') }}">Scope and owners</a>
   <a class="side-link {{ 'on' if cc_tab == 'cc_import' }}" href="{{ url_for('cc_import') }}">Import clients</a>
+  <a class="side-link {{ 'on' if cc_tab == 'cc_transfer' }}" href="{{ url_for('cc_transfer') }}">Copy setup</a>
   <div class="side-group">Data</div>
   <a class="side-link {{ 'on' if cc_tab == 'cc_sync' }}" href="{{ url_for('cc_sync') }}">Sources and sync</a>
   {% if nav.spaces %}

@@ -756,3 +756,5 @@ body:has(.cc) .flash.leaving { opacity:0; transform:translateY(-6px); transition
 .src-from { display:inline-flex; align-items:center; gap:5px; }
 .st-top .brand { margin-right:2px; }
 .card h2 .brand { vertical-align:0; }
+.tr-list { margin:10px 0; padding-left:18px; font-size:13.5px; line-height:1.8; color:var(--ink2); }
+.tr-list b { color:var(--ink); }

@@ -1,0 +1,40 @@
+{% extends "cc_base.html" %}
+{% import "_cc.html" as m %}
+{% block cc_title %}Copy setup{% endblock %}
+{% block cc_h1 %}Copy setup{% endblock %}
+{% block cc_sub %}Move the whole Command Center setup from one copy of the app to another, for example from your computer to the live site. Download the file here, then upload it on the other copy.{% endblock %}
+{% block cc %}
+<div class="cc-connect">
+  <section class="card gbp-connect">
+    <div class="gc-head"><h2>1 · Download this copy's setup</h2></div>
+    <p>{{ counts.clients }} clients, {{ counts.people }} people and {{ counts.scope }} scope rows, with rules, notes, change history, logos and the tracking start month.</p>
+    <p class="small muted">Not included: anything a sync reads again (ClickUp tasks, blog posts, numbers, flags) and every secret (API keys and Google sign-ins stay in each copy's own settings).</p>
+    <a class="btn btn-primary btn-small" href="{{ url_for('cc_export') }}">Download setup file</a>
+  </section>
+  <section class="card gbp-connect">
+    <div class="gc-head"><h2>2 · Upload a setup file here</h2></div>
+    {% if prev %}
+    <p>From <b>{{ prev.exported_by or 'another copy' }}</b>, {{ fmt_date(prev.exported_at, True) }}. Check what will change, then confirm.</p>
+    <ul class="tr-list">
+      <li><b>{{ prev.updated_clients|length }}</b> existing clients updated</li>
+      <li><b>{{ prev.new_clients|length }}</b> new clients added{% if prev.new_clients %}<span class="cc-sub">{{ prev.new_clients[:8]|join(', ') }}{% if prev.new_clients|length > 8 %} and {{ prev.new_clients|length - 8 }} more{% endif %}</span>{% endif %}</li>
+      <li><b>{{ prev.new_people }}</b> new people ({{ prev.people }} in the file)</li>
+      <li><b>{{ prev.scope_rows }}</b> scope rows (they replace each client's current scope), <b>{{ prev.rules }}</b> rules, <b>{{ prev.notes }}</b> notes, <b>{{ prev.logos }}</b> logos</li>
+      {% if prev.track_from %}<li>Tracking starts <b>{{ month_label(prev.track_from, True) }}</b></li>{% endif %}
+    </ul>
+    <p class="small muted">Nothing is deleted except each client's scope rows, which the file replaces. Logos uploaded by hand here are kept. Every change goes into the change history.</p>
+    <div class="cc-inline">
+      <form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" name="action" value="apply">Import this setup</button></form>
+      <form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn" name="action" value="cancel">Cancel</button></form>
+    </div>
+    {% else %}
+    <p>Choose a setup file downloaded from another copy. You'll see exactly what will change before anything is saved.</p>
+    <form method="post" enctype="multipart/form-data" class="cc-inline">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="file" name="file" accept="application/json,.json" required aria-label="Setup file" style="max-width:260px">
+      <button class="btn btn-ghost btn-small" name="action" value="preview">Preview</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
