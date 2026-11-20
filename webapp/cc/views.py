@@ -70,13 +70,9 @@ def _cc_ctx():
 
 
 SPACE_ORDER = ["Growth", "Organic", "Scale"]  # as the team reads them in ClickUp; any other space follows, A to Z
-# change 84: glossy package badges: highlight, body and shade of one colour, and the letter's own ink
-SPACE_COLOUR = {"Growth": ("#F6D46A", "#DDA01E", "#8A5A07", "#2B1C00"),    # gold
-                "Organic": ("#EE7166", "#C42F29", "#741411", "#FFFFFF"),   # red
-                "Scale": ("#52C88E", "#138A53", "#08502F", "#FFFFFF"),     # emerald
-                "Essentials": ("#7FB4F2", "#2F6FC6", "#173F82", "#FFFFFF"),
-                "One Off": ("#B9C9CB", "#6E9193", "#3F5756", "#FFFFFF")}
-SPACE_DEFAULT = ("#B9C9CB", "#6E9193", "#3F5756", "#FFFFFF")
+# change 84: package badges are outlined in the package's colour (ring and letter), on the dark side menu
+SPACE_COLOUR = {"Growth": "#F0B429", "Organic": "#EC6A62", "Scale": "#45C487", "Essentials": "#6AA8F0", "One Off": "#9FB7B9"}
+SPACE_DEFAULT = "#9FB7B9"
 
 
 def _space_name(raw):
