@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{% block cc_title %}Delivery{% endblock %} · Command Center{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='cc.css') }}"><script src="{{ url_for('static', filename='cc-logos.js') }}" defer></script>{% endblock %}
+{% block head %}<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300&family=IBM+Plex+Mono:wght@400&display=swap"><link rel="stylesheet" href="{{ url_for('static', filename='cc.css') }}"><script src="{{ url_for('static', filename='cc-logos.js') }}" defer></script>{% endblock %}
 {# change 69: the Delivery area has its own side menu, like Audits and an audit report, so it reads as one app #}
 {% block sidebar %}{% set nav = cc_nav() %}
 <nav class="side cc-side" aria-label="Delivery">
-  {% from "_wordmark.html" import wordmark %}{{ wordmark(href=url_for('dashboard')) }}
+  {# change 85: the Delivery area is Keystone by HBM (the rest of the app stays AEO Snapshot) #}
+  <a class="wm ks-wm" href="{{ url_for('cc_portfolio') }}" aria-label="Keystone by HBM"><span class="ks-name" aria-hidden="true">keystone<span class="ks-dot">.</span></span><span class="ks-by" aria-hidden="true"><i></i>BY HBM</span></a>
   <div class="side-group">Delivery</div>
   <a class="side-link {{ 'on' if cc_tab == 'cc_portfolio' }}" href="{{ url_for('cc_portfolio') }}">All clients{% if nav.red %} <span class="side-count red" title="Clients that need action">{{ nav.red }}</span>{% endif %}</a>
   <a class="side-link {{ 'on' if cc_tab == 'cc_guide' }}" href="{{ url_for('cc_guide') }}">How it works</a>
