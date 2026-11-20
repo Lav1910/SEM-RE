@@ -1053,5 +1053,66 @@ class AlertRows(unittest.TestCase):
         self.assertEqual(views.flag_view({"code": "source_off", "fkey": "source:gsc", "reason": "Search Console not connected: x"})["brand"], "gsc")
 
 
+class CopySetup(WithApp):
+    """Change 77: the setup travels from one copy of the app to another as a file (no secrets, nothing a sync re-reads)."""
+    def test_round_trip_export_wipe_import(self):
+        import io
+        from webapp.cc import transfer, views
+        from webapp.cc.sources import gbp
+        gbp.save("1//secret-refresh-token", "seo@example.com", "x")  # must never travel
+        pid = self.db.x("INSERT INTO cc_people (name, email, roles, clickup_id, active, created_at) VALUES ('Lav T', 'lav.t@example.com', 'seo', 'cu-77', 1, ?)", (time.time(),))
+        cid = self.new_client(name="Copy Homes", domain="copy-homes.example")
+        self.db.x("UPDATE cc_clients SET clickup_folder='f-777', clickup_space='Growth Package', seo_id=?, package='Growth' WHERE id=?", (pid, cid))
+        views.set_scope(cid, "blog", 4, "t")
+        views.set_scope(cid, "review_reply", core.EVERY, "t")
+        self.db.x("INSERT INTO cc_rules (client_id, kind, pattern, note, active, set_by, set_at) VALUES (?, 'no_prices', NULL, 'No prices', 1, 't', ?)", (cid, time.time()))
+        self.db.x("INSERT INTO cc_notes (client_id, kind, body, author, created_at) VALUES (?, 'note', 'Client prefers email', 't', ?)", (cid, time.time()))
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 200
+        self.db.upsert("cc_logos", {"client_id": cid, "content": png, "mime": "image/png", "source_url": None, "how": "auto", "bg": "dark",
+                                    "note": "x", "fetched_at": time.time()}, ["client_id"])
+        with self.env():
+            raw = self.client("ccboss").get("/delivery/setup/export").data
+            self.assertEqual(self.client("ccadmin2").get("/delivery/setup/export").status_code, 404)
+        self.assertNotIn(b"secret-refresh-token", raw)
+        self.assertNotIn(b'"enc"', raw)
+        payload = transfer.parse(raw)
+        mine = next(c for c in payload["clients"] if c["name"] == "Copy Homes")
+        # wipe this client and person, as if importing into a fresh live site
+        for t in ("cc_scope", "cc_rules", "cc_notes", "cc_logos", "cc_history"):
+            self.db.x(f"DELETE FROM {t} WHERE client_id=?", (cid,))
+        self.db.x("DELETE FROM cc_clients WHERE id=?", (cid,))
+        self.db.x("DELETE FROM cc_people WHERE id=?", (pid,))
+        prev = transfer.preview({**payload, "clients": [mine]})
+        self.assertEqual(prev["new_clients"], ["Copy Homes"])
+        with self.env():
+            c = self.client("ccboss")
+            c.post("/delivery/setup", data={"csrf": "t", "action": "preview", "file": (io.BytesIO(json.dumps({**payload, "clients": [mine]}).encode()), "setup.json")},
+                   content_type="multipart/form-data")
+            self.assertIn("Import this setup", c.get("/delivery/setup").data.decode())
+            c.post("/delivery/setup", data={"csrf": "t", "action": "apply"})
+        row = self.db.q("SELECT * FROM cc_clients WHERE clickup_folder='f-777'", one=True)
+        self.assertEqual((row["name"], row["domain"], row["package"], row["clickup_space"]), ("Copy Homes", "copy-homes.example", "Growth", "Growth Package"))
+        owner = self.db.q("SELECT * FROM cc_people WHERE id=?", (row["seo_id"],), one=True)
+        self.assertEqual((owner["clickup_id"], owner["email"]), ("cu-77", "lav.t@example.com"))
+        sc = {r["item"]: r["qty"] for r in self.db.q("SELECT item, qty FROM cc_scope WHERE client_id=?", (row["id"],))}
+        self.assertEqual(sc, {"blog": 4, "review_reply": core.EVERY})
+        self.assertEqual(self.db.q("SELECT note FROM cc_rules WHERE client_id=?", (row["id"],), one=True)["note"], "No prices")
+        self.assertEqual(self.db.q("SELECT body FROM cc_notes WHERE client_id=?", (row["id"],), one=True)["body"], "Client prefers email")
+        lg = self.db.q("SELECT content, bg FROM cc_logos WHERE client_id=?", (row["id"],), one=True)
+        self.assertEqual((bytes(lg["content"]), lg["bg"]), (png, "dark"))
+        # importing the same file again changes nothing and adds no duplicates
+        transfer.apply({**payload, "clients": [mine]}, "t")
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS n FROM cc_clients WHERE clickup_folder='f-777'", one=True)["n"], 1)
+        self.assertEqual(self.db.q("SELECT COUNT(*) AS n FROM cc_notes WHERE client_id=?", (row["id"],), one=True)["n"], 1)
+        gbp.forget()
+
+    def test_rejects_other_files(self):
+        from webapp.cc import transfer
+        for bad in (b"", b"not json", json.dumps({"kind": "something-else"}).encode(),
+                    json.dumps({"kind": transfer.KIND, "version": 99, "clients": [], "people": []}).encode()):
+            with self.assertRaises(transfer.BadFile):
+                transfer.parse(bad)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -884,6 +884,68 @@ def cc_track_from():
     return redirect(url_for("cc_scope"))
 
 
+# ---------------------------------------------------------------- copy the setup between copies of the app (change 77)
+PENDING_MAX_AGE = 30 * 60
+
+
+def _pending_key():
+    return f"cc_import_pending_{g.user['id']}"
+
+
+@app.route("/delivery/setup", methods=["GET", "POST"])
+@cc_required
+def cc_transfer():
+    from . import transfer
+    if request.method == "POST":
+        act = request.form.get("action")
+        if act == "preview":
+            f = request.files.get("file")
+            try:
+                payload = transfer.parse(f.read(transfer.MAX_BYTES + 1) if f else b"")
+            except transfer.BadFile as e:
+                flash(str(e), "bad")
+                return redirect(url_for("cc_transfer"))
+            kv.update(_pending_key(), lambda _o: {"at": time.time(), "payload": payload}, {})
+            return redirect(url_for("cc_transfer"))
+        if act == "cancel":
+            kv.update(_pending_key(), lambda _o: {}, {})
+            flash("Import cancelled. Nothing was changed.", "good")
+            return redirect(url_for("cc_transfer"))
+        if act == "apply":
+            pend = kv.get(_pending_key()) or {}
+            if not pend.get("payload") or time.time() - pend.get("at", 0) > PENDING_MAX_AGE:
+                flash("That preview has expired. Upload the file again.", "bad")
+                return redirect(url_for("cc_transfer"))
+            done = transfer.apply(pend["payload"], _me())
+            kv.update(_pending_key(), lambda _o: {}, {})
+            sync.enqueue_all("setup imported")
+            _kick()
+            flash(f"Setup imported: {done['clients_added']} clients added, {done['clients_updated']} updated, {done['scope_rows']} scope rows, "
+                  f"{done['rules']} rules, {done['notes']} notes, {done['logos']} logos. A full sync is running in the background.", "good")
+            return redirect(url_for("cc_portfolio"))
+        abort(400)
+    pend = kv.get(_pending_key()) or {}
+    prev = None
+    if pend.get("payload") and time.time() - pend.get("at", 0) <= PENDING_MAX_AGE:
+        prev = transfer.preview(pend["payload"])
+    counts = {"clients": db.q("SELECT COUNT(*) AS n FROM cc_clients", one=True)["n"],
+              "people": db.q("SELECT COUNT(*) AS n FROM cc_people", one=True)["n"],
+              "scope": db.q("SELECT COUNT(*) AS n FROM cc_scope", one=True)["n"]}
+    return render_template("cc_transfer.html", prev=prev, counts=counts)
+
+
+@app.route("/delivery/setup/export")
+@cc_required
+def cc_export():
+    from . import transfer
+    body = json.dumps(transfer.export(_me()), separators=(",", ":"))
+    data.log_change(None, "setup", "export", "exported", None, "setup file downloaded", _me())
+    resp = app.response_class(body, mimetype="application/json")
+    resp.headers["Content-Disposition"] = f"attachment; filename=command-center-setup-{today().isoformat()}.json"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 # ---------------------------------------------------------------- first-time guide (change 69)
 @app.route("/delivery/guide")
 @cc_required
