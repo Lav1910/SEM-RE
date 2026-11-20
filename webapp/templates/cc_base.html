@@ -20,7 +20,7 @@
   <details class="side-space" data-space="{{ sp.key }}" open>
     <summary class="side-space-head{{ ' here' if here }}">
       <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="space-badge" style="background:{{ sp.colour }}" aria-hidden="true">{{ sp.name[:1] }}</span>
+      <span class="space-badge" style="--sp-hi:{{ sp.colour[0] }};--sp:{{ sp.colour[1] }};--sp-lo:{{ sp.colour[2] }};--sp-ink:{{ sp.colour[3] }}" aria-hidden="true">{{ sp.name[:1] }}</span>
       <span class="space-name">{{ sp.name }}</span>
       <span class="space-count" title="{{ sp.clients|length }} clients{% if sp.red %}, {{ sp.red }} need action{% endif %}">{{ sp.clients|length }}</span>
     </summary>

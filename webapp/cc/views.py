@@ -70,7 +70,13 @@ def _cc_ctx():
 
 
 SPACE_ORDER = ["Growth", "Organic", "Scale"]  # as the team reads them in ClickUp; any other space follows, A to Z
-SPACE_COLOUR = {"Growth": "#0FB2B5", "Organic": "#3FA77F", "Scale": "#9B7BEA", "Essentials": "#E0A23C", "One Off": "#7A9EA0"}
+# change 84: glossy package badges: highlight, body and shade of one colour, and the letter's own ink
+SPACE_COLOUR = {"Growth": ("#F6D46A", "#DDA01E", "#8A5A07", "#2B1C00"),    # gold
+                "Organic": ("#EE7166", "#C42F29", "#741411", "#FFFFFF"),   # red
+                "Scale": ("#52C88E", "#138A53", "#08502F", "#FFFFFF"),     # emerald
+                "Essentials": ("#7FB4F2", "#2F6FC6", "#173F82", "#FFFFFF"),
+                "One Off": ("#B9C9CB", "#6E9193", "#3F5756", "#FFFFFF")}
+SPACE_DEFAULT = ("#B9C9CB", "#6E9193", "#3F5756", "#FFFFFF")
 
 
 def _space_name(raw):
@@ -85,7 +91,7 @@ def _nav():
     for r in rows:
         groups.setdefault(_space_name(r["clickup_space"]), []).append(r)
     order = sorted(groups, key=lambda g: (g == "No ClickUp space", SPACE_ORDER.index(g) if g in SPACE_ORDER else 99, g.lower()))
-    spaces = [{"name": g, "key": re.sub(r"[^a-z0-9]+", "-", g.lower()).strip("-"), "colour": SPACE_COLOUR.get(g, "#7A9EA0"),
+    spaces = [{"name": g, "key": re.sub(r"[^a-z0-9]+", "-", g.lower()).strip("-"), "colour": SPACE_COLOUR.get(g, SPACE_DEFAULT),
                "clients": groups[g], "red": sum(1 for c in groups[g] if c["health"] == "red")} for g in order]
     return {"clients": rows, "spaces": spaces, "red": sum(1 for r in rows if r["health"] == "red")}
 
