@@ -265,16 +265,29 @@ def _dfs_location_error(e):
     return "40501" in t and "location" in t
 
 
+def _dfs_temporary(e):
+    """DataForSEO's own passing failures (Google page not fetched): worth one more try."""
+    t = str(e)
+    return "DataForSEO 40101" in t or "DataForSEO 40106" in t or "DataForSEO 50000" in t
+
+
 def _dfs_serp(url, base, market):
-    """One Google SERP request, asked from the closest place DataForSEO knows. -> (parsed response, location used)."""
+    """One Google SERP request, asked from the closest place DataForSEO knows. -> (parsed response, location used).
+    A temporary DataForSEO failure is tried once more before the question is skipped."""
+    import time
     last = None
     for loc in _dfs_locations(market):
-        try:
-            return parse_dataforseo(_post(url, [{**base, "location_name": loc}], _dfs_headers())), loc
-        except RuntimeError as e:
-            if not _dfs_location_error(e):
+        for attempt in (1, 2):
+            try:
+                return parse_dataforseo(_post(url, [{**base, "location_name": loc}], _dfs_headers())), loc
+            except RuntimeError as e:
+                last = e
+                if attempt == 1 and _dfs_temporary(e):
+                    time.sleep(2)
+                    continue
+                if _dfs_location_error(e):
+                    break  # try the wider place
                 raise
-            last = e
     raise last
 
 
