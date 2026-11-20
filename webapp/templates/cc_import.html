@@ -1,0 +1,63 @@
+{% extends "cc_base.html" %}
+{% import "_cc.html" as m %}
+{% block cc_title %}Import{% endblock %}
+{% block cc_h1 %}Import clients{% endblock %}
+{% block cc_sub %}Bring clients in from their ClickUp folders, or add one by hand. Nothing is changed in ClickUp.{% endblock %}
+{% block cc_meta %}{{ n_clients }} client{{ 's' if n_clients != 1 }} in the Command Center{% endblock %}
+{% block cc %}
+<div class="cc-grid">
+<section class="card span-8">
+  <h2>{{ m.brand("clickup", 18) }} From ClickUp folders {{ m.srcstate('ok' if clickup_on else 'not_connected') }}</h2>
+  {% if not clickup_on %}
+  <p>ClickUp isn't connected yet. Create a personal API token in ClickUp (Settings → Apps → API Token, starts with <span class="mono">pk_</span>) and add it as <span class="mono">CLICKUP_API_TOKEN</span>:</p>
+  <ul class="small">
+    <li>On this computer: run <span class="mono">.venv/bin/python setup_keys.py</span> in Terminal and paste it at the ClickUp prompt, then restart the app.</li>
+    <li>On the live site: Vercel → Settings → Environment Variables.</li>
+  </ul>
+  <p class="small muted">The Command Center only ever reads from ClickUp (GET requests). The token has its account's full access, so a teammate-level account is safer than an owner's.</p>
+  {% else %}
+  <form method="post" class="cc-inline" style="margin-bottom:12px">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="load">
+    <button class="btn btn-ghost btn-small" type="submit">{{ 'Reload' if loaded_at else 'Load' }} folders from ClickUp</button>
+    {% if loaded_at %}<span class="small muted">Loaded {{ fmt_ago(loaded_at) }}. Template, wiki, task, ads-only and social spaces are left out.</span>{% endif %}
+  </form>
+  {% if spaces %}
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="import">
+    <p class="small">Tick your <b>active SEO clients</b>. Each becomes a client with its ClickUp folder linked; tasks sync straight away. You'll add domains and scope next.</p>
+    {% for space, fs in spaces.items() %}
+    <h3 style="font-size:13px;margin:16px 0 6px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ space }} <span class="small">({{ fs|length }})</span>
+      <button type="button" class="link-btn" data-all="{{ loop.index }}" style="margin-left:8px;text-transform:none;letter-spacing:0">tick all new</button></h3>
+    <table class="cc-table"><tbody>{% for f in fs %}
+      <tr><td style="width:28px"><input type="checkbox" name="folder" value="{{ f.folder_id }}" {{ 'disabled checked' if f.imported }} aria-label="Import {{ f.name }}"></td>
+        <td><b>{{ f.name }}</b>{% if f.imported %} <a class="tag green" href="{{ url_for('cc_client', cid=f.imported) }}">imported</a>{% endif %}
+          {% if f.dupe %} <span class="tag amber" title="Two folders share this name. Check which is current.">duplicate name</span>{% endif %}
+          {% if f.template %} <span class="tag grey">template?</span>{% endif %}
+          {% if f.hidden_chars %} <span class="tag grey" title="The ClickUp name had invisible characters; they were removed">cleaned name</span>{% endif %}
+          <span class="cc-sub mono">folder {{ f.folder_id }}</span></td>
+        <td style="width:170px"><select name="package-{{ f.folder_id }}" aria-label="Package for {{ f.name }}"><option value="">—</option>{% for pk in PACKAGES %}<option {{ 'selected' if f.package == pk }}>{{ pk }}</option>{% endfor %}</select>
+          {% if f.package == 'Organic' %}<span class="cc-sub need">Lite or Max?</span>{% endif %}</td></tr>
+    {% endfor %}</tbody></table>
+    {% endfor %}
+    <div class="cc-sticky"><button class="btn btn-primary" type="submit">Import ticked clients</button></div>
+  </form>
+  {% elif loaded_at %}<p class="need">No client folders found.</p>{% endif %}
+  {% endif %}
+</section>
+<section class="card span-4">
+  <h2>Add a client by hand</h2>
+  <form method="post" action="{{ url_for('cc_client_new') }}" class="cc-form" style="grid-template-columns:1fr">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label>Name<input name="name" required></label>
+    <label>Domain<input name="domain" placeholder="example.com"></label>
+    <label>Package<select name="package"><option value="">—</option>{% for pk in PACKAGES %}<option>{{ pk }}</option>{% endfor %}</select></label>
+    <div class="actions"><button class="btn btn-ghost btn-small" type="submit">Add client</button></div>
+  </form>
+  <p class="small muted">You can link its ClickUp folder later on the client page.</p>
+</section>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll('[data-all]').forEach(function(b){b.addEventListener('click',function(){
+  var t=b.closest('h3').nextElementSibling; t.querySelectorAll('input[type=checkbox]:not([disabled])').forEach(function(x){x.checked=true});});});
+</script>{% endblock %}

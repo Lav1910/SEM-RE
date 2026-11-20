@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{% block cc_title %}Delivery{% endblock %} · Command Center{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='cc.css') }}"><script src="{{ url_for('static', filename='cc-logos.js') }}" defer></script>{% endblock %}
+{# change 69: the Delivery area has its own side menu, like Audits and an audit report, so it reads as one app #}
+{% block sidebar %}{% set nav = cc_nav() %}
+<nav class="side cc-side" aria-label="Delivery">
+  {% from "_wordmark.html" import wordmark %}{{ wordmark(href=url_for('dashboard')) }}
+  <div class="side-group">Delivery</div>
+  <a class="side-link {{ 'on' if cc_tab == 'cc_portfolio' }}" href="{{ url_for('cc_portfolio') }}">All clients{% if nav.red %} <span class="side-count red" title="Clients that need action">{{ nav.red }}</span>{% endif %}</a>
+  <a class="side-link {{ 'on' if cc_tab == 'cc_guide' }}" href="{{ url_for('cc_guide') }}">How it works</a>
+  {% block side_client %}{% endblock %}
+  <div class="side-group">Set up</div>
+  <a class="side-link {{ 'on' if cc_tab == 'cc_scope' }}" href="{{ url_for('cc_scope') }}">Scope and owners</a>
+  <a class="side-link {{ 'on' if cc_tab == 'cc_import' }}" href="{{ url_for('cc_import') }}">Import clients</a>
+  <div class="side-group">Data</div>
+  <a class="side-link {{ 'on' if cc_tab == 'cc_sync' }}" href="{{ url_for('cc_sync') }}">Sources and sync</a>
+  {% if nav.spaces %}
+  <div class="side-group">Clients</div>
+  {% for sp in nav.spaces %}{% set here = (cc_client_id or 0) in sp.clients|map(attribute='id')|list %}
+  <details class="side-space" data-space="{{ sp.key }}" open>
+    <summary class="side-space-head{{ ' here' if here }}">
+      <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="space-badge" style="background:{{ sp.colour }}" aria-hidden="true">{{ sp.name[:1] }}</span>
+      <span class="space-name">{{ sp.name }}</span>
+      <span class="space-count" title="{{ sp.clients|length }} clients{% if sp.red %}, {{ sp.red }} need action{% endif %}">{{ sp.clients|length }}</span>
+    </summary>
+    {% for cl in sp.clients %}
+    <a class="side-link side-client {{ 'on' if cl.id == (cc_client_id or 0) }}" href="{{ url_for('cc_client', cid=cl.id) }}">
+      <svg class="folder" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.75 4.25c0-.83.67-1.5 1.5-1.5h3.1l1.4 1.5h5c.83 0 1.5.67 1.5 1.5v6c0 .83-.67 1.5-1.5 1.5h-9.5c-.83 0-1.5-.67-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="cn">{{ cl.name }}</span>
+      <i class="side-dot {{ cl.health or 'amber' }}" title="{{ (cl.health or 'amber')|capitalize }}" aria-hidden="true"></i><span class="sr-only"> ({{ cl.health or 'amber' }})</span>
+    </a>
+    {% endfor %}
+  </details>
+  {% endfor %}
+  {% endif %}
+</nav>
+{% endblock %}
+{% block body %}
+<script>/* folders the person collapsed stay collapsed (except the one holding the open client) */
+(function(){ var shut={}; try{ shut=JSON.parse(localStorage.getItem('cc-spaces-shut')||'{}') }catch(e){}
+  document.querySelectorAll('.side-space').forEach(function(d){
+    if(shut[d.dataset.space] && !d.querySelector('.side-client.on')) d.open=false;
+    d.addEventListener('toggle', function(){ shut[d.dataset.space]=!d.open; try{ localStorage.setItem('cc-spaces-shut', JSON.stringify(shut)) }catch(e){} });
+  }); })();
+</script>
+<div class="cc">
+  {# under 1100 px the side menu hides (as everywhere in the app), so the same links show as a row here #}
+  <nav class="cc-tabs cc-narrow" aria-label="Delivery sections">
+    <a href="{{ url_for('cc_portfolio') }}" class="{{ 'on' if cc_tab in ('cc_portfolio','cc_client') }}">All clients</a>
+    <a href="{{ url_for('cc_scope') }}" class="{{ 'on' if cc_tab == 'cc_scope' }}">Scope</a>
+    <a href="{{ url_for('cc_import') }}" class="{{ 'on' if cc_tab == 'cc_import' }}">Import</a>
+    <a href="{{ url_for('cc_sync') }}" class="{{ 'on' if cc_tab == 'cc_sync' }}">Sources</a>
+    <a href="{{ url_for('cc_guide') }}" class="{{ 'on' if cc_tab == 'cc_guide' }}">How it works</a>
+  </nav>
+  {% block cc_header %}
+  <section class="card cc-headcard">
+    <div class="hc-main">
+      <span class="eyebrow-sm">SEO Delivery Command Center</span>
+      <h1>{% block cc_h1 %}Portfolio{% endblock %}</h1>
+      <p class="sub">{% block cc_sub %}{% endblock %}</p>
+    </div>
+    <div class="hc-acts">{% block cc_meta %}{% endblock %}</div>
+  </section>
+  {% endblock %}
+  {% block cc %}{% endblock %}
+</div>
+{% endblock %}

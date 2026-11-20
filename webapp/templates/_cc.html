@@ -1,0 +1,43 @@
+{# Command Center macros (change 64): status marks always pair an icon and a word with the colour. #}
+{% macro icon(kind) -%}
+{%- if kind == 'red' -%}<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 1.5h7l5 5v7l-5 5h-7l-5-5v-7z" fill="currentColor"/><path d="M7 7l6 6M13 7l-6 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+{%- elif kind == 'amber' -%}<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.8l8.6 15.4H1.4z" fill="currentColor"/><path d="M10 7.5v4.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="10" cy="14.6" r="1.2" fill="#fff"/></svg>
+{%- elif kind == 'green' -%}<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="currentColor"/><path d="M6 10.3l2.6 2.6L14.2 7.3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- else -%}<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="currentColor"/><path d="M7.5 6.5v7M12.5 6.5v7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro health(h, label=True) -%}
+{%- set h = h or 'amber' -%}
+<span class="st {{ h }}" title="{{ {'red':'Red: needs action','amber':'Amber: at risk or unknown','green':'Green: on track, data fresh','paused':'Paused'}[h] }}">{{ icon(h) }}{% if label %}{{ {'red':'Red','amber':'Amber','green':'Green','paused':'Paused'}[h] }}{% endif %}</span>
+{%- endmacro %}
+
+{% macro bar(x) -%}
+{%- if x.state == 'scope_missing' -%}<span class="tag red" title="Scope for this item isn't written down">Scope missing</span>
+{%- elif x.state == 'not_owed' -%}<span class="dash" title="Not in this package (scope is 0)">not in package</span>
+{%- elif x.state == 'pre_launch' -%}<span class="dash" title="Nothing is owed before the first full month after go-live">pre-launch</span>
+{%- else -%}
+{%- set owed = x.owed or 0 -%}
+{%- set extra = (x.reported if x.item != 'report' else 0) -%}
+<div class="ovd {{ x.state }}" title="{{ x.counted }} delivered (verified) of {{ owed }} owed{% if extra %}, {{ extra }} more marked done but not verified{% endif %}{% if x.working %}, {{ x.working }} in progress{% endif %}">
+  <div class="nums">{{ x.counted }}/{{ owed }}{% if extra %}<span>+{{ extra }} unverified</span>{% elif x.state == 'late' %}<span>late</span>{% elif x.working %}<span>{{ x.working }} in work</span>{% endif %}</div>
+  <div class="track">{% if owed %}<i class="{{ 'done' if x.state == 'done' else x.state }}" style="width:{{ [100, (x.counted * 100 / owed)]|min }}%"></i>{% if extra %}<i class="rep" style="width:{{ [100 - [100, (x.counted * 100 / owed)]|min, extra * 100 / owed]|min }}%"></i>{% endif %}{% endif %}</div>
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro sev(s) -%}<span class="st {{ s }}">{{ icon(s) }}{{ s|capitalize }}</span>{%- endmacro %}
+
+{% macro srcstate(st) -%}
+{%- set m = {'ok':('green','Connected'),'partial':('amber','Partial'),'blocked':('amber','Blocked'),'error':('red','Failing'),'not_connected':('amber','Not connected')} -%}
+{%- set v = m.get(st or 'not_connected', ('amber', st)) -%}<span class="tag {{ v[0] }}">{{ v[1] }}</span>
+{%- endmacro %}
+
+{# change 76: platform logos wherever a platform is named (Simple Icons, CC0; see static/brands/README.txt) #}
+{% macro brand(key, size=16, cls='') -%}
+{%- set f = {'clickup':'clickup', 'gsc':'googlesearchconsole', 'ga4':'googleanalytics', 'gbp':'google', 'wordpress':'wordpress'}.get(key) -%}
+{%- set nm = {'clickup':'ClickUp', 'gsc':'Google Search Console', 'ga4':'Google Analytics', 'gbp':'Google Business Profile', 'wordpress':'WordPress', 'bing':'Bing Webmaster Tools'}.get(key, '') -%}
+{%- if f -%}<img class="brand {{ cls }}" src="{{ url_for('static', filename='brands/' ~ f ~ '.svg') }}" width="{{ size }}" height="{{ size }}" alt="" title="{{ nm }}">
+{%- elif key == 'bing' -%}<span class="brand brand-generic {{ cls }}" style="width:{{ size }}px;height:{{ size }}px" title="{{ nm }}" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="8.6" cy="8.6" r="5.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12.6 12.6l4.2 4.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+{%- endif -%}
+{%- endmacro %}

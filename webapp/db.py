@@ -120,6 +120,77 @@ CREATE TABLE IF NOT EXISTS feedback (
   audit_id TEXT, page TEXT, kind TEXT, message TEXT NOT NULL,
   created_at {real} NOT NULL
 );
+
+-- change 64: SEO Delivery Command Center (admin-only, behind HBM_COMMAND_CENTER). Every fetched number keeps its source
+-- and fetched-at time, and manual edits are written to cc_history. (No semicolons in comments: Postgres splits on them.)
+CREATE TABLE IF NOT EXISTS cc_people (
+  id {pk}, name TEXT NOT NULL, email TEXT, roles TEXT, clickup_id TEXT, active INTEGER NOT NULL DEFAULT 1, created_at {real} NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cc_clients (
+  id {pk}, name TEXT NOT NULL, domain TEXT, package TEXT, status TEXT NOT NULL DEFAULT 'active',
+  am_id INTEGER, seo_id INTEGER, writer_id INTEGER, dev_id INTEGER, scope_doc TEXT, go_live TEXT,
+  clickup_folder TEXT, clickup_space TEXT, health TEXT, health_reason TEXT, health_at {real},
+  created_at {real} NOT NULL, updated_at {real}
+);
+CREATE TABLE IF NOT EXISTS cc_scope (
+  id {pk}, client_id INTEGER NOT NULL, item TEXT NOT NULL, qty INTEGER NOT NULL, start_month TEXT NOT NULL, end_month TEXT,
+  set_by TEXT, set_at {real} NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cc_scope_client ON cc_scope(client_id, item);
+CREATE TABLE IF NOT EXISTS cc_rules (
+  id {pk}, client_id INTEGER NOT NULL, kind TEXT NOT NULL, pattern TEXT, note TEXT, active INTEGER NOT NULL DEFAULT 1,
+  set_by TEXT, set_at {real} NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cc_deliverables (
+  id {pk}, client_id INTEGER NOT NULL, item TEXT NOT NULL, month TEXT NOT NULL, title TEXT, owner_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'planned', due TEXT, task_id TEXT, url TEXT, published_at {real},
+  verified_at {real}, verified_how TEXT, checked_at {real}, check_note TEXT, merged_into INTEGER, blocker TEXT, blocker_owner_id INTEGER, blocked_since {real},
+  source TEXT NOT NULL, ext_id TEXT NOT NULL, not_ours INTEGER NOT NULL DEFAULT 0, updated_at {real},
+  UNIQUE (client_id, source, ext_id)
+);
+CREATE INDEX IF NOT EXISTS cc_deliv_client ON cc_deliverables(client_id, month);
+CREATE TABLE IF NOT EXISTS cc_tasks (
+  task_id TEXT PRIMARY KEY, client_id INTEGER NOT NULL, list_name TEXT, name TEXT, item TEXT, parent TEXT, status TEXT, status_type TEXT,
+  assignees TEXT, due {real}, recurring INTEGER, url TEXT, live_url TEXT, date_created {real}, date_updated {real},
+  date_closed {real}, last_comment_at {real}, fetched_at {real} NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cc_tasks_client ON cc_tasks(client_id);
+CREATE TABLE IF NOT EXISTS cc_metrics (
+  client_id INTEGER NOT NULL, source TEXT NOT NULL, metric TEXT NOT NULL, period TEXT NOT NULL, value {real}, text TEXT,
+  fetched_at {real} NOT NULL, PRIMARY KEY (client_id, source, metric, period)
+);
+CREATE TABLE IF NOT EXISTS cc_flags (
+  id {pk}, client_id INTEGER NOT NULL, fkey TEXT NOT NULL, code TEXT NOT NULL, severity TEXT NOT NULL, reason TEXT,
+  owner TEXT, owner_id INTEGER, first_seen {real} NOT NULL, last_seen {real} NOT NULL, resolved_at {real}, evidence TEXT
+);
+CREATE INDEX IF NOT EXISTS cc_flags_open ON cc_flags(client_id, resolved_at);
+CREATE TABLE IF NOT EXISTS cc_sources (
+  client_id INTEGER NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL, detail TEXT, last_ok {real}, last_try {real},
+  PRIMARY KEY (client_id, source)
+);
+CREATE TABLE IF NOT EXISTS cc_sync (
+  id {pk}, client_id INTEGER NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', why TEXT,
+  lease_until {real}, not_before {real}, attempts INTEGER NOT NULL DEFAULT 0, queued_at {real} NOT NULL,
+  started_at {real}, finished_at {real}, calls INTEGER, error TEXT, note TEXT
+);
+CREATE INDEX IF NOT EXISTS cc_sync_status ON cc_sync(status, queued_at);
+CREATE TABLE IF NOT EXISTS cc_notes (
+  id {pk}, client_id INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'note', body TEXT NOT NULL, author TEXT, created_at {real} NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cc_logos (
+  client_id INTEGER PRIMARY KEY, content {blob}, mime TEXT, source_url TEXT, how TEXT NOT NULL DEFAULT 'auto',
+  bg TEXT NOT NULL DEFAULT 'light', note TEXT, fetched_at {real} NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cc_gbp_locations (
+  name TEXT PRIMARY KEY, account TEXT NOT NULL, account_name TEXT, title TEXT, website TEXT, place_id TEXT, maps_uri TEXT,
+  address TEXT, verified INTEGER, open_status TEXT, seen_at {real} NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cc_ga4_properties (
+  name TEXT PRIMARY KEY, display_name TEXT, account TEXT, account_name TEXT, website TEXT, measurement_id TEXT, seen_at {real} NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cc_history (
+  id {pk}, client_id INTEGER, entity TEXT NOT NULL, entity_id TEXT, field TEXT, old TEXT, new TEXT, by_email TEXT, at {real} NOT NULL
+);
 """
 # columns added after the first release, for SQLite files created by older versions
 LATER_COLUMNS = {
@@ -130,9 +201,15 @@ LATER_COLUMNS = {
                ("client_full", "INTEGER NOT NULL DEFAULT 0"), ("client_alerted_at", "REAL"),
                ("via", "TEXT"), ("services", "TEXT")],
     "users": [("role", "TEXT NOT NULL DEFAULT 'sales'"), ("google_sub", "TEXT"), ("pending", "INTEGER NOT NULL DEFAULT 0"),
-              ("last_login", "REAL"), ("avatar_at", "REAL")],
+              ("last_login", "REAL"), ("avatar_at", "REAL"),
+              ("cc_access", "INTEGER NOT NULL DEFAULT 0")],  # change 64: may open the Command Center
     "strategy_content": [("lease_until", "REAL")],
     # change 62: a visit counts (email alert, view totals) only once it looks like a real person; skip says why it never will
+    "cc_tasks": [("parent", "TEXT")],  # change 64: subtasks don't count as a second deliverable
+    "cc_deliverables": [("image_url", "TEXT"), ("image_checked_at", "REAL")],  # change 74: a blog post's featured image
+    # change 66: which Google Business Profile location is this client's (how: auto / manual / none = no profile in scope)
+    "cc_clients": [("gbp_location", "TEXT"), ("gbp_how", "TEXT NOT NULL DEFAULT 'auto'"),
+                   ("ga4_property", "TEXT"), ("ga4_how", "TEXT NOT NULL DEFAULT 'auto'")],  # change 67: GA4 property
     "client_visits": [("counted", "INTEGER NOT NULL DEFAULT 0"), ("scrolled", "INTEGER NOT NULL DEFAULT 0"), ("skip", "TEXT"), ("net", "TEXT")],
 }
 
@@ -224,7 +301,8 @@ def x(sql, args=()):
 
 def _has_serial(sql):
     t = sql.split("INTO", 1)[1].strip().split()[0].lower() if "INTO" in sql.upper() else ""
-    return t in ("users", "login_codes", "security_log", "feedback", "todos", "api_tokens", "agent_log")
+    return t in ("users", "login_codes", "security_log", "feedback", "todos", "api_tokens", "agent_log",
+                 "cc_people", "cc_clients", "cc_scope", "cc_rules", "cc_deliverables", "cc_flags", "cc_sync", "cc_notes", "cc_history")
 
 
 def upsert(table, data, keys):

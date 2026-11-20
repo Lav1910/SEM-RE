@@ -1,0 +1,818 @@
+{% extends "cc_base.html" %}
+{% import "_cc.html" as m %}
+{# change 65: building blocks for the channel sections #}
+{% macro num(x) -%}{%- if x is none -%}—{%- elif x is number and x >= 1000 -%}{{ '{:,.0f}'.format(x) }}{%- elif x is number and x != x|int -%}{{ '%.1f'|format(x) }}{%- else -%}{{ x }}{%- endif -%}{%- endmacro %}
+
+{% macro delta(cur, prev) -%}
+{%- if cur is not none and prev -%}{%- set pct = (cur - prev) * 100 / prev -%}<span class="dl {{ 'up' if pct > 0 else 'down' if pct < 0 else '' }}">{{ '▲' if pct > 0 else '▼' if pct < 0 else '' }} {{ '%.0f'|format(pct|abs) }}% vs previous 30 days</span>
+{%- elif cur is not none -%}<span class="dl">no previous period to compare</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro pctchange(cur, base) -%}{%- if cur is not none and base -%}{%- set pct = (cur - base) * 100 / base -%}{{ '▲' if pct > 0 else '▼' if pct < 0 else '' }} {{ '%.0f'|format(pct|abs) }}%{%- else -%}—{%- endif -%}{%- endmacro %}
+
+{% macro cmp(cur, base, label) -%}
+{%- if cur is not none and base -%}{%- set pct = (cur - base) * 100 / base -%}<span class="dl {{ 'up' if pct > 0 else 'down' if pct < 0 else '' }}">{{ '▲' if pct > 0 else '▼' if pct < 0 else '' }} {{ '%.0f'|format(pct|abs) }}% vs {{ label }}</span>
+{%- elif cur is not none -%}<span class="dl">no {{ label }} to compare</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro urlpath(u) -%}{%- set u = (u or '')|string -%}{%- if u.count('/') >= 3 and u.startswith('http') -%}/{{ u.split('/', 3)[3] }}{%- else -%}{{ u or '—' }}{%- endif -%}{%- endmacro %}
+
+{% macro kpi(label, value, sub='', sev='', extra='') -%}
+<div class="ckpi"><div class="l">{{ label }}</div><div class="v {{ sev }}">{{ value }}</div>{% if sub %}<div class="s">{{ sub }}</div>{% endif %}{% if extra %}<div class="s">{{ extra }}</div>{% endif %}</div>
+{%- endmacro %}
+
+{% macro secount(sec) -%}
+{%- set fl = flags_by.get(sec) or [] -%}{%- if fl -%}<span class="count {{ 'red' if fl|selectattr('severity','equalto','red')|list }}">{{ fl|length }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro chstate(sec, state) -%}
+{%- set fl = flags_by.get(sec) or [] -%}
+{%- if fl|selectattr('severity','equalto','red')|list -%}<span class="ch-st red">{{ m.icon('red') }}{{ fl|length }} flag{{ 's' if fl|length != 1 }}</span>
+{%- elif state in (none, 'not_connected') -%}<span class="ch-st grey">Not connected</span>
+{%- elif fl -%}<span class="ch-st amber">{{ m.icon('amber') }}{{ fl|length }} flag{{ 's' if fl|length != 1 }}</span>
+{%- else -%}<span class="ch-st green">{{ m.icon('green') }}OK</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro flagrow(f) -%}
+<li class="al-row {{ f.severity }}">
+  <span class="al-ico" aria-hidden="true">{{ m.icon(f.severity) }}{% if f.v.brand %}<span class="al-brand">{{ m.brand(f.v.brand, 13) }}</span>{% endif %}</span>
+  <div class="al-main">
+    <span class="sr-only">{{ 'Needs action' if f.severity == 'red' else 'Worth a look' }}: </span>
+    <b class="al-title">{{ f.v.title }}</b>
+    {% if f.v.detail %}<span class="al-detail">{{ f.v.detail }}</span>{% endif %}
+    <span class="al-meta">
+      <span class="al-owner{{ ' none' if f.owner_name.startswith('No ') }}">{{ f.owner_name }}</span>
+      <span class="al-age al-{{ f.level }}" title="Open since {{ fmt_date(f.first_seen, True) }}">{% if f.level == 'you' %}Escalated to you · {{ f.days }} working days{% elif f.level == 'owner' %}With the owner · {{ f.days }} working days{% elif f.days <= 1 %}New{% else %}{{ f.days }} working days{% endif %}</span>
+    </span>
+  </div>
+  {% if f.v.fix %}<a class="al-fix" href="{{ f.v.fix }}"{% if f.v.external %} target="_blank" rel="noopener noreferrer"{% else %} data-tab="{{ f.v.fix[1:] }}"{% endif %}>{{ f.v.fix_label }} <span aria-hidden="true">{{ '↗' if f.v.external else '→' }}</span></a>{% endif %}
+</li>
+{%- endmacro %}
+
+{% macro flagtable(fl) -%}
+{% set reds = fl|selectattr('severity','equalto','red')|list %}{% set ambers = fl|rejectattr('severity','equalto','red')|list %}
+{% if fl %}
+<div class="alerts">
+  {% if reds %}<div class="al-group"><div class="al-head red"><span>Needs action</span><b>{{ reds|length }}</b></div><ul class="al-list">{% for f in reds %}{{ flagrow(f) }}{% endfor %}</ul></div>{% endif %}
+  {% if ambers %}<div class="al-group"><div class="al-head amber"><span>Worth a look</span><b>{{ ambers|length }}</b></div><ul class="al-list">{% for f in ambers %}{{ flagrow(f) }}{% endfor %}</ul></div>{% endif %}
+</div>
+{% else %}<div class="al-clear">{{ m.icon('green') }}<div><b>All clear</b><span>Everything owed is on track and every source is fresh.</span></div></div>{% endif %}
+{%- endmacro %}
+
+{% macro secflags(sec) -%}
+{%- set fl = (flags_by.get(sec) or [])|rejectattr('code','equalto','source_off')|list -%}
+{% if fl %}<section class="card span-12 sec-flags"><h2>Needs attention in this section</h2>{{ flagtable(fl) }}</section>{% endif %}
+{%- endmacro %}
+
+{% macro heat(items, mos, g) -%}
+<div class="cc-scroll">
+<table class="heat">
+  <thead><tr><th></th>{% for mo in mos %}<th>{{ month_label(mo) }}{% if mo[5:7] == '01' or loop.first %}<br>{{ mo[:4] }}{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>{% for item in items %}<tr><th class="row">{{ ITEM_LABEL[item] }}</th>
+    {% for x in g[item] %}
+    {% set word = {'done':'done','short':'short','late':'late','scope_missing':'scope?','unverified':'unverified','open':'open','not_owed':'n/a','pre_launch':'pre','not_tracked':'','future':'','rule':'every review'}[x.state] %}
+    <td class="{{ x.state }}" title="{{ ITEM_LABEL[item] }}, {{ month_label(x.month, True) }}: {% if x.state == 'rule' %}reply to every new review; {{ x.counted }} replies seen{% else %}{{ x.counted }} delivered of {{ x.owed if x.owed is not none else '? (scope missing)' }} owed{% endif %}{% if x.reported and item != 'report' %}; {{ x.reported }} marked done, not verified{% endif %}">
+      {% if x.state in ('not_owed','pre_launch','future','not_tracked','rule') %}<small>{{ word }}</small>{% elif x.state == 'scope_missing' %}{{ x.counted }}/?<small>scope?</small>{% else %}{{ x.counted }}/{{ x.owed }}<small>{{ word }}</small>{% endif %}</td>
+    {% endfor %}</tr>{% endfor %}</tbody>
+</table>
+</div>
+{%- endmacro %}
+
+{% macro heatlegend() -%}
+<div class="heat-legend">
+  <span><i style="background:var(--good-bg);border:1px solid var(--good)"></i>Delivered (verified)</span>
+  <span><i style="background:var(--bad-bg);border:1px solid var(--bad)"></i>Short / late</span>
+  <span><i style="background:repeating-linear-gradient(135deg,#FDECEA 0 3px,#F8D3CF 3px 6px)"></i>Scope missing</span>
+  <span><i style="background:var(--warn-bg);border:1px solid var(--warn)"></i>Marked done, not verified</span>
+  <span><i style="background:var(--wash);border:1px dashed #9CCFD0"></i>This month, open</span>
+  <span><i style="background:var(--soft);border:1px solid var(--line)"></i>Not owed / before launch</span>
+</div>
+{%- endmacro %}
+
+{% macro dltable(rows, empty) -%}
+{% if rows %}
+<div class="cc-scroll"><table class="cc-table">
+  <thead><tr><th>Month</th><th>Type</th><th>Title</th><th>Status</th><th>Verified</th><th>Owner</th><th>Blocker</th><th></th></tr></thead>
+  <tbody>{% for x in rows %}
+  <tr {% if x.not_ours %}style="opacity:.55"{% endif %}>
+    <td class="nowrap">{{ month_label(x.month) }}</td>
+    <td class="nowrap">{{ ITEM_SHORT[x.item] }}<span class="cc-sub src-from">{% if x.source in ('wp','clickup','gbp') %}{{ m.brand({'wp':'wordpress','clickup':'clickup','gbp':'gbp'}[x.source], 12) }}{% endif %}{{ {'wp':'WordPress','sitemap':'Sitemap','clickup':'ClickUp','manual':'Manual','gbp':'Business Profile'}.get(x.source, x.source) }}</span></td>
+    <td>{% if x.url %}<a href="{{ x.url }}" target="_blank" rel="noopener noreferrer">{{ x.title or x.url }}</a>{% else %}{{ x.title or '—' }}{% endif %}{% if x.due %}<span class="cc-sub">due {{ x.due }}</span>{% endif %}{% if x.not_ours %}<span class="cc-sub">marked not ours</span>{% endif %}</td>
+    <td class="nowrap">{{ STATUS_LABEL.get(x.status, x.status) }}</td>
+    <td>{% if x.verified_at %}<span class="st green">{{ m.icon('green') }}Yes</span><span class="cc-sub">{{ x.verified_how }}</span>{% elif x.check_note %}<span class="st red">{{ m.icon('red') }}No</span><span class="cc-sub">{{ x.check_note }}</span>{% else %}<span class="st amber">{{ m.icon('amber') }}Not yet</span>{% endif %}</td>
+    <td class="nowrap">{{ (P.get(x.owner_id) or {}).get('name') or '—' }}</td>
+    <td>{% if x.blocker %}<span class="need red">{{ x.blocker }}</span><span class="cc-sub">{{ (P.get(x.blocker_owner_id) or {}).get('name') or 'no owner' }} · since {{ fmt_date(x.blocked_since) }}</span>{% else %}<span class="dash">—</span>{% endif %}</td>
+    <td class="nowrap">
+      <details class="cc-more"><summary>Actions</summary>
+        <form method="post" action="{{ url_for('cc_deliverable', cid=c.id, did=x.id) }}" class="cc-inline" style="margin-top:6px">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          {% if x.verified_at %}<button class="link-btn danger" name="action" value="unverify">Remove verification</button>
+          {% else %}<input name="how" placeholder="How you checked (e.g. seen on GBP)" style="width:220px"><button class="btn btn-ghost btn-small" name="action" value="verify">Verified by hand</button>{% endif %}
+        </form>
+        {% if x.source in ('wp','sitemap') %}<form method="post" action="{{ url_for('cc_deliverable', cid=c.id, did=x.id) }}" style="margin-top:6px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn" name="action" value="{{ 'ours' if x.not_ours else 'not_ours' }}">{{ 'Count it again' if x.not_ours else 'Not ours (client wrote it)' }}</button></form>{% endif %}
+        <form method="post" action="{{ url_for('cc_deliverable', cid=c.id, did=x.id) }}" class="cc-inline" style="margin-top:6px">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="blocker">
+          <input name="blocker" value="{{ x.blocker or '' }}" placeholder="Blocker (blank clears)" style="width:200px">
+          <select name="blocker_owner_id"><option value="">Blocker owner…</option>{% for pid, p in P.items() if p.active %}<option value="{{ pid }}" {{ 'selected' if x.blocker_owner_id == pid }}>{{ p.name }}</option>{% endfor %}</select>
+          <button class="btn btn-ghost btn-small" type="submit">Save</button>
+        </form>
+      </details>
+    </td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% elif empty %}<p class="need">{{ empty }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro tasktable(rows) -%}
+<div class="cc-scroll"><table class="cc-table">
+  <thead><tr><th>Task</th><th>Type</th><th>Status</th><th>Assignee</th><th>Due</th><th>Last change</th></tr></thead>
+  <tbody>{% for t in rows %}
+    {% set overdue = t.status_type != 'closed' and t.due and t.due < now_ts %}
+    <tr {% if t.status_type == 'closed' %}style="opacity:.6"{% endif %}>
+      <td>{% if t.url %}<a class="cu-link" href="{{ t.url }}" target="_blank" rel="noopener noreferrer" title="Open in ClickUp">{{ m.brand('clickup', 13) }}<span>{{ t.name }}</span></a>{% else %}{{ t.name }}{% endif %}<span class="cc-sub">{{ t.list_name }}{% if t.live_url %} · <a href="{{ t.live_url }}" target="_blank" rel="noopener noreferrer">live URL</a>{% endif %}</span></td>
+      <td class="nowrap">{{ ITEM_SHORT.get(t.item, '—') if t.item else '—' }}</td>
+      <td class="nowrap">{{ t.status or '—' }}</td>
+      <td>{% if t.people %}{{ t.people }}{% elif t.status_type != 'closed' %}<span class="need">unassigned</span>{% else %}—{% endif %}</td>
+      <td class="nowrap">{% if t.due %}<span class="{{ 'need red' if overdue }}">{{ fmt_date(t.due) }}{% if overdue %} · overdue{% endif %}</span>{% else %}<span class="dash">no due date</span>{% endif %}</td>
+      <td class="nowrap">{{ fmt_ago(t.date_updated) }}{% if t.last_comment_at %}<span class="cc-sub">comment {{ fmt_ago(t.last_comment_at) }}</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+</table></div>
+{%- endmacro %}
+
+{# One series per chart (never two y-scales). Each bar has a hover title and the table view is the tables below. #}
+{% macro daychart(days, key, mx, label) -%}
+{% set n = days|length %}
+{% if n and mx %}
+<figure class="cc-chart">
+  <div class="ch-max">{{ num(mx) }}</div>
+  <svg viewBox="0 0 {{ n * 12 }} 100" preserveAspectRatio="none" role="img" aria-label="{{ label|capitalize }} per day, {{ fmt_date(days[0].date) }} to {{ fmt_date(days[-1].date) }}, highest {{ mx }}">
+    <line x1="0" y1="100" x2="{{ n * 12 }}" y2="100" class="base"/>
+    <line x1="0" y1="8" x2="{{ n * 12 }}" y2="8" class="grid"/>
+    {% for d in days %}{% set v = d[key] or 0 %}{% set h = (v / mx * 92) if v else 0 %}
+    <g class="day"><rect class="hit" x="{{ loop.index0 * 12 }}" y="0" width="12" height="100"/>
+      {% if h %}<rect class="cbar" x="{{ loop.index0 * 12 + 2 }}" y="{{ 100 - h }}" width="8" height="{{ h }}"/>{% endif %}
+      <title>{{ fmt_date(d.date) }}: {{ num(d[key]) }} {{ label }}</title></g>
+    {% endfor %}
+  </svg>
+  <figcaption><span>{{ fmt_date(days[0].date) }}</span><span>{{ fmt_date(days[-1].date) }}</span></figcaption>
+</figure>
+{% elif n %}<p class="need">No {{ label }} in this period ({{ fmt_date(days[0].date) }} to {{ fmt_date(days[-1].date) }}).</p>
+{% else %}<p class="need">No daily data.</p>{% endif %}
+{%- endmacro %}
+{% block cc_title %}{{ c.name }}{% endblock %}
+{% block side_client %}{% set _reds = flags|selectattr('severity','equalto','red')|list|length %}
+  <div class="side-group side-client-name" title="{{ c.name }}">{{ c.name }}</div>
+  {% for tid, label, cnt, hot in [('t-overview','Overview', flags|length, _reds),
+       ('t-content','Content & SEO', (flags_by.get('content') or [])|length, 0), ('t-gsc','Search Console', (flags_by.get('gsc') or [])|length, 0),
+       ('t-gbp','Business Profile', (flags_by.get('gbp') or [])|length, 0), ('t-ga4','Analytics', (flags_by.get('ga4') or [])|length, 0),
+       ('t-bing','Bing', (flags_by.get('bing') or [])|length, 0),
+       ('t-tasks','Tasks & reports', 0, 0), ('t-setup','Setup', row.setup.missing|length, row.setup.missing|length), ('t-notes','Notes', 0, 0)] %}
+  {% set bk = {'t-content': 'wordpress' if (src.wordpress.get('detail') or '').startswith('WordPress posts feed') else '', 't-gsc':'gsc', 't-gbp':'gbp', 't-ga4':'ga4', 't-bing':'bing', 't-tasks':'clickup'}.get(tid, '') %}
+  <a class="side-link side-sec{{ ' has-brand' if bk }}" href="#{{ tid }}" data-tab="{{ tid }}">{% if bk %}<span class="side-brand">{{ m.brand(bk, 14) }}</span>{% endif %}{{ label }}{% if cnt %} <span class="side-count {{ 'red' if hot else 'amber' }}">{{ cnt }}</span>{% endif %}</a>
+  {% endfor %}
+{% endblock %}
+{% block cc_header %}
+{% set h = c.health or 'amber' %}
+{% set reds = flags|selectattr('severity','equalto','red')|list|length %}
+<nav class="cc-crumbs" aria-label="Breadcrumb"><a href="{{ url_for('cc_portfolio') }}">All clients</a><span aria-hidden="true">/</span><span>{{ c.name }}</span></nav>
+<div class="cc-hero card">
+  <div class="hero-logo" data-bg="{{ logo.bg if logo and logo.bg in ('light', 'dark') else 'auto' }}">
+    {% if logo and logo.has %}<img src="{{ url_for('cc_logo', cid=c.id, v=logo.v) }}" alt="{{ c.name }} logo"{% if logo.mime == 'image/svg+xml' %} data-type="svg"{% endif %}>{% else %}<span class="tile-initials" data-name="{{ c.name }}" aria-hidden="true">{{ row.initials }}</span>{% endif %}
+  </div>
+  <div class="hero-main">
+    <h1>{{ c.name }}</h1>
+    <div class="facts">
+      <span>{% if c.domain %}<a href="https://{{ c.domain }}/" target="_blank" rel="noopener noreferrer">{{ c.domain }}</a>{% else %}<span class="need red">No website</span>{% endif %}</span>
+      <span>{{ c.package or 'Package not set' }}</span>
+      <span>{{ c.status|capitalize }}</span>
+      {% if c.go_live %}<span>Go-live {{ fmt_date(c.go_live, True) }}</span>{% endif %}
+      <span>AM: {{ row.am or '—' }}</span><span>SEO: {{ row.seo or '—' }}</span>
+    </div>
+  </div>
+  <div class="acts">
+    <div class="cc-health-big {{ h }}">{{ m.icon(h) }}{{ {'red':'Red','amber':'Amber','green':'Green','paused':'Paused'}[h] }}</div>
+    {% if c.scope_doc %}<a class="btn btn-ghost btn-small" href="{{ c.scope_doc }}" target="_blank" rel="noopener noreferrer">Scope doc</a>{% endif %}
+    <form method="post" action="{{ url_for('cc_client_sync', cid=c.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-primary btn-small" type="submit">Sync now</button></form>
+  </div>
+</div>
+
+{% set b = row.cells.blog %}
+<div class="cc-sum">
+  <div><div class="l">Status</div><div class="v {{ row.status.sev }}">{{ m.icon(row.status.sev) }}{{ row.status.text }}</div><div class="s">{{ row.status.reason|truncate(80) }}</div></div>
+  <div><div class="l">Setup</div><div class="v {{ 'green' if not row.setup.missing else 'red' }}">{{ row.setup.done }}/{{ row.setup.total }}</div><div class="s">{{ ('Missing: ' ~ row.setup.missing|join(', ')|lower) if row.setup.missing else 'Complete' }}</div></div>
+  <div><div class="l">Blogs this month</div>{% if b.state == 'scope_missing' %}<div class="v red">?</div><div class="s">Scope missing · {{ b.counted }} live</div>{% elif b.state in ('not_owed','pre_launch') %}<div class="v">—</div><div class="s">{{ 'Not in package' if b.state == 'not_owed' else 'Before launch' }}</div>{% else %}<div class="v {{ 'green' if b.state == 'done' else 'red' if b.state in ('short','late') else '' }}">{{ b.counted }}/{{ b.owed }}</div><div class="s">verified live</div>{% endif %}</div>
+  <div><div class="l">Last live blog</div><div class="v">{{ fmt_date(row.last_blog) if row.last_blog else '—' }}</div><div class="s">{{ fmt_ago(row.last_blog) if row.last_blog else ('no posts feed' if row.wp_state == 'partial' else 'none found') }}</div></div>
+  <div><div class="l">Open flags</div><div class="v {{ 'red' if reds else 'amber' if flags else 'green' }}">{{ flags|length }}</div><div class="s">{{ reds }} red · {{ flags|length - reds }} amber</div></div>
+</div>
+{% endblock %}
+{% block cc %}
+{% set h = c.health or 'amber' %}
+{% set reds = flags|selectattr('severity','equalto','red')|list|length %}
+
+{% set open_tasks = tasks|rejectattr('status_type','equalto','closed')|list %}
+{% set gsc_src = src.gsc %}{% set wp_src = src.wordpress %}
+<nav class="cc-ctabs cc-narrow" aria-label="Client sections">
+  <a href="#t-overview" data-tab="t-overview">Overview{% if flags %}<span class="count {{ 'red' if reds }}">{{ flags|length }}</span>{% endif %}</a>
+  <a href="#t-content" data-tab="t-content">Content &amp; SEO{{ secount('content') }}</a>
+  <a href="#t-gsc" data-tab="t-gsc">Search Console{{ secount('gsc') }}</a>
+  <a href="#t-gbp" data-tab="t-gbp">Business Profile{{ secount('gbp') }}</a>
+  <a href="#t-ga4" data-tab="t-ga4">Analytics{{ secount('ga4') }}</a>
+  <a href="#t-bing" data-tab="t-bing">Bing{{ secount('bing') }}</a>
+  <a href="#t-tasks" data-tab="t-tasks">Tasks &amp; reports<span class="count">{{ open_tasks|length }}</span></a>
+  <a href="#t-setup" data-tab="t-setup">Setup{% if row.setup.missing %}<span class="count red">{{ row.setup.missing|length }}</span>{% endif %}</a>
+  <a href="#t-notes" data-tab="t-notes">Notes</a>
+</nav>
+
+<div id="cc-tabsbox">
+{# ------------------------------------------------------------------ OVERVIEW #}
+<div class="cc-panel" id="t-overview">
+  <div class="cc-chans">
+    {# Content & SEO #}
+    {% set b = row.cells.blog %}
+    <a class="cc-chan" href="#t-content" data-tab="t-content">
+      <div class="ch-head">{% if (src.wordpress.get('detail') or '').startswith('WordPress posts feed') %}<span class="ch-ico ch-brand" aria-hidden="true">{{ m.brand('wordpress', 20) }}</span>{% else %}<span class="ch-ico" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M5 2.5h7l3.5 3.5v11.5H5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 9.5h5M8 12.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>{% endif %}<h2>Content &amp; SEO</h2>{{ chstate('content', wp_src.get('state')) }}</div>
+      <div class="ch-nums">
+        <div><span class="n">{% if b.state == 'scope_missing' %}{{ b.counted }}/?{% elif b.state in ('not_owed','pre_launch') %}—{% else %}{{ b.counted }}/{{ b.owed }}{% endif %}</span><span class="l">Blogs this month</span></div>
+        <div><span class="n">{{ fmt_date(row.last_blog) if row.last_blog else '—' }}</span><span class="l">Last live blog</span></div>
+        <div><span class="n">{{ aeo.score if aeo and aeo.score is not none else '—' }}</span><span class="l">AEO score</span></div>
+      </div>
+      <div class="ch-foot">{% if b.state == 'scope_missing' %}Blog scope isn't written down{% elif row.home_fails and row.home_fails >= 2 %}Homepage down{% else %}{{ 'Homepage up' if row.home and not row.home_fails else 'Homepage not checked' }}{% endif %}<span class="go">Open →</span></div>
+    </a>
+    {# Search Console #}
+    <a class="cc-chan" href="#t-gsc" data-tab="t-gsc">
+      <div class="ch-head"><span class="ch-ico ch-brand" aria-hidden="true">{{ m.brand("gsc", 20) }}</span><h2>Search Console</h2>{{ chstate('gsc', gsc_src.get('state')) }}</div>
+      {% if gsc %}
+      <div class="ch-nums">
+        <div><span class="n">{{ num(gsc.d30.clicks) }}</span><span class="l">Clicks · 30 days</span></div>
+        <div><span class="n">{{ num(gsc.d30.impressions) }}</span><span class="l">Impressions</span></div>
+        <div><span class="n">{{ '%.1f'|format(gsc.d30.position) if gsc.d30.position is not none else '—' }}</span><span class="l">Avg position</span></div>
+      </div>
+      <div class="ch-foot">Google data through {{ fmt_date(gsc.data_through) if gsc.data_through else '—' }}<span class="go">Open →</span></div>
+      {% else %}
+      <div class="ch-empty">{{ gsc_src.get('detail') or 'Not synced yet' }}</div>
+      <div class="ch-foot">Clicks, impressions, queries and pages<span class="go">Open →</span></div>
+      {% endif %}
+    </a>
+    {# Business Profile #}
+    {% set gp = row.cells.gbp_post %}
+    <a class="cc-chan" href="#t-gbp" data-tab="t-gbp">
+      <div class="ch-head"><span class="ch-ico ch-brand" aria-hidden="true">{{ m.brand("gbp", 20) }}</span><h2>Business Profile</h2>{{ chstate('gbp', src.gbp.get('state')) }}</div>
+      {% if gbp %}
+      <div class="ch-nums">
+        <div><span class="n">{{ num(gbp.d30.calls) }}</span><span class="l">Call clicks · 30 days</span></div>
+        <div><span class="n">{{ num(gbp.d30.website) }}</span><span class="l">Website clicks</span></div>
+        <div><span class="n">{{ gbp.reviews.average|round(1) if gbp.reviews.average else '—' }}</span><span class="l">Rating · {{ num(gbp.reviews.total) }} reviews</span></div>
+      </div>
+      <div class="ch-foot">{% if gbp.reviews.waiting %}{{ gbp.reviews.waiting }} review{{ 's' if gbp.reviews.waiting != 1 }} waiting for a reply{% else %}Google data through {{ fmt_date(gbp.through) if gbp.through else '—' }}{% endif %}<span class="go">Open →</span></div>
+      {% else %}
+      <div class="ch-nums">
+        <div><span class="n">{% if gp.state == 'scope_missing' %}{{ gp.counted }}/?{% elif gp.state in ('not_owed','pre_launch') %}—{% else %}{{ gp.counted }}/{{ gp.owed }}{% endif %}</span><span class="l">GBP posts this month</span></div>
+        <div><span class="n">{{ gbp_profile.rating if gbp_profile and gbp_profile.rating else '—' }}</span><span class="l">Rating</span></div>
+        <div><span class="n">{{ gbp_profile.reviews if gbp_profile and gbp_profile.reviews is not none else '—' }}</span><span class="l">Reviews</span></div>
+      </div>
+      <div class="ch-foot"><span class="cf" title="{{ src.gbp.get('detail') or '' }}">{{ 'Waiting for Google to approve access' if 'quota' in (src.gbp.get('detail') or '') else (src.gbp.get('detail') or 'Profile not connected') }}</span><span class="go">Open →</span></div>
+      {% endif %}
+    </a>
+    {# Analytics #}
+    <a class="cc-chan" href="#t-ga4" data-tab="t-ga4">
+      <div class="ch-head"><span class="ch-ico ch-brand" aria-hidden="true">{{ m.brand("ga4", 20) }}</span><h2>Analytics</h2>{{ chstate('ga4', src.ga4.get('state')) }}</div>
+      {% if ga %}
+      <div class="ch-nums">
+        <div><span class="n">{{ num(ga.cur.sessions) }}</span><span class="l">Organic sessions · 30 days</span></div>
+        <div><span class="n">{{ num(ga.cur.key_events) }}</span><span class="l">Organic key events</span></div>
+        <div><span class="n">{{ num(ga.ai_sessions) }}</span><span class="l">AI-assistant visits</span></div>
+      </div>
+      <div class="ch-foot">{% if ga.ly.sessions %}{{ pctchange(ga.cur.sessions, ga.ly.sessions) }} organic vs last year{% else %}Data through {{ fmt_date(ga.periods.cur[1]) }}{% endif %}<span class="go">Open →</span></div>
+      {% else %}
+      <div class="ch-empty">{{ src.ga4.get('detail') or "Google Analytics isn't connected yet." }}</div>
+      <div class="ch-foot">Organic sessions, landing pages, key events<span class="go">Open →</span></div>
+      {% endif %}
+    </a>
+    {# Bing #}
+    <a class="cc-chan" href="#t-bing" data-tab="t-bing">
+      <div class="ch-head"><span class="ch-ico ch-brand" aria-hidden="true">{{ m.brand("bing", 20) }}</span><h2>Bing</h2>{{ chstate('bing', src.bing.get('state')) }}</div>
+      {% if bg %}
+      <div class="ch-nums">
+        <div><span class="n">{{ num(bg.d30.clicks) }}</span><span class="l">Clicks · 30 days</span></div>
+        <div><span class="n">{{ num(bg.d30.impressions) }}</span><span class="l">Impressions</span></div>
+        <div><span class="n">{{ num(bg.crawl.in_index) }}</span><span class="l">Pages in Bing's index</span></div>
+      </div>
+      <div class="ch-foot"><span class="cf">{{ bg.site }}</span><span class="go">Open →</span></div>
+      {% else %}
+      <div class="ch-empty">{{ src.bing.get('detail') or 'Bing Webmaster Tools isn\'t connected yet.' }}</div>
+      <div class="ch-foot">Clicks, queries, pages and crawl health<span class="go">Open →</span></div>
+      {% endif %}
+    </a>
+  </div>
+
+  <div class="cc-grid">
+  <section class="card span-12" id="flags">
+    <h2>What needs attention {% if flags %}<span class="h2-sub">{{ flags|length }} open · a problem goes to its owner after 2 working days and to you after 5</span>{% endif %}</h2>
+    {{ flagtable(flags) }}
+  </section>
+  <section class="card span-12" id="ledger">
+    <h2>Owed vs delivered · from {{ month_label(months[0], True) }}</h2>
+    {{ heat(GRID_ITEMS, months, grid) }}
+    {{ heatlegend() }}
+  </section>
+  </div>
+</div>
+
+{# ------------------------------------------------------------------ CONTENT & SEO #}
+<div class="cc-panel" id="t-content"><div class="cc-grid">
+  {{ secflags('content') }}
+  <div class="span-12 cc-kpis">
+    {% set b = row.cells.blog %}
+    {{ kpi('Blogs this month', (b.counted ~ '/?') if b.state == 'scope_missing' else ('—' if b.state in ('not_owed','pre_launch') else b.counted ~ '/' ~ b.owed),
+           'Scope missing' if b.state == 'scope_missing' else ('Not in package' if b.state == 'not_owed' else ('Before launch' if b.state == 'pre_launch' else 'verified live')),
+           'red' if b.state in ('scope_missing','short','late') else ('green' if b.state == 'done' else '')) }}
+    {{ kpi('Last live blog', fmt_date(row.last_blog) if row.last_blog else '—', fmt_ago(row.last_blog) if row.last_blog else ('no posts feed' if row.wp_state == 'partial' else 'none found')) }}
+    {{ kpi('Homepage', '—' if row.home is none else ('Down' if row.home_fails >= 2 else ('1 failed check' if row.home_fails == 1 else 'Up')),
+           'not checked' if row.home is none else ('HTTP ' ~ (row.home or 'no response') ~ ' · ' ~ fmt_ago(row.home_at)),
+           '' if row.home is none else ('red' if row.home_fails >= 2 else ('amber' if row.home_fails == 1 else 'green'))) }}
+    {{ kpi('AEO score', (aeo.score ~ ' / 100') if aeo and aeo.score is not none else '—', ('audit ' ~ fmt_date(aeo.finished_at)) if aeo and aeo.score is not none else 'no finished audit') }}
+  </div>
+  <section class="card span-12 cc-posts-card">
+    <h2>Blog posts on the site <span class="tag grey">{{ site_posts|length }}</span>{% if c.domain %}<a class="hdr-link" href="https://{{ c.domain }}/" target="_blank" rel="noopener noreferrer">Open {{ c.domain }} ↗</a>{% endif %}</h2>
+    {% if site_posts %}
+    <div class="cc-posts" id="cc-posts">
+      {% for p in site_posts %}{% set when = p.published_at %}
+      <article class="post-card{{ ' more' if loop.index > 12 }}">
+        <a class="pc-visual" href="{{ p.url }}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">
+          <div class="pc-cover"><span class="pc-cover-title">{{ p.title or p.url }}</span><span class="pc-cover-site">{{ c.domain or '' }}</span></div>
+          {% if p.image_url %}<img src="{{ url_for('cc_post_image', cid=c.id, did=p.id) }}" alt="" loading="lazy">{% endif %}
+          <span class="pc-date">{% if when %}{{ fmt_date(when, True) }}{% elif p.month == 'baseline' %}Earlier post{% else %}{{ month_label(p.month, True) }}{% endif %}</span>
+        </a>
+        <div class="pc-body">
+          <h3 title="{{ p.title or p.url }}">{{ p.title or p.url }}</h3>
+          <div class="pc-foot">
+            {% if p.verified_at %}<span class="pc-state good">{{ m.icon('green') }}Live and indexable</span>
+            {% elif p.check_note %}<span class="pc-state bad" title="{{ p.check_note }}">{{ m.icon('red') }}{{ p.check_note|truncate(28) }}</span>
+            {% elif p.month == 'baseline' %}<span class="pc-state muted">Before tracking</span>
+            {% else %}<span class="pc-state muted">Not checked yet</span>{% endif %}
+            <a class="btn btn-ghost btn-small pc-open" href="{{ p.url }}" target="_blank" rel="noopener noreferrer" aria-label="Open “{{ p.title or 'post' }}” on the website">Open post <span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% if site_posts|length > 12 %}<div class="pc-more"><button class="btn btn-ghost btn-small" type="button" id="cc-posts-more" aria-expanded="false">Show all {{ site_posts|length }} posts</button></div>{% endif %}
+    <p class="small muted" style="margin:12px 0 0">Pictures are each post's own featured or share image, taken from the website. Posts without one get a cover drawn in the client's colours.</p>
+    {% else %}<p class="need">No blog posts found on {{ c.domain or 'the site' }} yet (no WordPress posts feed or posts sitemap shows any).</p>{% endif %}
+  </section>
+  <section class="card span-12">
+    <h2>Blogs · owed vs delivered, from {{ month_label(months[0], True) }}</h2>
+    {{ heat(['blog'], months, grid) }}
+  </section>
+  <section class="card span-12">
+    <h2>Blog posts · {{ month_label(recent_from, True) }} to now</h2>
+    {{ dltable(sections.content, 'No blog posts found for the last three months, in ClickUp or on the site.') }}
+  </section>
+  <section class="card span-6">
+    <h2>Website {{ m.srcstate(wp_src.get('state')) }}</h2>
+    {% if row.home is none %}<p class="need">Not checked yet{% if not c.domain %} (no domain){% endif %}.</p>
+    {% else %}<p>{% if row.home_fails >= 2 %}<span class="st red">{{ m.icon('red') }}Homepage down</span>{% elif row.home_fails == 1 %}<span class="st amber">{{ m.icon('amber') }}Last check failed</span>{% else %}<span class="st green">{{ m.icon('green') }}Homepage up</span>{% endif %}
+      <span class="cc-sub">HTTP {{ row.home or 'no response' }} · checked {{ fmt_ago(row.home_at) }}</span></p>{% endif %}
+    <p class="small">How posts are read: {{ wp_src.get('detail') or 'WordPress posts feed' }}</p>
+    <p class="small muted" style="margin:0">A blog counts as delivered once its live URL loads, isn't noindexed and canonicals to itself. A compliance crawl (price rules, SSL, robots, noindex on money pages) comes in Phase 2.</p>
+  </section>
+  <section class="card span-6">
+    <h2>AEO Snapshot</h2>
+    {% if aeo and aeo.score is not none %}<p style="margin:0"><span class="big-n">{{ aeo.score }}</span><span class="muted"> / 100</span></p>
+    <p class="small muted">From the AEO Snapshot audit of {{ fmt_date(aeo.finished_at, True) }} · <a href="{{ url_for('audit_view', aid=aeo.id, view='overview') }}">open audit</a></p>
+    {% else %}<p class="need">No finished AEO Snapshot audit for {{ c.domain or 'this client' }}. Run one from New audit to see how AI answers treat them.</p>{% endif %}
+    {% set content_rules = rules|selectattr('active')|list %}
+    {% if content_rules %}<h3 class="sub-h">Content rules</h3><ul class="rule-list">{% for r in content_rules %}<li>{{ {'no_prices':'No prices on site','no_ai_photos':'No AI project photos','custom':'Rule'}.get(r.kind, r.kind) }}{% if r.note %}<span class="cc-sub">{{ r.note }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+  </section>
+</div></div>
+
+{# ------------------------------------------------------------------ SEARCH CONSOLE #}
+<div class="cc-panel" id="t-gsc"><div class="cc-grid">
+  {{ secflags('gsc') }}
+  {% if gsc %}
+  <div class="span-12 src-line">
+    <span class="src-brand">{{ m.brand('gsc', 18) }}<b>{{ gsc.property }}</b></span>
+    <span>Google data through {{ fmt_date(gsc.data_through) if gsc.data_through else '—' }}</span>
+    <span>DataWise synced {{ (gsc.last_synced or '—')[:16] }} UTC</span>
+    <span>Read {{ fmt_ago(gsc.fetched_at) }}</span>
+    <a href="{{ gsc.console }}" target="_blank" rel="noopener noreferrer">Open in Search Console ↗</a>
+  </div>
+  <div class="span-12 cc-kpis">
+    {% for key, label in [('clicks','Clicks'),('impressions','Impressions')] %}
+    {{ kpi(label ~ ' · 30 days', num(gsc.d30[key]), '7 days: ' ~ num(gsc.d7[key]) ~ ' · 90 days: ' ~ num(gsc.d90[key]), '', delta(gsc.d30[key], gsc.prev[key])) }}
+    {% endfor %}
+    {{ kpi('CTR · 30 days', ('%.1f%%'|format(gsc.d30.ctr * 100)) if gsc.d30.ctr is not none else '—', '7 days: ' ~ (('%.1f%%'|format(gsc.d7.ctr * 100)) if gsc.d7.ctr is not none else '—')) }}
+    {{ kpi('Avg position · 30 days', ('%.1f'|format(gsc.d30.position)) if gsc.d30.position is not none else '—', 'an average across all queries, not a live rank') }}
+  </div>
+  <section class="card span-6">
+    <h2>Clicks per day</h2>
+    {{ daychart(gsc.daily, 'clicks', gsc.max_clicks, 'clicks') }}
+  </section>
+  <section class="card span-6">
+    <h2>Impressions per day</h2>
+    {{ daychart(gsc.daily, 'impressions', gsc.max_impressions, 'impressions') }}
+  </section>
+  <section class="card span-12">
+    <h2>Where they rank <span class="tag grey">{{ num(gsc.queries_total) }} queries</span></h2>
+    <div class="cc-kpis inline">
+      {{ kpi('Top 3', num(gsc.top3), 'queries') }}{{ kpi('Top 10', num(gsc.top10), 'queries') }}{{ kpi('Striking distance', num(gsc.striking), 'DataWise\'s count of near-page-one queries') }}
+    </div>
+  </section>
+  <section class="card span-7">
+    <h2>Top queries · 30 days</h2>
+    {% if gsc.top_queries %}
+    <div class="cc-scroll"><table class="cc-table">
+      <thead><tr><th>Query</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">CTR</th><th class="num">Position</th></tr></thead>
+      <tbody>{% for q in gsc.top_queries %}<tr><td>{{ q.query }}</td><td class="num">{{ num(q.clicks) }}</td><td class="num">{{ num(q.impressions) }}</td><td class="num">{{ ('%.1f%%'|format(q.ctr * 100)) if q.ctr is not none else '—' }}</td><td class="num">{{ ('%.1f'|format(q.position)) if q.position is not none else '—' }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="need">No query rows yet.</p>{% endif %}
+  </section>
+  <section class="card span-5">
+    <h2>Top pages · 30 days</h2>
+    {% if gsc.top_pages %}
+    <div class="cc-scroll"><table class="cc-table pages">
+      <thead><tr><th>Page</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">Pos.</th></tr></thead>
+      <tbody>{% for p in gsc.top_pages %}<tr><td class="pg"><a href="{{ p.url }}" target="_blank" rel="noopener noreferrer" title="{{ p.url }}">{{ p.path }}</a>{% if p.tagged %}<span class="cc-sub">tracking-tagged link (utm)</span>{% endif %}</td><td class="num">{{ num(p.clicks) }}</td><td class="num">{{ num(p.impressions) }}</td><td class="num">{{ ('%.1f'|format(p.position)) if p.position is not none else '—' }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if gsc.tagged_pages %}<p class="small muted">Rows marked "utm" are the same page reached through a tagged link (usually the Business Profile website button), so Google reports them separately.</p>{% endif %}
+    {% else %}<p class="need">No page rows yet.</p>{% endif %}
+  </section>
+  <p class="span-12 small muted cc-listnote">Source: Google Search Console, web search, all countries and devices, as stored by DataWise (read {{ fmt_ago(gsc.fetched_at) }}). Google's numbers run 2–3 days behind. Query and page tables leave out anonymised queries, so their rows don't add up to the totals. "—" means no data, never zero.</p>
+  {% else %}
+  <section class="card span-12 cc-notconn">
+    <h2>{{ m.brand("gsc", 18) }} Search Console isn't showing for this client yet {{ m.srcstate(gsc_src.get('state')) }}</h2>
+    <p><b>Why:</b> {{ gsc_src.get('detail') or 'It hasn\'t been synced yet. Press Sync now at the top of the page.' }}</p>
+    <p><b>To fix:</b>
+      {% if 'switched off' in (gsc_src.get('detail') or '') %}open DataWise → Search Console and switch syncing on for this property. The next sync here picks it up.
+      {% elif "hasn't synced" in (gsc_src.get('detail') or '') %}nothing to do here: DataWise pulls the data on its next run (or press sync for this property in DataWise), and the next sync here picks it up.
+      {% elif 'No Search Console property' in (gsc_src.get('detail') or '') %}add this site to the Google account that DataWise is connected to (or give that account access to the client's property), then refresh the property list in DataWise.
+      {% elif 'token' in (gsc_src.get('detail') or '') %}add the DataWise token to the server's settings.
+      {% else %}press Sync now; if it keeps failing, check DataWise's Google connection.{% endif %}</p>
+    <p class="small muted">Once connected you'll see clicks, impressions, CTR and average position (7, 30 and 90 days), daily trends, where queries rank, and the top queries and pages.</p>
+  </section>
+  {% endif %}
+</div></div>
+
+{# ------------------------------------------------------------------ BUSINESS PROFILE #}
+<div class="cc-panel" id="t-gbp"><div class="cc-grid">
+  {{ secflags('gbp') }}
+  {% if gbp %}{% set pf = gbp.profile %}{% set rv = gbp.reviews %}
+  <div class="span-12 src-line">
+    <span class="src-brand">{{ m.brand('gbp', 18) }}<b>{{ pf.title }}</b></span>
+    {% if pf.address %}<span>{{ pf.address }}</span>{% endif %}
+    <span>{% if pf.verified == 1 %}<span class="st green">{{ m.icon('green') }}Verified</span>{% elif pf.verified == 0 %}<span class="st red">{{ m.icon('red') }}Not verified / suspended</span>{% else %}Verification unknown{% endif %}</span>
+    <span>{{ 'Picked by hand' if pf.how == 'manual' else 'Matched by website' }}{% if pf.others %} · also matches {{ pf.others|join(', ') }}{% endif %}</span>
+    <span>Google data through {{ fmt_date(gbp.through) if gbp.through else '—' }} · read {{ fmt_ago(gbp.fetched_at) }}</span>
+    {% if pf.maps_uri %}<a href="{{ pf.maps_uri }}" target="_blank" rel="noopener noreferrer">Open on Google Maps ↗</a>{% endif %}
+  </div>
+  <div class="span-12 cc-kpis">
+    {% for key, label in [('calls','Call clicks'),('website','Website clicks'),('directions','Direction requests'),('views','Profile views')] %}
+    {{ kpi(label ~ ' · 30 days', num(gbp.d30[key]), '', '', delta(gbp.d30[key], gbp.prev[key])) }}
+    {% endfor %}
+  </div>
+  <section class="card span-4"><h2>Call clicks per day</h2>{{ daychart(gbp.daily, 'calls', gbp.max.calls, 'call clicks') }}</section>
+  <section class="card span-4"><h2>Website clicks per day</h2>{{ daychart(gbp.daily, 'website', gbp.max.website, 'website clicks') }}</section>
+  <section class="card span-4"><h2>Profile views per day</h2>{{ daychart(gbp.daily, 'views', gbp.max.views, 'views') }}</section>
+  <section class="card span-7">
+    <h2>Reviews {% if rv.waiting %}<span class="tag {{ 'amber' if (gbp.oldest_days or 0) > 3 else 'grey' }}">{{ rv.waiting }} waiting for a reply</span>{% else %}<span class="tag green">All replied</span>{% endif %}</h2>
+    <div class="cc-kpis inline">
+      {{ kpi('Rating', (rv.average|round(1)) if rv.average else '—', 'Google average') }}
+      {{ kpi('Reviews', num(rv.total), (num(rv.new_this_month) ~ ' new this month') if rv.new_this_month is not none else '') }}
+      {{ kpi('Oldest without a reply', (gbp.oldest_days ~ ' days') if gbp.oldest_days is not none else '—', 'replies count toward the review-reply scope') }}
+    </div>
+    {% if rv.recent %}<ul class="rev-list">{% for r in rv.recent %}
+      <li><span class="stars" aria-label="{{ r.stars or '?' }} stars">{{ '★' * (r.stars or 0) }}<span class="off">{{ '★' * (5 - (r.stars or 0)) }}</span></span>
+        <span class="small muted">{{ r.who }} · {{ fmt_date(r.at) }}{% if not r.replied %} · <span class="need">no reply yet</span>{% endif %}</span>
+        {% if r.text %}<p>{{ r.text }}</p>{% endif %}</li>{% endfor %}</ul>{% endif %}
+  </section>
+  <section class="card span-5">
+    <h2>Profile work · owed vs delivered</h2>
+    {{ heat(GBP_ITEMS, gbp_months, gbp_grid) }}
+    <p class="small muted" style="margin:8px 0 0">Counted from the profile itself: live posts, photos the business added, and replies to reviews, in the month Google shows them. Closed ClickUp tasks without a match show as "marked done, not verified".</p>
+  </section>
+  <p class="span-12 small muted cc-listnote">Source: Google Business Profile APIs, read {{ fmt_ago(gbp.fetched_at) }}. A call click is a tap on the call button and a website click a tap on the website button: they're interest signals, not confirmed leads. Google's numbers run a few days behind, so the last days can read low. "—" means no data, never zero.</p>
+  {% else %}
+  <section class="card span-12 cc-notconn">
+    <h2>{{ m.brand("gbp", 18) }} Business Profile isn't showing for this client yet {{ m.srcstate(src.gbp.get('state')) }}</h2>
+    <p><b>Why:</b> {% if 'quota' in (src.gbp.get('detail') or '') %}Google hasn't approved Business Profile API access for our Google Cloud project yet. Data starts flowing on the next sync after it does.{% else %}{{ src.gbp.get('detail') or "It hasn't been synced yet." }}{% endif %}</p>
+    <p><b>To fix:</b>
+      {% set why = src.gbp.get('detail') or '' %}
+      {% if 'sign-in key' in why %}add the Google OAuth client ID and secret to the server's settings, then connect on the Sync log page.
+      {% elif "isn't connected" in why or 'Connect again' in why or "can't be read" in why %}open <a href="{{ url_for('cc_sync') }}">Sync log</a> and click Connect Business Profile.
+      {% elif 'quota' in why %}wait for Google to approve API access for the Cloud project; nothing to change here.
+      {% elif 'No Business Profile for' in why %}make sure the connected Google account manages this client's profile (the client adds it as a manager), or pick the profile by hand on the Setup tab.
+      {% elif 'picked on Setup' in why %}pick the profile again on the Setup tab.
+      {% else %}press Sync now at the top of the page.{% endif %}</p>
+    <p class="small muted" style="margin:0">Once connected you'll see call clicks, website clicks, direction requests and views (30 days, with daily charts), reviews waiting for a reply, and posts, photos and replies counted straight from the profile.</p>
+  </section>
+  <section class="card span-7">
+    <h2>Profile work · owed vs delivered, from {{ month_label(gbp_months[0], True) }}</h2>
+    {{ heat(GBP_ITEMS, gbp_months, gbp_grid) }}
+    <p class="small muted" style="margin:8px 0 0">Until the profile is connected, posts, photos and review replies count once someone confirms they're on the profile (Deliverables → Verified by hand).</p>
+  </section>
+  <section class="card span-5">
+    <h2>Profile snapshot {% if gbp_profile %}<span class="tag grey">{{ fmt_date(gbp_profile.at) }}</span>{% endif %}</h2>
+    {% if gbp_profile %}
+    <p style="margin:0 0 4px"><b>{{ gbp_profile.title }}</b><span class="cc-sub">{{ gbp_profile.category or '—' }}</span></p>
+    <div class="cc-kpis inline">
+      {{ kpi('Rating', gbp_profile.rating or '—', '') }}{{ kpi('Reviews', gbp_profile.reviews if gbp_profile.reviews is not none else '—', '') }}{{ kpi('Photos', gbp_profile.photos if gbp_profile.photos is not none else '—', '') }}
+    </div>
+    <p class="small muted" style="margin:0">From the AEO Snapshot audit of {{ fmt_date(gbp_profile.at, True) }} · <a href="{{ url_for('audit_view', aid=gbp_profile.audit_id, view='overview') }}">open audit</a>. A snapshot, not live.</p>
+    {% else %}<p class="need">No profile snapshot yet.</p>{% endif %}
+  </section>
+  {% endif %}
+  <section class="card span-12">
+    <h2>Profile deliverables · {{ month_label(recent_from, True) }} to now</h2>
+    {{ dltable(sections.gbp, 'No Business Profile posts, photos or review replies recorded for the last three months.') }}
+  </section>
+  {% set gbp_open = gbp_tasks|rejectattr('status_type','equalto','closed')|list %}
+  {% if gbp_open %}<section class="card span-12">
+    <h2>{{ m.brand('clickup', 18) }} Open Business Profile tasks <span class="tag grey">{{ gbp_open|length }}</span></h2>
+    {{ tasktable(gbp_open[:20]) }}
+  </section>{% endif %}
+</div></div>
+
+{# ------------------------------------------------------------------ ANALYTICS #}
+<div class="cc-panel" id="t-ga4"><div class="cc-grid">
+  {{ secflags('ga4') }}
+  {% if ga %}
+  <div class="span-12 src-line">
+    <span class="src-brand">{{ m.brand('ga4', 18) }}<b>{{ ga.display_name }}</b>{% if ga.measurement_id %} · {{ ga.measurement_id }}{% endif %}</span>
+    {% if ga.website %}<span>{{ ga.website }}</span>{% endif %}
+    <span>{{ 'Picked by hand' if ga.how == 'manual' else 'Matched by website' }}{% if ga.others %} · also matches {{ ga.others|join(', ') }}{% endif %}</span>
+    <span>{{ fmt_date(ga.periods.cur[0]) }} – {{ fmt_date(ga.periods.cur[1]) }} · read {{ fmt_ago(ga.fetched_at) }}</span>
+    {% if ga.ga_url %}<a href="{{ ga.ga_url }}" target="_blank" rel="noopener noreferrer">Open in Google Analytics ↗</a>{% endif %}
+  </div>
+  <div class="span-12 cc-kpis">
+    {{ kpi('Organic sessions · 30 days', num(ga.cur.sessions), cmp(ga.cur.sessions, ga.ly.sessions, 'same 30 days last year'), '', cmp(ga.cur.sessions, ga.prev.sessions, 'previous 30 days')) }}
+    {{ kpi('Engaged organic sessions', num(ga.cur.engaged), cmp(ga.cur.engaged, ga.ly.engaged, 'same 30 days last year'), '', cmp(ga.cur.engaged, ga.prev.engaged, 'previous 30 days')) }}
+    {{ kpi('Organic key events', num(ga.cur.key_events), 'of ' ~ num(ga.cur.all_key_events) ~ ' from all channels', '', cmp(ga.cur.key_events, ga.prev.key_events, 'previous 30 days')) }}
+    {{ kpi('AI-assistant visits', num(ga.ai_sessions), 'sessions from ChatGPT, Perplexity, Gemini, Copilot, Claude and others') }}
+  </div>
+  <section class="card span-6"><h2>Organic sessions per day</h2>{{ daychart(ga.daily30, 'organic', ga.max_organic, 'organic sessions') }}</section>
+  <section class="card span-6"><h2>All sessions per day</h2>{{ daychart(ga.daily30, 'all', ga.max_all, 'sessions') }}</section>
+  <section class="card span-7">
+    <h2>Top organic landing pages · 30 days</h2>
+    {% if ga.pages %}
+    <div class="cc-scroll"><table class="cc-table pages">
+      <thead><tr><th>Page</th><th class="num">Sessions</th><th class="num">Engaged</th><th class="num">Key events</th></tr></thead>
+      <tbody>{% for p in ga.pages %}<tr><td class="pg"><span title="{{ p.page }}">{{ p.page or '(not set)' }}</span></td><td class="num">{{ num(p.sessions) }}</td><td class="num">{{ num(p.engaged) }}</td><td class="num">{{ num(p.key_events) }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="need">No organic landings in this period.</p>{% endif %}
+  </section>
+  <section class="card span-5">
+    <h2>Sessions by channel · 30 days</h2>
+    {% if ga.channels %}
+    <div class="cc-scroll"><table class="cc-table">
+      <thead><tr><th>Channel</th><th class="num">Sessions</th><th class="num">Key events</th></tr></thead>
+      <tbody>{% for r in ga.channels %}<tr><td>{{ r.channel or '(not set)' }}</td><td class="num">{{ num(r.sessions) }}</td><td class="num">{{ num(r.key_events) }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="need">No sessions in this period.</p>{% endif %}
+  </section>
+  <section class="card span-6">
+    <h2>AI-assistant referrals · 30 days</h2>
+    {% if ga.ai %}
+    <table class="cc-table"><thead><tr><th>Source</th><th class="num">Sessions</th><th class="num">Key events</th></tr></thead>
+      <tbody>{% for r in ga.ai %}<tr><td>{{ r.source }}</td><td class="num">{{ num(r.sessions) }}</td><td class="num">{{ num(r.key_events) }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="muted small">No sessions from the AI assistants on our list in this period.</p>{% endif %}
+    <p class="small muted" style="margin:8px 0 0">Counted from GA4's session source. Links copied out of an assistant usually arrive with no referrer and show as Direct, so this is a floor, not the full picture.</p>
+  </section>
+  <section class="card span-6">
+    <h2>Key events · 30 days</h2>
+    {% if ga.key_events %}
+    <table class="cc-table"><thead><tr><th>Event</th><th class="num">Count</th></tr></thead>
+      <tbody>{% for r in ga.key_events %}<tr><td class="mono">{{ r.event }}</td><td class="num">{{ num(r.count) }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="need">No key events recorded. If the site has forms or tap-to-call, the lead tracking needs checking.</p>{% endif %}
+    <p class="small muted" style="margin:8px 0 0">These are the events marked as key events in GA4. They aren't confirmed leads until checked against the enquiries that actually arrived.</p>
+  </section>
+  <p class="span-12 small muted cc-listnote">Source: Google Analytics 4 Data API, property {{ ga.property }}, read {{ fmt_ago(ga.fetched_at) }}. Periods end yesterday; the last day or two can still move a little. "Organic" is GA4's Organic Search channel. "—" means no data, never zero.</p>
+  {% else %}
+  <section class="card span-12 cc-notconn">
+    <h2>{{ m.brand("ga4", 18) }} Google Analytics isn't showing for this client yet {{ m.srcstate(src.ga4.get('state')) }}</h2>
+    {% set why = src.ga4.get('detail') or '' %}
+    <p><b>Why:</b> {{ why or "It hasn't been synced yet." }}</p>
+    <p><b>To fix:</b>
+      {% if 'sign-in key' in why %}add the Google OAuth client ID and secret to the server's settings, then connect on the Sync log page.
+      {% elif "isn't connected" in why or 'Connect again' in why or "can't be read" in why %}open <a href="{{ url_for('cc_sync') }}">Sync log</a> and click Connect Analytics.
+      {% elif 'No Analytics property for' in why %}give the connected Google account Viewer access to this client's GA4 property, or pick the property by hand on the Setup tab.
+      {% elif 'picked on Setup' in why %}pick the property again on the Setup tab.
+      {% else %}press Sync now at the top of the page.{% endif %}</p>
+    <p class="small muted" style="margin:0">Once connected you'll see organic sessions, engaged sessions and key events against the previous 30 days and last year, daily charts, top organic landing pages, channels, AI-assistant referrals and which key events fire.</p>
+  </section>
+  {% endif %}
+</div></div>
+
+{# ------------------------------------------------------------------ BING #}
+<div class="cc-panel" id="t-bing"><div class="cc-grid">
+  {{ secflags('bing') }}
+  {% if bg %}
+  <div class="span-12 src-line">
+    <span class="src-brand">{{ m.brand('bing', 18) }}<b>{{ bg.site }}</b></span>
+    <span>{% if bg.verified %}<span class="st green">{{ m.icon('green') }}Verified in Bing</span>{% else %}<span class="st amber">{{ m.icon('amber') }}Not verified in Bing</span>{% endif %}</span>
+    {% if bg.others %}<span>Also listed: {{ bg.others|join(', ') }}</span>{% endif %}
+    <span>Read {{ fmt_ago(bg.fetched_at) }}</span>
+    <a href="https://www.bing.com/webmasters/home?siteUrl={{ bg.site|urlencode }}" target="_blank" rel="noopener noreferrer">Open in Bing Webmaster ↗</a>
+  </div>
+  <div class="span-12 cc-kpis">
+    {{ kpi('Clicks · 30 days', num(bg.d30.clicks), '', '', cmp(bg.d30.clicks, bg.prev.clicks, 'previous 30 days')) }}
+    {{ kpi('Impressions · 30 days', num(bg.d30.impressions), '', '', cmp(bg.d30.impressions, bg.prev.impressions, 'previous 30 days')) }}
+    {{ kpi('Pages in Bing\'s index', num(bg.crawl.in_index), ('as of ' ~ fmt_date(bg.crawl.date)) if bg.crawl.date else '') }}
+    {{ kpi('Crawl errors · 30 days', num(bg.crawl.errors), '4xx: ' ~ num(bg.crawl.code4xx) ~ ' · 5xx: ' ~ num(bg.crawl.code5xx), 'amber' if bg.crawl.errors else '') }}
+  </div>
+  <section class="card span-6"><h2>Bing clicks per day</h2>{{ daychart(bg.daily, 'clicks', bg.max_clicks, 'clicks') }}</section>
+  <section class="card span-6"><h2>Bing impressions per day</h2>{{ daychart(bg.daily, 'impressions', bg.max_impressions, 'impressions') }}</section>
+  <section class="card span-7">
+    <h2>Top Bing queries · 30 days</h2>
+    {% if bg.queries %}<div class="cc-scroll"><table class="cc-table">
+      <thead><tr><th>Query</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">Avg position</th></tr></thead>
+      <tbody>{% for q in bg.queries %}<tr><td>{{ q.key }}</td><td class="num">{{ num(q.clicks) }}</td><td class="num">{{ num(q.impressions) }}</td><td class="num">{{ q.position if q.position else '—' }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="need">No Bing query rows in this period.</p>{% endif %}
+  </section>
+  <section class="card span-5">
+    <h2>Top Bing pages · 30 days</h2>
+    {% if bg.pages %}<div class="cc-scroll"><table class="cc-table pages">
+      <thead><tr><th>Page</th><th class="num">Clicks</th><th class="num">Impr.</th></tr></thead>
+      <tbody>{% for p in bg.pages %}<tr><td class="pg"><span title="{{ p.key }}">{{ urlpath(p.key) }}</span></td><td class="num">{{ num(p.clicks) }}</td><td class="num">{{ num(p.impressions) }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="need">No Bing page rows in this period.</p>{% endif %}
+  </section>
+  <p class="span-12 small muted cc-listnote">Source: Bing Webmaster Tools API, read {{ fmt_ago(bg.fetched_at) }}. Bing groups query and page figures by week, so the 30-day tables can include part of an earlier week. Positions are impression-weighted averages, not live ranks. "—" means no data, never zero.</p>
+  {% else %}
+  <section class="card span-12 cc-notconn">
+    <h2>{{ m.brand("bing", 18) }} Bing isn't showing for this client yet {{ m.srcstate(src.bing.get('state')) }}</h2>
+    {% set why = src.bing.get('detail') or '' %}
+    <p><b>Why:</b> {{ why or "It hasn't been synced yet." }}</p>
+    <p><b>To fix:</b> {% if 'key not set' in why %}add the Bing Webmaster API key to the server's settings (Sync log shows how).{% elif "isn't in the connected" in why %}add the site to that Bing Webmaster account (Bing can import every site from Google Search Console in one go).{% else %}press Sync now at the top of the page.{% endif %}</p>
+    <p class="small muted" style="margin:0">Once connected you'll see Bing clicks and impressions (30 days, with daily charts), top queries and pages, pages in Bing's index and crawl errors. Bing also feeds Copilot and other AI answers, so its index health matters for AI visibility.</p>
+  </section>
+  {% endif %}
+</div></div>
+
+{# ------------------------------------------------------------------ TASKS & REPORTS #}
+<div class="cc-panel" id="t-tasks"><div class="cc-grid">
+  <section class="card span-12">
+    <h2>Monthly report · from {{ month_label(months[0], True) }}</h2>
+    {{ heat(['report'], months, grid) }}
+    {% if sections.report %}{{ dltable(sections.report, '') }}{% endif %}
+  </section>
+  <section class="card span-12" id="tasks">
+    <h2>{{ m.brand('clickup', 18) }} ClickUp tasks {{ m.srcstate((ctx.sources.get('clickup') or {}).get('state')) }}</h2>
+    {% if tasks %}
+    {{ tasktable(tasks[:60]) }}
+    <p class="small muted">{{ open_tasks|length }} open of {{ tasks|length }}{% if tasks|length > 60 %} (showing 60, open first){% endif %}. ClickUp's API doesn't reliably say whether a task repeats, so "covered" means an open task due this month or later.</p>
+    {% else %}<p class="need">{{ (ctx.sources.get('clickup') or {}).get('detail') or 'No ClickUp tasks synced yet.' }}</p>{% endif %}
+  </section>
+</div></div>
+<div class="cc-panel" id="t-setup"><div class="cc-grid">
+  <section class="card span-6" id="scope">
+    <h2>Scope this month {% if scope_now.values()|select('none')|list %}<span class="tag red">Scope missing</span>{% else %}<span class="tag green">Written down</span>{% endif %}</h2>
+    <form method="post" action="{{ url_for('cc_client_scope', cid=c.id) }}">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <div class="cc-scope cc-form">
+        {% for k, label in ITEMS %}
+        {% set V = scope_now[k] %}<label>{{ ITEM_SHORT[k] }}{% if k == 'review_reply' %}<select class="qty-sel {{ 'missing' if V is none }}" name="{{ k }}" aria-label="Review replies for {{ c.name }}"><option value="" {{ 'selected' if V is none }}>?</option><option value="every" {{ 'selected' if V is not none and V < 0 }}>Every review</option><option value="0" {{ 'selected' if V == 0 }}>Not in package</option>{% if V is not none and V > 0 %}<option value="{{ V }}" selected>{{ V }} a month</option>{% endif %}</select>{% else %}<input class="qty {{ 'missing' if V is none }}" type="number" min="0" max="{{ 1 if k == 'report' else 99 }}" name="{{ k }}" value="{{ V if V is not none }}" placeholder="?">{% endif %}</label>
+        {% endfor %}
+      </div>
+      <p class="small muted" style="margin:8px 0">Per month. Blank = not written down (red). 0 = not in the package. Review replies follow a rule: every new review answered within {{ reply_days }} business day{{ 's' if reply_days != 1 }} on {{ c.package or 'this package' }}. Changes start this month.</p>
+      <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit">Save scope</button></div>
+    </form>
+    {% if scope_hist %}<details class="cc-more"><summary>Scope history</summary>
+      <table class="cc-table"><tbody>{% for s in scope_hist %}<tr><td>{{ ITEM_LABEL[s.item] }}</td><td class="num">{{ s.qty }}</td><td class="nowrap">{{ month_label(s.start_month, True) }} → {{ month_label(s.end_month, True) if s.end_month else 'now' }}</td><td class="small muted">{{ s.set_by }}</td></tr>{% endfor %}</tbody></table>
+    </details>{% endif %}
+  </section>
+  <section class="card span-6" id="details">
+    <h2>Client details</h2>
+    <form method="post" action="{{ url_for('cc_client_edit', cid=c.id) }}" class="cc-form">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label>Name<input name="name" value="{{ c.name }}" required></label>
+      <label>Domain<input name="domain" value="{{ c.domain or '' }}" placeholder="example.com" class="{{ 'missing' if not c.domain }}"></label>
+      <label>Package<select name="package"><option value="">—</option>{% for pk in PACKAGES %}<option {{ 'selected' if c.package == pk }}>{{ pk }}</option>{% endfor %}{% if c.package and c.package not in PACKAGES %}<option selected>{{ c.package }}</option>{% endif %}</select></label>
+      <label>Status<select name="status">{% for s in CLIENT_STATUSES %}<option value="{{ s }}" {{ 'selected' if c.status == s }}>{{ s|capitalize }}</option>{% endfor %}</select></label>
+      {% for role, label in ROLES %}
+      <label>{{ label }}<select name="{{ role }}_id" class="{{ 'missing' if role in ('am','seo') and not c[role ~ '_id'] }}"><option value="">— not named</option>{% for pid, p in P.items() if p.active or pid == c[role ~ '_id'] %}<option value="{{ pid }}" {{ 'selected' if c[role ~ '_id'] == pid }}>{{ p.name }}{% if role not in (p.roles or '') %} ·{% endif %}</option>{% endfor %}</select></label>
+      {% endfor %}
+      <label>Go-live date <span class="opt">optional</span><input type="date" name="go_live" value="{{ c.go_live or '' }}"></label>
+      <label>ClickUp folder ID<input name="clickup_folder" value="{{ c.clickup_folder or '' }}" class="mono"></label>
+      <label class="full">Contract / scope doc link<input name="scope_doc" value="{{ c.scope_doc or '' }}" placeholder="https://"></label>
+      <div class="actions"><button class="btn btn-primary btn-small" type="submit">Save details</button></div>
+    </form>
+  </section>
+  <section class="card span-6" id="setup">
+    <h2>Setup checklist <span class="tag {{ 'green' if not row.setup.missing else 'red' }}">{{ row.setup.done }}/{{ row.setup.total }}</span></h2>
+    <ul class="setup-list">{% for name, ok in row.setup.checks %}<li>{{ m.icon('green' if ok else 'red') }}<span>{{ name }}{% if not ok %} <span class="need red">missing</span>{% endif %}</span></li>{% endfor %}
+      <li class="opt-row">{% if row.setup.go_live %}{{ m.icon('green') }}<span>Go-live date</span>{% else %}<span class="opt-dot" aria-hidden="true"></span><span>Go-live date <span class="opt">optional</span></span>{% endif %}</li></ul>
+    <h2 style="margin-top:18px">Logo</h2>
+    <div class="cc-inline" style="align-items:flex-start">
+      <div class="hero-logo setup-logo" data-bg="{{ logo.bg if logo and logo.bg in ('light', 'dark') else 'auto' }}">
+        {% if logo and logo.has %}<img src="{{ url_for('cc_logo', cid=c.id, v=logo.v) }}" alt=""{% if logo.mime == 'image/svg+xml' %} data-type="svg"{% endif %}>{% else %}<span class="tile-initials" data-name="{{ c.name }}">{{ row.initials }}</span>{% endif %}
+      </div>
+      <div class="small" style="flex:1;min-width:200px">
+        <p style="margin:0 0 6px" class="muted">{% if logo %}{{ logo.note or '' }}{% if logo.source_url %} · <a href="{{ logo.source_url }}" target="_blank" rel="noopener noreferrer">source</a>{% endif %}{% else %}Not looked up yet. It's found on the next sync once the website is set.{% endif %}</p>
+        <form method="post" action="{{ url_for('cc_logo_edit', cid=c.id) }}" enctype="multipart/form-data" class="cc-inline">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" aria-label="Logo file" style="max-width:210px">
+          <button class="btn btn-ghost btn-small" name="action" value="upload">Upload</button>
+        </form>
+        <form method="post" action="{{ url_for('cc_logo_edit', cid=c.id) }}" class="cc-inline" style="margin-top:6px">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          {% if c.domain %}<button class="link-btn" name="action" value="refetch">Find it on their site again</button>{% endif %}
+          {% if logo and logo.has %}<span class="small muted">Background:</span>
+          {% for v, lbl in [('auto', 'Automatic'), ('light', 'Light'), ('dark', 'Dark')] %}<button class="link-btn{{ ' on' if (logo.bg if logo.bg in ('light','dark') else 'auto') == v }}" name="action" value="bg-{{ v }}" aria-pressed="{{ 'true' if (logo.bg if logo.bg in ('light','dark') else 'auto') == v else 'false' }}">{{ lbl }}</button>{% endfor %}
+          <button class="link-btn danger" name="action" value="remove">Remove, show initials</button>{% endif %}
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="card span-6" id="gbp-choice">
+    <h2>Business Profile {{ m.srcstate(src.gbp.get('state')) }}</h2>
+    <form method="post" action="{{ url_for('cc_client_gbp', cid=c.id) }}" class="cc-inline">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <select name="gbp" aria-label="Business Profile for this client" style="flex:1;min-width:240px">
+        <option value="auto" {{ 'selected' if (c.gbp_how or 'auto') == 'auto' }}>Match automatically (website, then name)</option>
+        {% for l in gbp_dir %}<option value="{{ l.name }}" {{ 'selected' if c.gbp_how == 'manual' and c.gbp_location == l.name }}>{{ l.title }}{% if l.address %} · {{ l.address }}{% endif %}</option>{% endfor %}
+        <option value="none" {{ 'selected' if c.gbp_how == 'none' }}>No Business Profile in this client's scope</option>
+      </select>
+      <button class="btn btn-ghost btn-small" type="submit">Save</button>
+    </form>
+    <p class="small muted" style="margin:8px 0 0">{% if gbp and gbp.profile %}Using <b>{{ gbp.profile.title }}</b>{% if gbp.profile.website %} ({{ gbp.profile.website }}){% endif %}.{% elif gbp_dir %}{{ gbp_dir|length }} profiles available from the connected Google account.{% else %}The list fills in once Business Profile is connected on the Sync log page.{% endif %}</p>
+  </section>
+  <section class="card span-6" id="ga4-choice">
+    <h2>Google Analytics {{ m.srcstate(src.ga4.get('state')) }}</h2>
+    <form method="post" action="{{ url_for('cc_client_ga4', cid=c.id) }}" class="cc-inline">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <select name="ga4" aria-label="Analytics property for this client" style="flex:1;min-width:240px">
+        <option value="auto" {{ 'selected' if (c.ga4_how or 'auto') == 'auto' }}>Match automatically (website, then name)</option>
+        {% for p in ga4_dir %}<option value="{{ p.name }}" {{ 'selected' if c.ga4_how == 'manual' and c.ga4_property == p.name }}>{{ p.display_name }}{% if p.website %} · {{ p.website }}{% endif %}</option>{% endfor %}
+        <option value="none" {{ 'selected' if c.ga4_how == 'none' }}>No Analytics in this client's scope</option>
+      </select>
+      <button class="btn btn-ghost btn-small" type="submit">Save</button>
+    </form>
+    <p class="small muted" style="margin:8px 0 0">{% if ga %}Using <b>{{ ga.display_name }}</b>{% if ga.website %} ({{ ga.website }}){% endif %}.{% elif ga4_dir %}{{ ga4_dir|length }} properties available from the connected Google account.{% else %}The list fills in once Analytics is connected on the Sync log page.{% endif %}</p>
+  </section>
+  <section class="card span-6" id="rules">
+    <h2>Special rules</h2>
+    {% if rules %}<table class="cc-table"><tbody>{% for r in rules %}
+      <tr {% if not r.active %}style="opacity:.5"{% endif %}><td><b>{{ {'no_prices':'No prices on site','no_ai_photos':'No AI project photos','custom':'Rule'}.get(r.kind, r.kind) }}</b><span class="cc-sub">{{ r.note or '' }}{% if r.pattern %} · <span class="mono">{{ r.pattern }}</span>{% endif %}</span></td>
+        <td class="small muted nowrap">{{ r.set_by }} · {{ fmt_date(r.set_at) }}</td>
+        <td><form method="post" action="{{ url_for('cc_client_rules', cid=c.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="rule_id" value="{{ r.id }}"><button class="link-btn" name="action" value="{{ 'off' if r.active else 'on' }}">{{ 'Turn off' if r.active else 'Turn on' }}</button></form></td></tr>
+    {% endfor %}</tbody></table>{% else %}<p class="need">No special rules recorded. If this client has any (no prices, no AI photos, hold pages), add them so they're checked.</p>{% endif %}
+    <form method="post" action="{{ url_for('cc_client_rules', cid=c.id) }}" class="cc-inline" style="margin-top:10px">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="add">
+      <select name="kind"><option value="no_prices">No prices on site</option><option value="no_ai_photos">No AI project photos</option><option value="custom">Other rule</option></select>
+      <input name="note" placeholder="Details" style="flex:1;min-width:160px">
+      <input name="pattern" placeholder="Pattern to check (optional), e.g. \$\d|per square foot" class="mono" style="flex:1;min-width:160px">
+      <button class="btn btn-ghost btn-small" type="submit">Add rule</button>
+    </form>
+  </section>
+</div></div>
+<div class="cc-panel" id="t-notes"><div class="cc-grid">
+  <section class="card span-6" id="notes">
+    <h2>Notes and AM hand-over</h2>
+    <form method="post" action="{{ url_for('cc_client_notes', cid=c.id) }}" class="cc-inline">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <textarea name="body" class="cc-ta" placeholder="What the next person needs to know: promises made, client preferences, open threads, what's blocked and why"></textarea>
+      <select name="kind"><option value="note">Note</option><option value="handover">AM hand-over</option></select>
+      <button class="btn btn-ghost btn-small" type="submit">Add</button>
+    </form>
+    {% for n in notes %}<div style="border-top:1px solid var(--line);padding:8px 0;font-size:13px">{% if n.kind == 'handover' %}<span class="tag blue">Hand-over</span> {% endif %}<span class="small muted">{{ n.author }} · {{ fmt_date(n.created_at, True) }}</span><div style="white-space:pre-wrap">{{ n.body }}</div></div>{% endfor %}
+  </section>
+  <section class="card span-6" id="history">
+    <h2>Change history</h2>
+    {% if hist %}<div style="max-height:260px;overflow:auto"><table class="cc-table"><tbody>{% for h in hist %}
+      <tr><td class="small nowrap">{{ fmt_date(h.at, True) }}</td><td class="small">{{ h.entity }} · {{ h.field }}</td><td class="small"><span class="muted">{{ h.old if h.old is not none else '—' }}</span> → {{ h.new if h.new is not none else '—' }}</td><td class="small muted">{{ h.by_email.split('@')[0] if h.by_email else 'sync' }}</td></tr>
+    {% endfor %}</tbody></table></div>{% else %}<p class="muted small">No changes recorded yet.</p>{% endif %}
+  </section>
+  <section class="card span-6" id="sources">
+    <h2>Data sources and syncs</h2>
+    <table class="cc-table"><tbody>{% for k, label, phase in SOURCES %}{% set s = ctx.sources.get(k) or {} %}
+      <tr><td>{{ label }}</td><td>{{ m.srcstate(s.get('state')) }}</td><td class="small muted">{{ s.get('detail') or ('Phase ' ~ phase if phase > 1 else '') }}</td><td class="small nowrap">{{ ('ok ' ~ fmt_ago(s.get('last_ok'))) if s.get('last_ok') else '—' }}</td></tr>
+    {% endfor %}</tbody></table>
+    {% if jobs %}<details class="cc-more"><summary>Recent sync jobs</summary><table class="cc-table"><tbody>{% for j in jobs %}<tr><td>{{ j.source }}</td><td>{{ j.status }}</td><td class="small muted">{{ j.note or j.error or '' }}</td><td class="small nowrap">{{ fmt_ago(j.finished_at or j.queued_at) }}</td></tr>{% endfor %}</tbody></table></details>{% endif %}
+  </section>
+</div></div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+(function(){ var b=document.getElementById('cc-posts-more'), g=document.getElementById('cc-posts'); if(!b||!g) return;
+  b.addEventListener('click', function(){ var open=g.classList.toggle('all'); b.setAttribute('aria-expanded', open?'true':'false');
+    b.textContent = open ? 'Show fewer' : 'Show all ' + g.children.length + ' posts'; }); })();
+(function(){
+  var box=document.getElementById('cc-tabsbox'); if(!box) return;
+  box.classList.add('js-tabs');
+  var links=document.querySelectorAll('.cc-ctabs a, .cc-side a[data-tab], a.cc-chan[data-tab], a.al-fix[data-tab], .cc-notconn a[data-tab]'), panels=box.querySelectorAll('.cc-panel');
+  function show(id, scrollTo){
+    panels.forEach(function(p){ p.classList.toggle('on', p.id===id) });
+    links.forEach(function(a){ a.classList.toggle('on', a.dataset.tab===id) });
+    if(scrollTo){ var el=document.getElementById(scrollTo); if(el) el.scrollIntoView({block:'start'}); }
+  }
+  function fromHash(){
+    var h=(location.hash||'').slice(1), el=h && document.getElementById(h);
+    var p=el && (el.classList.contains('cc-panel') ? el : el.closest('.cc-panel'));
+    if(p){ show(p.id, p===el ? null : h) } else { show('t-overview') }
+  }
+  links.forEach(function(a){ a.addEventListener('click', function(e){ e.preventDefault(); show(a.dataset.tab); history.replaceState(null,'','#'+a.dataset.tab);
+    var top=document.getElementById('cc-tabsbox'); if(top && top.getBoundingClientRect().top < 0) top.scrollIntoView({block:'start'}) }) });
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
+})();
+</script>{% endblock %}

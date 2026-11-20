@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+{% block head %}{% endblock %}
 </head>
 <body class="{% if g.user %}has-rail{% endif %}">
 {% if g.user %}
@@ -23,6 +24,10 @@
   {% endif %}
   <a class="rail-item {{ 'on' if request.endpoint and request.endpoint.startswith('todo') }}" href="{{ url_for('todo_home') }}" aria-label="Prospect to-do list">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h8l3 3V20.5H7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 9h5M10 12.5h5M10 16h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M19.5 12.5l1.8 1.8-5.6 5.6-2.4.6.6-2.4z" fill="var(--rail-pencil, #fff)" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span>To-do</span></a>
+  {% if cc_can_open() %}
+  <a class="rail-item {{ 'on' if request.endpoint and request.endpoint.startswith('cc_') }}" href="{{ url_for('cc_portfolio') }}" aria-label="SEO Delivery Command Center" title="SEO Delivery Command Center">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 17l4-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/><path d="M4 20.5h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Delivery</span></a>
+  {% endif %}
   <div class="rail-bottom">
     <a class="rail-item {{ 'on' if request.endpoint == 'account' }}" href="{{ url_for('account') }}" title="{{ g.user.name }} · Account and sign out">
       {% if g.user.avatar_at %}<img class="avatar avatar-img" src="{{ url_for('avatar', uid=g.user.id, v=g.user.avatar_at|int) }}" alt="">{% else %}<span class="avatar">{{ g.user.name[:1]|upper }}</span>{% endif %}<span>Account</span></a>
