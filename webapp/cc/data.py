@@ -72,7 +72,7 @@ def _group(rows, key="client_id"):
 
 def contexts(client_ids=None, light=False):
     """Everything health and the screens need, for many clients, in a handful of queries (pages read the DB only).
-    light=True (change 82): metric numbers without their stored JSON (Search Console, Analytics and Business Profile
+    light=True (change 82): no ClickUp tasks, and metric numbers without their stored JSON (Search Console, Analytics and Business Profile
     detail), which only a client's own page shows; the portfolio would otherwise pull every client's detail each view."""
     where, args = "", []
     if client_ids is not None:
@@ -87,7 +87,7 @@ def contexts(client_ids=None, light=False):
     # the sitemap baseline rows (month='baseline') only mark what was already there; they're never a deliverable
     dl = _group(db.q("SELECT * FROM cc_deliverables" + (where + " AND" if where else " WHERE") + " month>=? AND month!='baseline'",
                      args + [since]))
-    tasks = _group(db.q("SELECT * FROM cc_tasks" + where, args))
+    tasks = {} if light else _group(db.q("SELECT * FROM cc_tasks" + where, args))  # the portfolio shows no tasks
     srcs = _group(db.q("SELECT * FROM cc_sources" + where, args))
     mets = _group(db.q(("SELECT client_id, source, metric, period, value, NULL AS text, fetched_at FROM cc_metrics" if light
                         else "SELECT * FROM cc_metrics") + where, args))
