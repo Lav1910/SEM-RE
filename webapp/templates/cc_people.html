@@ -4,21 +4,25 @@
 {% block cc_sub %}Who does what (account managers, SEO owners, writers, developers) and who can open the Command Center.{% endblock %}
 {% block cc %}
 <div class="cc-grid">
-<section class="card span-8">
+<section class="card span-12">
   <h2>Team</h2>
-  <p class="small muted">ClickUp assignees appear here automatically after a sync. Give each person their roles so they show up in the owner lists. The full People view (what each person owns, what's overdue, what's waiting on them) comes in Phase 3.</p>
+  <p class="small muted">Everyone assigned to a task in ClickUp appears here after a sync. Tick each person's roles so they show up in the owner lists on every client.</p>
   {% if people %}
   <form method="post">
     <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="save">
-    <table class="cc-table">
-      <thead><tr><th>Name</th>{% for r, label in ROLES %}<th style="text-align:center">{{ label.split()[0] if r != 'seo' else 'SEO' }}</th>{% endfor %}<th style="text-align:center">Active</th><th>Owns (active clients)</th></tr></thead>
-      <tbody>{% for p in people %}<tr {% if not p.active %}style="opacity:.55"{% endif %}>
-        <td><input type="hidden" name="p-{{ p.id }}" value="1"><input name="name-{{ p.id }}" value="{{ p.name }}" style="width:170px">{% if p.clickup_id %}<span class="cc-sub">from ClickUp{% if p.email %} · {{ p.email }}{% endif %}</span>{% elif p.email %}<span class="cc-sub">{{ p.email }}</span>{% endif %}</td>
-        {% for r, label in ROLES %}<td class="num"><input type="checkbox" name="role-{{ r }}-{{ p.id }}" {{ 'checked' if r in (p.roles or '').split(',') }} aria-label="{{ label }}: {{ p.name }}"></td>{% endfor %}
-        <td class="num"><input type="checkbox" name="active-{{ p.id }}" {{ 'checked' if p.active }} aria-label="Active: {{ p.name }}"></td>
-        <td class="small">{% for role, name, cid in owns.get(p.id, []) %}<a href="{{ url_for('cc_client', cid=cid) }}">{{ name }}</a> <span class="muted">({{ role|upper if role in ('am','seo') else role }})</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">—</span>{% endfor %}</td>
+    {# change 83: checkboxes centred under their headings; owned clients as tags that wrap cleanly #}
+    {% set ROLE_SHORT = {'am': 'Account', 'seo': 'SEO', 'writer': 'Writer', 'dev': 'Dev'} %}
+    <div class="ppl-wrap"><table class="cc-table ppl">
+      <colgroup><col class="ppl-name">{% for r, label in ROLES %}<col class="ppl-c">{% endfor %}<col class="ppl-c"><col></colgroup>
+      <thead><tr><th>Name</th>{% for r, label in ROLES %}<th class="pc">{{ ROLE_SHORT[r] }}</th>{% endfor %}<th class="pc">Active</th><th>Owns <span class="ppl-hint">active clients</span></th></tr></thead>
+      <tbody>{% for p in people %}<tr class="{{ '' if p.active else 'off' }}">
+        <td><input type="hidden" name="p-{{ p.id }}" value="1"><input class="ppl-input" name="name-{{ p.id }}" value="{{ p.name }}" aria-label="Name">
+          <span class="ppl-meta">{% if p.email %}<span class="ppl-email" title="{{ p.email }}">{{ p.email }}</span>{% endif %}{% if p.clickup_id %}<span class="ppl-src">ClickUp</span>{% endif %}</span></td>
+        {% for r, label in ROLES %}<td class="pc"><input type="checkbox" name="role-{{ r }}-{{ p.id }}" {{ 'checked' if r in (p.roles or '').split(',') }} aria-label="{{ label }}: {{ p.name }}"></td>{% endfor %}
+        <td class="pc"><input type="checkbox" name="active-{{ p.id }}" {{ 'checked' if p.active }} aria-label="Active: {{ p.name }}"></td>
+        <td>{% set mine = owns.get(p.id, []) %}{% if mine %}<div class="ppl-owns">{% for role, name, cid in mine %}<a class="ppl-own" href="{{ url_for('cc_client', cid=cid) }}">{{ name }}<span>{{ ROLE_SHORT.get(role, role) }}</span></a>{% endfor %}</div>{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>{% endfor %}</tbody>
-    </table>
+    </table></div>
     <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn btn-primary btn-small" type="submit">Save people</button></div>
   </form>
   {% else %}<p class="need">Nobody yet. Sync ClickUp or add people below.</p>{% endif %}
@@ -29,15 +33,17 @@
     <button class="btn btn-ghost btn-small" type="submit">Add person</button>
   </form>
 </section>
-<section class="card span-4">
+<section class="card span-12">
   <h2>Who can open the Command Center</h2>
   <p class="small muted">Admins only, and only those listed here. Everyone else gets "page not found", in the app and through its API.</p>
-  <table class="cc-table"><tbody>{% for u in admins %}
-    <tr><td>{{ u.name }}<span class="cc-sub">{{ u.email }}</span></td>
-      <td class="nowrap">{% if u.email|lower in env_emails %}<span class="tag green">Owner</span><span class="cc-sub">can see and change everything · set in the server settings</span>
-        {% else %}<form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="user_id" value="{{ u.id }}">
-          {% if u.cc_access %}<span class="tag blue">Can view</span><span class="cc-sub">sees everything, can refresh data, can't change anything</span> <button class="link-btn danger" name="action" value="revoke">Remove</button>{% else %}<button class="link-btn" name="action" value="grant">Grant access</button>{% endif %}</form>{% endif %}</td></tr>
-  {% endfor %}</tbody></table>
+  {# change 83: one block per person (name, then what they can do underneath), so nothing runs out of the card #}
+  <ul class="acc-list">{% for u in admins %}
+    <li><div class="acc-who"><b>{{ u.name }}</b><span>{{ u.email }}</span></div>
+      {% if u.email|lower in env_emails %}<div class="acc-role"><span class="tag green">Owner</span><p>Can see and change everything. Set in the server settings.</p></div>
+      {% else %}<form method="post" class="acc-role"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="user_id" value="{{ u.id }}">
+        {% if u.cc_access %}<span class="tag blue">Can view</span><p>Sees everything and can refresh data, but can't change anything.</p><button class="link-btn danger" name="action" value="revoke">Remove access</button>
+        {% else %}<span class="tag grey">No access</span><p>Admin, but can't open the Command Center.</p><button class="link-btn" name="action" value="grant">Grant view access</button>{% endif %}</form>{% endif %}
+    </li>{% endfor %}</ul>
 </section>
 </div>
 {% endblock %}
