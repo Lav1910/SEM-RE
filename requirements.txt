@@ -2,4 +2,4 @@ flask>=3.1,<4
 waitress>=3.0,<4
 psycopg[binary]>=3.2,<4   # Postgres on Vercel (DATABASE_URL); not needed with SQLite
 python-docx>=1.1,<2      # Word download of all deliverables (change 47)
-cryptography>=43,<47     # encrypts the stored Google Business Profile sign-in (change 66)
+cryptography>=50,<51     # encrypts the stored Google sign-ins (change 66); 50+ fixes PYSEC-2026-3552/3553/3554, GHSA-537c-gmf6-5ccf

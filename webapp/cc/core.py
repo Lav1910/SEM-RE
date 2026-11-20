@@ -152,7 +152,7 @@ def parse_date(s):
 
 
 # ---------------------------------------------------------------- names
-_INVISIBLE = re.compile("[​-‏‪-‮⁠-⁤﻿­]")
+_INVISIBLE = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\u00ad]")  # zero-width, direction marks, BOM, soft hyphen
 
 
 def clean_name(s):

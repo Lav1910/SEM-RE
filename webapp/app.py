@@ -161,7 +161,7 @@ def _static_version(endpoint, values):
             import hashlib
             try:
                 with open(os.path.join(app.static_folder, fn), "rb") as f:
-                    _static_v[fn] = hashlib.sha1(f.read()).hexdigest()[:10]
+                    _static_v[fn] = hashlib.sha1(f.read(), usedforsecurity=False).hexdigest()[:10]  # a cache-busting tag, not security
             except OSError:
                 _static_v[fn] = ""
         if _static_v[fn]:
