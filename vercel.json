@@ -1,11 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "public",
+  "buildCommand": "rm -rf public/static && cp -R webapp/static public/static",
   "functions": {
     "api/index.py": {
       "maxDuration": 300,
       "memory": 1024,
-      "excludeFiles": "{tests/**,data/semrush/**,data/site/**,reports/**,audits/**,appdata/**,deploy/**,node_modules/**}"
+      "excludeFiles": "{tests/**,data/semrush/**,data/site/**,reports/**,audits/**,appdata/**,deploy/**,node_modules/**,public/**}"
     },
     "api/pdf.js": {
       "maxDuration": 60,
@@ -22,6 +23,36 @@
     {
       "path": "/api/jobs/tick",
       "schedule": "0 6 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    },
+    {
+      "source": "/static/(.*)",
+      "has": [
+        {
+          "type": "query",
+          "key": "v"
+        }
+      ],
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ]
 }

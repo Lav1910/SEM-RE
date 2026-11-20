@@ -8,6 +8,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+{% if g.user %}{# change 82: when the pointer rests on a link (or a finger touches it) the browser starts fetching that page,
+  so the click opens it straight away. Plain page views only: sign-out, downloads, exports, PDFs, Google sign-in links and
+  client links (which count views) are never fetched early. Browsers without this feature just navigate as before. #}
+<script type="speculationrules">
+{"prefetch": [{"where": {"and": [
+  {"href_matches": "/*"},
+  {"not": {"href_matches": ["/logout*", "/login*", "/auth/*", "/oauth/*", "/api/*", "/mcp*", "/r/*", "/c/*", "/static/*", "/avatar/*",
+                            "/*.pdf", "/*.docx", "/*.txt", "/*.json", "/*.csv", "/*.xlsx", "/*/report", "/*export*",
+                            "/delivery/gbp/*", "/delivery/ga4/*", "/delivery/*/image"]}},
+  {"not": {"selector_matches": "[target=_blank], [download], [data-no-prefetch]"}}]},
+  "eagerness": "moderate"}]}
+</script>{% endif %}
 {% block head %}{% endblock %}
 </head>
 <body class="{% if g.user %}has-rail{% endif %}">

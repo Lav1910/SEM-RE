@@ -29,7 +29,34 @@ def _path(key):
     return os.path.join(DIR, f"{key}.json")
 
 
+def memo_start():
+    """change 82: within one page request a setting read twice is fetched once (see webapp.db.memo_start)."""
+    _local.memo, _local.stats = {}, [0, 0.0]
+
+
+def memo_stop():
+    st = getattr(_local, "stats", None)
+    _local.memo = _local.stats = None
+    return st
+
+
 def get(key, default=None):
+    memo = getattr(_local, "memo", None)
+    if memo is not None:
+        if key not in memo:
+            t = time.perf_counter()
+            memo[key] = _get(key, _MISSING)
+            _local.stats[0] += 1
+            _local.stats[1] += time.perf_counter() - t
+        v = memo[key]
+        return default if v is _MISSING else json.loads(json.dumps(v))  # a copy: callers may change what they get
+    return _get(key, default)
+
+
+_MISSING = object()
+
+
+def _get(key, default=None):
     if PG:
         row = _conn().execute("SELECT value FROM settings WHERE key=%s", (key,)).fetchone()
         return json.loads(row[0]) if row else default
@@ -42,6 +69,8 @@ def get(key, default=None):
 
 def update(key, fn, default=None):
     """Atomically replace the value with fn(current) and return the new value. fn may return None to leave it unchanged."""
+    if getattr(_local, "memo", None):
+        _local.memo.pop(key, None)
     if PG:
         c = _conn()
         with c.transaction():
@@ -53,7 +82,7 @@ def update(key, fn, default=None):
                 c.execute("UPDATE settings SET value=%s, updated_at=%s WHERE key=%s", (json.dumps(new), time.time(), key))
             return new if new is not None else cur
     with _lock:
-        cur = get(key, default)
+        cur = _get(key, default)
         new = fn(cur)
         if new is not None:
             os.makedirs(DIR, exist_ok=True)

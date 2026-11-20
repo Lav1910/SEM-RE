@@ -28,3 +28,6 @@ __pycache__/
 .idea/
 node_modules/
 .vercel/
+
+# --- build output: webapp/static is copied here by Vercel (vercel.json buildCommand) ---
+public/static/
