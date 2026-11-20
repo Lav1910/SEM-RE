@@ -263,7 +263,7 @@ def sync_wordpress(c, calls):
             first_run = not db.q("SELECT 1 FROM cc_deliverables WHERE client_id=? AND source='sitemap' LIMIT 1", (cid,), one=True)
             new = 0
             for u in urls:
-                ext = hashlib.sha1(u.encode()).hexdigest()[:16]
+                ext = hashlib.sha1(u.encode(), usedforsecurity=False).hexdigest()[:16]  # an ID for the URL, not security
                 if db.q("SELECT 1 FROM cc_deliverables WHERE client_id=? AND source='sitemap' AND ext_id=?", (cid, ext), one=True):
                     continue
                 slug = u.rstrip("/").rsplit("/", 1)[-1].replace("-", " ").strip().capitalize()

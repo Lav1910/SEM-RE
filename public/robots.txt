@@ -1,0 +1,3 @@
+# AEO Snapshot is an internal tool: nothing here is meant for search engines.
+User-agent: *
+Disallow: /
