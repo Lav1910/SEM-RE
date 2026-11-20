@@ -1,4 +1,6 @@
 """Plain-language status for each AI platform, from an audit's stored answers or the current configuration."""
+import re
+
 from aeo import config, engines
 
 
@@ -9,6 +11,7 @@ PLAIN = {"Needs verification": "This platform's account needs verifying before i
          "Rate limited": "This platform was busy; some answers were skipped.",
          "Timed out": "This platform didn't answer in time.",
          "No data": "No AI answer was available for this search.",
+         "Provider hiccup": "This platform had a temporary problem; some answers were skipped.",
          "Error": "This platform didn't answer."}
 
 
@@ -19,11 +22,14 @@ def friendly_error(err, plain=False):
     e = (err or "").lower()
     if "40104" in e or "verify your account" in e:
         return "Needs verification", "The DataForSEO account must be verified at app.dataforseo.com before the API works."
+    if re.search(r"\b(40101|40106|50000)\b", e) or "internal se server error" in e or "partial results" in e:
+        # change 81: DataForSEO's own temporary failures. "40101" contains "401" and used to read as "Key rejected"
+        return "Provider hiccup", "Google's data provider couldn't fetch some results this time; those questions were skipped."
     if "credit" in e or "insufficient_quota" in e or "quota" in e:
         return "Needs credits", "The account has no API credits left. Add credits in the provider's billing page."
-    if "401" in e or "invalid api key" in e or "unauthorized" in e:
+    if re.search(r"\b401\b", e) or "invalid api key" in e or "unauthorized" in e:
         return "Key rejected", "The provider rejected the API key. Re-enter it with setup_keys.py."
-    if "429" in e or "rate limit" in e:
+    if re.search(r"\b429\b", e) or "rate limit" in e:
         return "Rate limited", "The provider asked us to slow down; some answers were skipped."
     if "timed out" in e or "timeout" in e:
         return "Timed out", "The provider didn't answer in time."
@@ -78,7 +84,7 @@ def current(last_audit=None, plain=False):
                     st = {"state": "warn", "label": "Via Semrush · DataForSEO " + friendly_error(h["error"])[0].lower()}
         else:
             label, detail = friendly_error(h.get("error"))
-            st = {"state": "bad", "label": label, "detail": detail}
+            st = {"state": "warn" if label == "Provider hiccup" else "bad", "label": label, "detail": detail}  # a passing failure isn't a broken connection
         if plain:  # change 49: the dashboard pills say only how the platform is doing, never which tool it goes through
             st = {"state": st["state"], "label": {"good": "Connected", "warn": "Connected", "mute": "Not tested yet", "off": "Not connected"}.get(st["state"], st["label"])}
         out[en] = st

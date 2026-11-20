@@ -202,7 +202,14 @@ class GoogleLocationFallback(unittest.TestCase):
         def fake_post(url, payload, headers, retries=3):
             calls.append(1)
             return {"tasks": [{"status_code": 40101, "status_message": "Internal SE Server Error."}]}
-        with mock.patch.object(engines, "_post", fake_post), mock.patch.object(engines.config, "key", return_value="x"):
+        with mock.patch.object(engines, "_post", fake_post), mock.patch.object(engines.config, "key", return_value="x"), \
+                mock.patch("time.sleep"):
             with self.assertRaises(RuntimeError):
                 engines.ask_google_aio({"id": "q1", "prompt": "p", "keyword": "k"}, {"city": "Austin", "state": "Texas", "state_code": "TX", "country": "US"})
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 2)  # a temporary DataForSEO failure gets one more try, then the question is skipped
+
+    def test_status_labels(self):
+        from webapp import status
+        self.assertEqual(status.friendly_error("DataForSEO 40101: Internal SE Server Error.")[0], "Provider hiccup")
+        self.assertEqual(status.friendly_error("HTTP 401: unauthorized")[0], "Key rejected")
+        self.assertEqual(status.friendly_error("DataForSEO 40104: verify your account")[0], "Needs verification")
