@@ -16,13 +16,23 @@ _lock = threading.Lock()
 _local = threading.local()
 
 
+_table_ready = False
+
+
 def _conn():
-    import psycopg
-    c = getattr(_local, "c", None)
-    if c is None or c.closed:
-        c = _local.c = psycopg.connect(URL, autocommit=True, prepare_threshold=None, connect_timeout=10)
-        c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at DOUBLE PRECISION NOT NULL)")
-    return c
+    """A borrowed shared connection (aeo.pgpool, change 82): use as `with _conn() as c:`."""
+    import contextlib
+    from . import pgpool
+
+    @contextlib.contextmanager
+    def borrow():
+        global _table_ready
+        with pgpool.conn(URL) as c:
+            if not _table_ready:
+                c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at DOUBLE PRECISION NOT NULL)")
+                _table_ready = True
+            yield c
+    return borrow()
 
 
 def _path(key):
@@ -58,7 +68,8 @@ _MISSING = object()
 
 def _get(key, default=None):
     if PG:
-        row = _conn().execute("SELECT value FROM settings WHERE key=%s", (key,)).fetchone()
+        with _conn() as c:
+            row = c.execute("SELECT value FROM settings WHERE key=%s", (key,)).fetchone()
         return json.loads(row[0]) if row else default
     try:
         with open(_path(key)) as f:
@@ -72,15 +83,14 @@ def update(key, fn, default=None):
     if getattr(_local, "memo", None):
         _local.memo.pop(key, None)
     if PG:
-        c = _conn()
-        with c.transaction():
+        with _conn() as c, c.transaction():
             c.execute("INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT (key) DO NOTHING",
                       (key, json.dumps(default), time.time()))
             cur = json.loads(c.execute("SELECT value FROM settings WHERE key=%s FOR UPDATE", (key,)).fetchone()[0])
             new = fn(cur)
             if new is not None:
                 c.execute("UPDATE settings SET value=%s, updated_at=%s WHERE key=%s", (json.dumps(new), time.time(), key))
-            return new if new is not None else cur
+        return new if new is not None else cur
     with _lock:
         cur = _get(key, default)
         new = fn(cur)
