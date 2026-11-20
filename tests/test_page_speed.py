@@ -85,5 +85,30 @@ class PageHooks(unittest.TestCase):
         self.assertNotIn("Server-Timing", app.test_client().get("/login").headers)  # signed-out pages say nothing
 
 
+@unittest.skipUnless(db.PG, "Postgres only (set DATABASE_URL)")
+class SharedConnections(unittest.TestCase):
+    def test_connections_are_reused_across_threads(self):
+        from aeo import pgpool
+        pgpool.close_all()
+        db.q("SELECT 1 AS one")
+        first = pgpool._idle[db.URL][-1][0]
+        seen = []
+        t = threading.Thread(target=lambda: (db.q("SELECT 2 AS two"), seen.append(pgpool._idle[db.URL][-1][0])))
+        t.start(); t.join()
+        self.assertIs(seen[0], first)  # another thread (a new Vercel request) used the same open connection
+
+    def test_open_transaction_is_never_handed_back(self):
+        from aeo import pgpool
+        pgpool.close_all()
+        with pgpool.conn(db.URL) as c:
+            c.execute("BEGIN")
+            c.execute("SELECT 1")
+        self.assertEqual(pgpool._idle.get(db.URL, []), [])
+        self.assertTrue(c.closed)
+        # settings still work through the pool, transaction included
+        kv.update("pool_test", lambda o: {"n": (o or {}).get("n", 0) + 1}, {})
+        self.assertGreaterEqual(kv.get("pool_test")["n"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

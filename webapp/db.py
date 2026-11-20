@@ -215,14 +215,14 @@ LATER_COLUMNS = {
 
 
 # ---------------------------------------------------------------- connections
-def _pg():
-    import psycopg
+def _pg_run(sql, args):
+    """One statement on a borrowed connection (aeo.pgpool, change 82). -> the cursor's rows, or None for a write."""
     from psycopg.rows import dict_row
-    c = getattr(_local, "pg", None)
-    if c is None or c.closed or c.broken:
-        # prepare_threshold=None: works through connection poolers (Neon's pooled URL, PgBouncer)
-        c = _local.pg = psycopg.connect(URL, autocommit=True, row_factory=dict_row, prepare_threshold=None, connect_timeout=10)
-    return c
+    from aeo import pgpool
+    with pgpool.conn(URL) as c:
+        cur = c.cursor(row_factory=dict_row)
+        cur.execute(sql, args)
+        return cur.fetchall() if cur.description else None
 
 
 def connect():
@@ -240,14 +240,13 @@ def _sql(sql):
 
 
 def _run_pg(sql, args, fetch):
-    for attempt in (1, 2):  # one reconnect if the serverless instance's connection went stale
+    for attempt in (1, 2):  # one retry on a fresh connection if a kept one went stale (the broken one is closed)
         try:
-            cur = _pg().execute(_sql(sql), tuple(args))
-            return cur.fetchall() if fetch and cur.description else None
+            rows = _pg_run(_sql(sql), tuple(args))
+            return rows if fetch else None
         except Exception as e:
             import psycopg
             if attempt == 1 and isinstance(e, (psycopg.OperationalError, psycopg.InterfaceError)):
-                _local.pg = None
                 continue
             raise
 
@@ -394,7 +393,7 @@ def claim(table, where, args, order, lease_seconds, key="id", extra_set="", extr
         keys = key.split(",")
         sql = (f"UPDATE {table} SET lease_until=%s{_sql(extra_set)} WHERE ({key}) IN (SELECT {key} FROM {table} WHERE {_sql(where)} "
                f"AND (lease_until IS NULL OR lease_until<%s) ORDER BY {order} LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *")
-        rows = _pg().execute(sql, (now + lease_seconds, *extra_args, *args, now)).fetchall()
+        rows = _pg_run(sql, (now + lease_seconds, *extra_args, *args, now)) or []
         return rows[0] if rows else None
     with _lock, connect() as c:
         c.execute("BEGIN IMMEDIATE")
