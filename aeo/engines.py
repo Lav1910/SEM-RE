@@ -247,6 +247,37 @@ def _dfs_location(market):
     return f"{market['city']},{market['state']},{country_name(market)}"
 
 
+def _dfs_locations(market):
+    """The city first, then its state/province, then the country (change 81). DataForSEO only knows the places on its
+    own location list: a small town (Glenella, Manitoba) is rejected, and without this every Google question failed."""
+    country = country_name(market)
+    out = []
+    if market.get("city") and market.get("state"):
+        out.append(_dfs_location(market))
+    if market.get("state"):
+        out.append(f"{market['state']},{country}")
+    out.append(country)
+    return list(dict.fromkeys(out))
+
+
+def _dfs_location_error(e):
+    t = str(e).lower()
+    return "40501" in t and "location" in t
+
+
+def _dfs_serp(url, base, market):
+    """One Google SERP request, asked from the closest place DataForSEO knows. -> (parsed response, location used)."""
+    last = None
+    for loc in _dfs_locations(market):
+        try:
+            return parse_dataforseo(_post(url, [{**base, "location_name": loc}], _dfs_headers())), loc
+        except RuntimeError as e:
+            if not _dfs_location_error(e):
+                raise
+            last = e
+    raise last
+
+
 def parse_dataforseo(resp):
     """Return (ai_text, ai_citations, local_pack, organic, cost) from a DataForSEO SERP response."""
     cost = resp.get("cost")
@@ -276,19 +307,18 @@ def parse_dataforseo(resp):
 
 
 def ask_google_aio(q, market):
-    payload = [{"keyword": q["keyword"], "location_name": _dfs_location(market), "language_code": "en",
-                "device": "desktop", "load_async_ai_overview": True, "depth": 20}]
-    resp = _post("https://api.dataforseo.com/v3/serp/google/organic/live/advanced", payload, _dfs_headers())
-    text, cites, pack, organic, cost = parse_dataforseo(resp)
+    (text, cites, pack, organic, cost), loc = _dfs_serp(
+        "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
+        {"keyword": q["keyword"], "language_code": "en", "device": "desktop", "load_async_ai_overview": True, "depth": 20}, market)
     return _record("google_aio", q, text=text, citations=cites, local_pack=pack, organic=organic, cost_usd=cost,
-                   status="ok" if text else "no_answer")
+                   status="ok" if text else "no_answer", location=loc)
 
 
 def ask_google_ai_mode(q, market):
-    payload = [{"keyword": q["prompt"], "location_name": _dfs_location(market), "language_code": "en", "device": "desktop"}]
-    resp = _post("https://api.dataforseo.com/v3/serp/google/ai_mode/live/advanced", payload, _dfs_headers())
-    text, cites, _, _, cost = parse_dataforseo(resp)
-    return _record("google_ai_mode", q, text=text, citations=cites, cost_usd=cost, status="ok" if text else "no_answer")
+    (text, cites, _, _, cost), loc = _dfs_serp(
+        "https://api.dataforseo.com/v3/serp/google/ai_mode/live/advanced",
+        {"keyword": q["prompt"], "language_code": "en", "device": "desktop"}, market)
+    return _record("google_ai_mode", q, text=text, citations=cites, cost_usd=cost, status="ok" if text else "no_answer", location=loc)
 
 
 def ask_google_aio_semrush(q, market):
