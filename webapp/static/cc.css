@@ -765,3 +765,30 @@ body:has(.cc) .flash.leaving { opacity:0; transform:translateY(-6px); transition
 .view-pill::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
 .cc form.ro input:disabled, .cc form.ro select:disabled, .cc form.ro textarea:disabled { background-color:var(--soft) !important; color:var(--ink2);
   border-color:var(--line) !important; box-shadow:none !important; cursor:default; opacity:1; }
+
+/* change 83: People page. Team table: checkboxes centred under their headings, owned clients as wrapping tags */
+.ppl-wrap { overflow-x:auto; }
+.cc-table.ppl { width:100%; table-layout:fixed; min-width:640px; }
+.cc-table.ppl col.ppl-name { width:260px; } .cc-table.ppl col.ppl-c { width:74px; }
+.cc-table.ppl th.pc, .cc-table.ppl td.pc { text-align:center; padding-left:0; padding-right:0; }
+.cc-table.ppl td { vertical-align:top; } .cc-table.ppl td.pc { padding-top:24px; }
+.cc-table.ppl input[type=checkbox] { width:16px; height:16px; margin:0; accent-color:var(--teal); cursor:pointer; }
+.cc-table.ppl tr.off td { opacity:.5; }
+.ppl-hint { font-weight:500; letter-spacing:.04em; text-transform:none; color:var(--muted); margin-left:4px; }
+.ppl-input { width:100%; max-width:210px; }
+.ppl-meta { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; margin-top:6px; min-width:0; }
+.ppl-email { color:var(--muted); font-size:12px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ppl-src { font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); background:var(--soft); padding:1px 6px; border-radius:4px; }
+.ppl-owns { display:flex; flex-wrap:wrap; gap:6px; padding-top:9px; }
+.ppl-own { display:inline-flex; align-items:center; gap:6px; padding:3px 4px 3px 9px; border:1px solid var(--line); border-radius:999px;
+  font-size:12.5px; color:var(--ink); text-decoration:none; background:#fff; white-space:nowrap; transition:border-color .15s, background .15s; }
+.ppl-own span { font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--teal); background:var(--soft); padding:1px 7px; border-radius:999px; }
+.ppl-own:hover { border-color:var(--teal); background:var(--soft); }
+/* access card: one block per person, nothing runs out of the card */
+.acc-list { list-style:none; margin:6px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+.acc-list li { padding:14px 16px; border:1px solid var(--soft-line); border-radius:12px; display:grid; gap:10px; align-content:start; min-width:0; }
+.acc-who { min-width:0; } .acc-who b { display:block; font-weight:600; font-size:14px; color:var(--ink); }
+.acc-who span { display:block; font-size:12.5px; color:var(--muted); overflow-wrap:anywhere; }
+.acc-role { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0; }
+.acc-role p { flex:1 1 100%; margin:0; font-size:12.5px; color:var(--ink2, var(--muted)); line-height:1.45; }
+.acc-role .link-btn { flex:0 0 auto; }
