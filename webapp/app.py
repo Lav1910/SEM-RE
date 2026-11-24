@@ -1939,6 +1939,11 @@ def admin():
             raw = request.form.get("limit", "").strip()
             budget.set_limit(float(raw) if raw else None, reset=bool(request.form.get("reset")))
             flash("Spending cap updated.", "good")
+        elif act == "balances":  # change 86: read the providers again now
+            from aeo import balances
+            balances.rows(force=True)
+            flash("Balances checked just now.", "good")
+            return redirect(url_for("admin") + "#balances")
         return redirect(url_for("admin"))
     users = db.q("""SELECT u.*, (SELECT COUNT(*) FROM audits a WHERE a.user_id=u.id AND a.created_at>?) AS month_n,
                     (SELECT COUNT(*) FROM audits a WHERE a.user_id=u.id AND a.created_at>?) AS day_n
@@ -1952,7 +1957,13 @@ def admin():
                     SUM(CASE WHEN status IN ('queued','running') THEN 1 ELSE 0 END) AS active FROM audits WHERE created_at>?""", (time.time() - 86400,), one=True)
     fb = db.q("""SELECT f.*, u.name AS who FROM feedback f JOIN users u ON u.id=f.user_id ORDER BY f.created_at DESC LIMIT 50""")
     seclog = db.q("SELECT * FROM security_log ORDER BY t DESC LIMIT 40")
-    return render_template("admin.html", feedback=fb, seclog=seclog, auth_info={"google": auth.google_enabled(),
+    try:  # change 86: credit left on the paid services (cached 10 minutes)
+        from aeo import balances
+        bal_rows, bal_t = balances.rows(cached_only=bool(app.config.get("TESTING")))  # tests never call the providers
+    except Exception:  # noqa: BLE001  never let a provider break the Admin page
+        logging.getLogger("hbm").warning("balances: could not read", exc_info=True)
+        bal_rows, bal_t = [], None
+    return render_template("admin.html", bal_rows=bal_rows, bal_t=bal_t, feedback=fb, seclog=seclog, auth_info={"google": auth.google_enabled(),
                            "password": True, "mail": mailer.configured(), "domain": auth.ALLOWED_DOMAIN}, roles=auth.ROLES, users=users, platforms=platforms, budget=budget.status(), stats=stats,
                            workers=jobs.WORKERS, keys_file=config.KEYS_FILE, ai=mcp.admin_ctx(),
                            answers_captured=engines.captured_on())

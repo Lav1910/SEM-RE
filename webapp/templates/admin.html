@@ -25,6 +25,22 @@
     </section>
   </div>
 
+  <section class="card" id="balances">{# change 86: credit left on the paid services #}
+    <div class="status-row"><h2 style="margin:0">Credits and balances</h2>
+      <form method="post" style="margin:0"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <span class="small muted">{% if bal_t %}Checked {{ bal_t|ago }}{% endif %}</span>
+        <button class="btn btn-ghost btn-small" name="action" value="balances" style="margin-left:8px">Check now</button></form></div>
+    {% if bal_rows %}
+    <table class="bal-table"><tbody>{% for b in bal_rows %}
+      <tr><td><b>{{ b.name }}</b><span class="small muted bal-use">{{ b.used_for }}</span></td>
+        <td class="r bal-val">{% if b.value is not none %}<span class="bal-num bal-{{ b.state }}">{{ ('$%.2f'|format(b.value)) if b.unit == 'usd' else ('{:,}'.format(b.value) ~ ' units') }}</span>{% else %}<span class="muted">—</span>{% endif %}
+          {% if b.state in ('warn', 'bad') and b.value is not none %}<span class="pill {{ 'p-bad' if b.state == 'bad' else 'p-warn' }}">{{ 'Top up now' if b.state == 'bad' else 'Running low' }}</span>{% endif %}
+          <span class="small muted bal-note">{{ b.note }}{% if b.link %} · <a href="{{ b.link }}" target="_blank" rel="noopener noreferrer">{{ 'Top up' if b.unit else 'Billing page' }}</a>{% endif %}</span></td></tr>
+    {% endfor %}</tbody></table>
+    <p class="small muted" style="margin:10px 0 0">Only DataForSEO, and Semrush when it uses an API key, report what's left. "—" means the provider doesn't say, not that it's empty. The provider's billing page is the final record.</p>
+    {% else %}<p class="small muted">Balances couldn't be read just now. Try "Check now".</p>{% endif %}
+  </section>
+
   <section class="card" id="answer-source">{# change 59 #}
     <div class="status-row"><h2 style="margin:0">ChatGPT and Gemini answers</h2>
       <span class="small muted">{{ 'From the consumer apps via DataForSEO, about $0.004 an answer' if answers_captured else 'From the official APIs, about $0.11 (ChatGPT) and $0.05 (Gemini) an answer' }}</span></div>
