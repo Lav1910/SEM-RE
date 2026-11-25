@@ -1152,3 +1152,137 @@ class ViewOnly(WithApp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeveralGoogleAccounts(WithApp):
+    """Change 87: Business Profile and Analytics can each hold several Google accounts; every client is read through the
+    account that can see it, and a client missing from the main account gets its own connect button."""
+    KEYS = {"GBP_OAUTH_CLIENT_ID": "test-client.apps.googleusercontent.com", "GBP_OAUTH_CLIENT_SECRET": "GOCSPX-test"}
+
+    def setUp(self):
+        from aeo import kv
+        from webapp.cc.sources import ga4, gbp
+        for mod in (gbp, ga4):
+            for a in mod.ACC.extras():
+                mod.forget(a["email"])
+            mod.forget()
+            mod.forget()
+        kv.update("cc_gbp_dir_at", lambda _o: 0, 0)
+        kv.update("cc_ga4_dir_at", lambda _o: 0, 0)
+        self.db.x("DELETE FROM cc_gbp_locations")
+        self.db.x("DELETE FROM cc_ga4_properties")
+        self.keys = mock.patch.object(gbp.config, "key", side_effect=lambda n: self.KEYS.get(n))
+        self.keys.start()
+        self.addCleanup(self.keys.stop)
+
+    def test_each_client_is_read_through_the_account_that_sees_it(self):
+        from aeo import kv
+        from webapp.cc import gbp_sync
+        from webapp.cc.sources import gbp
+        gbp.save("1//main-SECRET", "info@example.com", "ccboss@homebuildermarketers.com")
+        gbp.save("1//seo-SECRET", "seo@example.com", "ccboss@homebuildermarketers.com", extra=True)
+        self.assertEqual(gbp.stored()["email"], "info@example.com")
+        self.assertEqual([a["email"] for a in gbp.ACC.extras()], ["seo@example.com"])
+        self.assertNotIn("seo-SECRET", json.dumps(kv.get(gbp.KV_KEY + "_extra")))  # encrypted like the main one
+        self.assertEqual(gbp._refresh_token(), "1//main-SECRET")
+        with gbp.use("seo@example.com"):
+            self.assertEqual(gbp._refresh_token(), "1//seo-SECRET")
+        self.assertEqual(gbp._refresh_token(), "1//main-SECRET")  # back to the main account after the block
+
+        def accounts(calls=None):
+            return [{"name": "accounts/" + ("S" if gbp.ACC.current() == "seo@example.com" else "M")}]
+
+        def locations(account, calls=None):
+            main = {"name": "locations/11", "title": "Main Homes", "websiteUri": "https://main-homes.example"}
+            if account == "accounts/S":
+                return [{"name": "locations/22", "title": "Seo Homes", "websiteUri": "https://seo-homes.example"}, main]
+            return [main]
+        used = set()
+
+        def record(*a, **k):
+            used.add(gbp.ACC.current())
+            return {}
+        with mock.patch.object(gbp, "accounts", accounts), mock.patch.object(gbp, "locations", locations):
+            self.assertEqual(gbp_sync.refresh_directory([0], force=True), 2)
+        via = {r["name"]: r["via"] for r in self.db.q("SELECT name, via FROM cc_gbp_locations")}
+        self.assertEqual(via, {"locations/11": "info@example.com", "locations/22": "seo@example.com"})  # seen by both: main wins
+        cid = self.new_client(name="Seo Homes", domain="seo-homes.example")
+        with mock.patch.object(gbp, "daily_metrics", side_effect=record), \
+                mock.patch.object(gbp, "reviews", side_effect=lambda *a, **k: (record(), [], None, 0, True)[1:]), \
+                mock.patch.object(gbp, "local_posts", side_effect=lambda *a, **k: (record(), [], True)[1:]), \
+                mock.patch.object(gbp, "media", side_effect=lambda *a, **k: (record(), [], True)[1:]):
+            gbp_sync.sync(dict(self.db.q("SELECT * FROM cc_clients WHERE id=?", (cid,), one=True)), [0])
+        self.assertEqual(used, {"seo@example.com"})
+        src = self.db.q("SELECT state, detail FROM cc_sources WHERE client_id=? AND source='gbp'", (cid,), one=True)
+        self.assertEqual(src["state"], "ok")
+        self.assertIn("via seo@example.com", src["detail"])
+        gbp.forget()  # the main account goes: the extra one takes its place, nothing is lost
+        self.assertEqual(gbp.stored()["email"], "seo@example.com")
+        self.assertEqual(gbp.ACC.extras(), [])
+        self.assertEqual(gbp._refresh_token(), "1//seo-SECRET")
+
+    def test_a_failing_extra_account_keeps_its_profiles(self):
+        from webapp.cc import gbp_sync
+        from webapp.cc.sources import gbp
+        gbp.save("1//main", "info@example.com", "x")
+        gbp.save("1//seo", "seo@example.com", "x", extra=True)
+        self.db.x("INSERT INTO cc_gbp_locations (name, account, title, seen_at, via) VALUES ('locations/22', 'accounts/S', 'Seo Homes', 1, 'seo@example.com')")
+
+        def accounts(calls=None):
+            if gbp.ACC.current() == "seo@example.com":
+                raise gbp.GBPError("Couldn't reach Google")
+            return [{"name": "accounts/M"}]
+        with mock.patch.object(gbp, "accounts", accounts), mock.patch.object(gbp, "locations", lambda a, calls=None: []):
+            gbp_sync.refresh_directory([0], force=True)
+        self.assertTrue(self.db.q("SELECT 1 FROM cc_gbp_locations WHERE name='locations/22'", one=True))  # not dropped on a blip
+
+    def test_connect_another_account_from_a_client_page(self):
+        from webapp.cc import data, gbp_sync
+        from webapp.cc.sources import gbp
+        gbp.save("1//main", "info@example.com", "x")
+        cid = self.new_client(name="Missing Homes", domain="missing.example")
+        data.set_source(cid, "gbp", "not_connected", "No Business Profile for missing.example in any connected Google account")
+        with self.env():
+            c = self.client("ccboss")
+            page = c.get(f"/delivery/clients/{cid}").data.decode()
+            self.assertIn("Connect another Google account", page)
+            self.assertIn(f"/delivery/gbp/connect?extra=1&amp;client={cid}", page)
+            r = c.get(f"/delivery/gbp/connect?extra=1&client={cid}", headers={"Sec-Fetch-Site": "same-origin"})
+            self.assertTrue(r.headers["Location"].startswith(gbp.AUTH_URL))
+            with c.session_transaction() as s:
+                state = s["cc_gbp_oauth"]["state"]
+                self.assertEqual((s["cc_gbp_oauth"]["extra"], s["cc_gbp_oauth"]["client"]), (True, cid))
+            with mock.patch.object(gbp, "exchange", return_value=("1//seo", "seo@example.com")), \
+                    mock.patch.object(gbp_sync, "refresh_directory", return_value=5):
+                r = c.get(f"/delivery/gbp/callback?state={state}&code=abc")
+            self.assertTrue(r.headers["Location"].endswith(f"/delivery/clients/{cid}#t-setup"))
+            self.assertEqual(gbp.stored()["email"], "info@example.com")  # the main account stays
+            self.assertEqual([a["email"] for a in gbp.ACC.extras()], ["seo@example.com"])
+            page = c.get("/delivery/sync").data.decode()
+            self.assertIn("seo@example.com", page)
+            self.assertIn("Add another Google account", page)
+            with mock.patch.object(gbp, "revoke", return_value=True), mock.patch.object(gbp_sync, "refresh_directory", return_value=1):
+                c.post("/delivery/gbp/disconnect", data={"csrf": "t", "email": "seo@example.com"})
+            self.assertEqual(gbp.ACC.extras(), [])
+            self.assertEqual(gbp.stored()["email"], "info@example.com")  # removing the extra one leaves the main one
+
+    def test_analytics_worker_threads_use_the_right_account(self):
+        from webapp.cc import ga4_sync
+        from webapp.cc.sources import ga4
+        ga4.save("1//main", "info@example.com", "x")
+        ga4.save("1//seo", "seo@example.com", "x", extra=True)
+        seen = []
+
+        def summaries(calls=None):
+            p = "properties/2" if ga4.ACC.current() == "seo@example.com" else "properties/1"
+            return [{"account": "accounts/9", "displayName": "Acc", "propertySummaries": [{"property": p, "displayName": p}]}]
+
+        def streams(prop, calls=None):
+            seen.append((prop, ga4.ACC.current()))
+            return []
+        with mock.patch.object(ga4, "account_summaries", summaries), mock.patch.object(ga4, "web_streams", streams):
+            ga4_sync.refresh_directory([0], force=True)
+        self.assertIn(("properties/2", "seo@example.com"), seen)
+        self.assertIn(("properties/1", "info@example.com"), seen)
+        via = {r["name"]: r["via"] for r in self.db.q("SELECT name, via FROM cc_ga4_properties")}
+        self.assertEqual(via, {"properties/1": "info@example.com", "properties/2": "seo@example.com"})

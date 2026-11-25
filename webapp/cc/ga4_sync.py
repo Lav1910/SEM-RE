@@ -35,25 +35,37 @@ def refresh_directory(calls, force=False):
     if not force and now() - float(kv.get("cc_ga4_dir_at", 0) or 0) < DIR_MAX_AGE:
         return None
     from concurrent.futures import ThreadPoolExecutor
-    t, seen = now(), set()
-    props = [(acc, ps) for acc in ga4.account_summaries(calls) for ps in acc.get("propertySummaries") or [] if ps.get("property")]
-
-    def streams_of(prop):  # an agency account can see 100+ properties: read their websites 8 at a time, not one by one
+    t, seen, listed, last_err = now(), set(), set(), None
+    emails = ga4.ACC.emails()  # change 87: every connected Google account, main first
+    for email in emails:
         try:
-            return ga4.web_streams(prop, calls)
-        except (ga4.GA4Error, ga4.QuotaRefused):
-            return []
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        all_streams = list(pool.map(streams_of, [ps["property"] for _, ps in props]))
-    for (acc, ps), streams in zip(props, all_streams):
-        prop = ps["property"]
-        seen.add(prop)
-        web = (streams[0].get("webStreamData") or {}) if streams else {}
-        db.upsert("cc_ga4_properties", {"name": prop, "display_name": ps.get("displayName"), "account": acc.get("account"),
-                                        "account_name": acc.get("displayName"), "website": web.get("defaultUri"),
-                                        "measurement_id": web.get("measurementId"), "seen_at": t}, ["name"])
-    for r in db.q("SELECT name FROM cc_ga4_properties"):
-        if r["name"] not in seen:
+            with ga4.use(email):
+                props = [(acc, ps) for acc in ga4.account_summaries(calls) for ps in acc.get("propertySummaries") or []
+                         if ps.get("property") and ps["property"] not in seen]
+        except (ga4.GA4Error, ga4.QuotaRefused, ga4.Reauth, ga4.NotConnected) as e:
+            last_err = e
+            continue
+
+        def streams_of(prop, email=email):  # an agency account can see 100+ properties: read their websites 8 at a time
+            try:
+                with ga4.use(email):  # worker threads don't inherit the account choice
+                    return ga4.web_streams(prop, calls)
+            except (ga4.GA4Error, ga4.QuotaRefused, ga4.Reauth):
+                return []
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            all_streams = list(pool.map(streams_of, [ps["property"] for _, ps in props]))
+        for (acc, ps), streams in zip(props, all_streams):
+            prop = ps["property"]
+            seen.add(prop)
+            web = (streams[0].get("webStreamData") or {}) if streams else {}
+            db.upsert("cc_ga4_properties", {"name": prop, "display_name": ps.get("displayName"), "account": acc.get("account"),
+                                            "account_name": acc.get("displayName"), "website": web.get("defaultUri"),
+                                            "measurement_id": web.get("measurementId"), "seen_at": t, "via": email}, ["name"])
+        listed.add(email)
+    if emails and not listed and last_err:
+        raise last_err
+    for r in db.q("SELECT name, via FROM cc_ga4_properties"):
+        if r["name"] not in seen and (r["via"] in listed or r["via"] not in emails):
             db.x("DELETE FROM cc_ga4_properties WHERE name=?", (r["name"],))
     kv.update("cc_ga4_dir_at", lambda _o: t, 0)
     return len(seen)
@@ -128,7 +140,7 @@ def sync(c, calls):
     prop, how, others = match(c, directory())
     if not prop:
         why = ("The property picked on Setup is no longer visible to the connected Google account" if how == "manual"
-               else f"No Analytics property for {c.get('domain') or c['name']} in the connected Google account")
+               else f"No Analytics property for {c.get('domain') or c['name']} in any connected Google account")
         data.set_source(cid, "ga4", "not_connected", why)
         data.set_metric(cid, "ga4", "summary", "latest", text=None)
         return "no property"
@@ -136,6 +148,11 @@ def sync(c, calls):
         data.log_change(cid, "client", cid, "ga4_property", c.get("ga4_property"), prop["name"], "sync (matched by website)")
         db.x("UPDATE cc_clients SET ga4_property=? WHERE id=?", (prop["name"], cid))
 
+    with ga4.use(prop.get("via")):  # change 87: read through the account that can see this property
+        return _read_property(c, cid, prop, how, others, calls)
+
+
+def _read_property(c, cid, prop, how, others, calls):
     P = periods(today())
     name = prop["name"]
     ch_cur, cur = _channels(name, P["cur"], calls)
@@ -172,6 +189,7 @@ def sync(c, calls):
     summary = {
         "property": name, "display_name": prop.get("display_name"), "account": prop.get("account_name"), "website": prop.get("website"),
         "measurement_id": prop.get("measurement_id"), "how": how, "others": [o.get("display_name") for o in others],
+        "via": prop.get("via"),
         "periods": {k: [v[0].isoformat(), v[1].isoformat()] for k, v in P.items()},
         "cur": cur, "prev": prev, "ly": ly,
         "channels": [{"channel": r.get("sessionDefaultChannelGroup"), "sessions": r.get("sessions"), "key_events": r.get("keyEvents")} for r in ch_cur],
@@ -187,5 +205,6 @@ def sync(c, calls):
     if others:
         data.set_source(cid, "ga4", "partial", f"{len(others) + 1} properties match this website; using {prop.get('display_name')}. Pick one on Setup.", ok=True)
     else:
-        data.set_source(cid, "ga4", "ok", f"{prop.get('display_name')} · {prop.get('account_name') or ''}".strip(" ·"), ok=True)
+        via = f" · via {prop['via']}" if prop.get("via") and prop.get("via") != (ga4.stored() or {}).get("email") else ""
+        data.set_source(cid, "ga4", "ok", f"{prop.get('display_name')} · {prop.get('account_name') or ''}".strip(" ·") + via, ok=True)
     return f"{prop.get('display_name')}: {cur['sessions']} organic sessions / 30 days"

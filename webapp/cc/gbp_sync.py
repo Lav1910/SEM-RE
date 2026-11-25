@@ -31,22 +31,37 @@ def _norm(name):
 
 # ---------------------------------------------------------------- directory
 def refresh_directory(calls, force=False):
-    """Re-list every location the connected account can see. Returns how many."""
+    """Re-list every location the connected accounts can see (change 87: all of them, main first; a profile two accounts
+    can see is read through the first). Returns how many."""
     if not force and now() - float(kv.get("cc_gbp_dir_at", 0) or 0) < DIR_MAX_AGE:
         return None
-    t, seen = now(), set()
-    for acc in gbp.accounts(calls):
-        for loc in gbp.locations(acc["name"], calls):
-            meta = loc.get("metadata") or {}
-            seen.add(loc["name"])
-            db.upsert("cc_gbp_locations", {
-                "name": loc["name"], "account": acc["name"], "account_name": acc.get("accountName"),
-                "title": loc.get("title"), "website": loc.get("websiteUri"), "place_id": meta.get("placeId"),
-                "maps_uri": meta.get("mapsUri"), "address": gbp.address_line(loc),
-                "verified": 1 if meta.get("hasVoiceOfMerchant") else (0 if "hasVoiceOfMerchant" in meta else None),
-                "open_status": (loc.get("openInfo") or {}).get("status"), "seen_at": t}, ["name"])
-    for r in db.q("SELECT name FROM cc_gbp_locations"):
-        if r["name"] not in seen:
+    t, seen, listed, last_err = now(), set(), set(), None
+    emails = gbp.ACC.emails()
+    for email in emails:
+        with gbp.use(email):
+            try:
+                for acc in gbp.accounts(calls):
+                    for loc in gbp.locations(acc["name"], calls):
+                        if loc["name"] in seen:
+                            continue
+                        meta = loc.get("metadata") or {}
+                        seen.add(loc["name"])
+                        db.upsert("cc_gbp_locations", {
+                            "name": loc["name"], "account": acc["name"], "account_name": acc.get("accountName"),
+                            "title": loc.get("title"), "website": loc.get("websiteUri"), "place_id": meta.get("placeId"),
+                            "maps_uri": meta.get("mapsUri"), "address": gbp.address_line(loc),
+                            "verified": 1 if meta.get("hasVoiceOfMerchant") else (0 if "hasVoiceOfMerchant" in meta else None),
+                            "open_status": (loc.get("openInfo") or {}).get("status"), "seen_at": t, "via": email}, ["name"])
+                listed.add(email)
+            except gbp.NotApproved:
+                raise  # the Cloud project itself: the same for every account
+            except (gbp.Reauth, gbp.NotConnected, gbp.GBPError) as e:
+                last_err = e  # this account is flagged (or failed this time); the others still count
+    if emails and not listed and last_err:
+        raise last_err
+    for r in db.q("SELECT name, via FROM cc_gbp_locations"):
+        # drop a profile only when the account that saw it was read in full this time, or that account is gone
+        if r["name"] not in seen and (r["via"] in listed or r["via"] not in emails):
             db.x("DELETE FROM cc_gbp_locations WHERE name=?", (r["name"],))
     kv.update("cc_gbp_dir_at", lambda _o: t, 0)
     return len(seen)
@@ -96,7 +111,7 @@ def sync(c, calls):
     loc, how, others = match(c, directory())
     if not loc:
         why = ("The profile picked on Setup is no longer in the connected Google account" if how == "manual"
-               else f"No Business Profile for {c.get('domain') or c['name']} in the connected Google account")
+               else f"No Business Profile for {c.get('domain') or c['name']} in any connected Google account")
         data.set_source(cid, "gbp", "not_connected", why)
         data.set_metric(cid, "gbp", "profile", "latest", text=None)
         return "no profile"
@@ -106,10 +121,11 @@ def sync(c, calls):
 
     t = today()
     end, start = t - datetime.timedelta(days=1), t - datetime.timedelta(days=91)
-    daily = gbp.daily_metrics(loc["name"], start, end, calls)
-    revs, avg, total, revs_all = gbp.reviews(loc["account"], loc["name"], calls)
-    posts, posts_all = gbp.local_posts(loc["account"], loc["name"], calls)
-    photos, photos_all = gbp.media(loc["account"], loc["name"], calls)
+    with gbp.use(loc.get("via")):  # change 87: read through the account that can see this profile
+        daily = gbp.daily_metrics(loc["name"], start, end, calls)
+        revs, avg, total, revs_all = gbp.reviews(loc["account"], loc["name"], calls)
+        posts, posts_all = gbp.local_posts(loc["account"], loc["name"], calls)
+        photos, photos_all = gbp.media(loc["account"], loc["name"], calls)
 
     since = add_months(month_of(t), -(KEEP_MONTHS - 1))
     n_dl = _save_deliverables(cid, loc, revs, posts, photos, since, {"post": posts_all, "photo": photos_all, "reply": revs_all})
@@ -117,7 +133,7 @@ def sync(c, calls):
     last_post = max((gbp.ts(p.get("createTime")) or 0 for p in posts if p.get("state") == "LIVE"), default=0) or None
     profile = {"name": loc["name"], "title": loc.get("title"), "account": loc.get("account_name"), "address": loc.get("address"),
                "website": loc.get("website"), "maps_uri": loc.get("maps_uri"), "place_id": loc.get("place_id"),
-               "verified": loc.get("verified"), "open_status": loc.get("open_status"), "how": how,
+               "verified": loc.get("verified"), "open_status": loc.get("open_status"), "how": how, "via": loc.get("via"),
                "website_match": (root_domain(loc.get("website")) == root_domain(c.get("domain"))) if loc.get("website") else None,
                "others": [o.get("title") for o in others], "last_post": last_post,
                "posts_live": sum(1 for p in posts if p.get("state") == "LIVE"), "photos": len(photos)}
@@ -127,7 +143,8 @@ def sync(c, calls):
     if others:
         data.set_source(cid, "gbp", "partial", f"{len(others) + 1} profiles match this website; using {loc.get('title')}. Pick one on Setup.", ok=True)
     else:
-        data.set_source(cid, "gbp", "ok", f"{loc.get('title')} · {loc.get('account_name') or loc['account']}", ok=True)
+        data.set_source(cid, "gbp", "ok", f"{loc.get('title')} · {loc.get('account_name') or loc['account']}"
+                        + (f" · via {loc['via']}" if loc.get("via") and loc.get("via") != (gbp.stored() or {}).get("email") else ""), ok=True)
     return f"{loc.get('title')}: {len(revs)} reviews, {len(posts)} posts, {len(photos)} photos, {n_dl} deliverables"
 
 

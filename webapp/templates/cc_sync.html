@@ -13,13 +13,20 @@
     {% if gbp_conn and gbp_conn.state != 'reauth' %}<span class="tag green">Connected</span>{% elif gbp_conn %}<span class="tag red">Needs connecting again</span>{% elif gbp_cfg %}<span class="tag amber">Ready to connect</span>{% else %}<span class="tag amber">Not set up</span>{% endif %}
   </div>
   {% if gbp_conn %}
-  <p>Signed in as <b>{{ gbp_conn.email or 'a Google account' }}</b> by {{ (gbp_conn.by or '').split('@')[0] or '—' }}, {{ fmt_date(gbp_conn.connected_at, True) }}.
-     {{ gbp_dir }} profile{{ 's' if gbp_dir != 1 }} visible{% if gbp_dir_at %} (listed {{ fmt_ago(gbp_dir_at) }}){% endif %}.</p>
+  <p>{{ 'Main account' if gbp_extra else 'Signed in as' }} <b>{{ gbp_conn.email or 'a Google account' }}</b> by {{ (gbp_conn.by or '').split('@')[0] or '—' }}, {{ fmt_date(gbp_conn.connected_at, True) }}.
+     {{ gbp_dir }} profile{{ 's' if gbp_dir != 1 }} visible{{ ' across all accounts' if gbp_extra }}{% if gbp_dir_at %} (listed {{ fmt_ago(gbp_dir_at) }}){% endif %}.</p>
   {% if gbp_conn.detail %}<p class="need red">{{ gbp_conn.detail }}</p>{% endif %}
   <div class="cc-inline">
     {% if gbp_conn.state == 'reauth' %}<a class="btn btn-primary btn-small cc-owner-only" href="{{ url_for('cc_gbp_connect') }}">Connect again</a>{% endif %}
     <form method="post" action="{{ url_for('cc_gbp_disconnect') }}" onsubmit="return confirm('Disconnect Google Business Profile? Profile numbers stop updating until someone connects again.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn danger" type="submit">Disconnect</button></form>
   </div>
+  {# change 87: extra Google accounts; each client is read through the account that can see it #}
+  {% if gbp_extra %}<ul class="gc-extra">{% for a in gbp_extra %}
+    <li><span>Also <b>{{ a.email }}</b> · added by {{ (a.by or '').split('@')[0] or '—' }}, {{ fmt_date(a.connected_at, True) }}{% if a.state == 'reauth' %} · <span class="need red">needs connecting again</span>{% endif %}</span>
+      {% if a.state == 'reauth' %}<a class="link-btn cc-owner-only" href="{{ url_for('cc_gbp_connect', extra=1) }}">Connect again</a>{% endif %}
+      <form method="post" action="{{ url_for('cc_gbp_disconnect') }}" onsubmit="return confirm('Disconnect {{ a.email }}? Clients only it can see stop updating.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="email" value="{{ a.email }}"><button class="link-btn danger" type="submit">Remove</button></form></li>
+  {% endfor %}</ul>{% endif %}
+  <p class="small muted gc-add"><a class="link-btn cc-owner-only" href="{{ url_for('cc_gbp_connect', extra=1) }}">+ Add another Google account</a> for profiles only another account can see. Each client is read through the account that can see it.</p>
   {% elif gbp_cfg %}
   <p>Sign in with the Google account that manages the client profiles (owner or manager). The app only reads: it never posts, replies or edits a profile.</p>
   <a class="btn btn-primary btn-small cc-owner-only" href="{{ url_for('cc_gbp_connect') }}">Connect Business Profile</a>
@@ -38,13 +45,20 @@
     {% if ga4_conn and ga4_conn.state != 'reauth' %}<span class="tag green">Connected</span>{% elif ga4_conn %}<span class="tag red">Needs connecting again</span>{% elif gbp_cfg %}<span class="tag amber">Ready to connect</span>{% else %}<span class="tag amber">Not set up</span>{% endif %}
   </div>
   {% if ga4_conn %}
-  <p>Signed in as <b>{{ ga4_conn.email or 'a Google account' }}</b> by {{ (ga4_conn.by or '').split('@')[0] or '—' }}, {{ fmt_date(ga4_conn.connected_at, True) }}.
-     {{ ga4_dir }} propert{{ 'ies' if ga4_dir != 1 else 'y' }} visible{% if ga4_dir_at %} (listed {{ fmt_ago(ga4_dir_at) }}){% endif %}.</p>
+  <p>{{ 'Main account' if ga4_extra else 'Signed in as' }} <b>{{ ga4_conn.email or 'a Google account' }}</b> by {{ (ga4_conn.by or '').split('@')[0] or '—' }}, {{ fmt_date(ga4_conn.connected_at, True) }}.
+     {{ ga4_dir }} propert{{ 'ies' if ga4_dir != 1 else 'y' }} visible{{ ' across all accounts' if ga4_extra }}{% if ga4_dir_at %} (listed {{ fmt_ago(ga4_dir_at) }}){% endif %}.</p>
   {% if ga4_conn.detail %}<p class="need red">{{ ga4_conn.detail }}</p>{% endif %}
   <div class="cc-inline">
     {% if ga4_conn.state == 'reauth' %}<a class="btn btn-primary btn-small cc-owner-only" href="{{ url_for('cc_ga4_connect') }}">Connect again</a>{% endif %}
     <form method="post" action="{{ url_for('cc_ga4_disconnect') }}" onsubmit="return confirm('Disconnect Google Analytics? Analytics numbers stop updating until someone connects again.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="link-btn danger" type="submit">Disconnect</button></form>
   </div>
+  {# change 87: extra Google accounts; each client is read through the account that can see it #}
+  {% if ga4_extra %}<ul class="gc-extra">{% for a in ga4_extra %}
+    <li><span>Also <b>{{ a.email }}</b> · added by {{ (a.by or '').split('@')[0] or '—' }}, {{ fmt_date(a.connected_at, True) }}{% if a.state == 'reauth' %} · <span class="need red">needs connecting again</span>{% endif %}</span>
+      {% if a.state == 'reauth' %}<a class="link-btn cc-owner-only" href="{{ url_for('cc_ga4_connect', extra=1) }}">Connect again</a>{% endif %}
+      <form method="post" action="{{ url_for('cc_ga4_disconnect') }}" onsubmit="return confirm('Disconnect {{ a.email }}? Clients only it can see stop updating.')"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="email" value="{{ a.email }}"><button class="link-btn danger" type="submit">Remove</button></form></li>
+  {% endfor %}</ul>{% endif %}
+  <p class="small muted gc-add"><a class="link-btn cc-owner-only" href="{{ url_for('cc_ga4_connect', extra=1) }}">+ Add another Google account</a> for properties only another account can see. Each client is read through the account that can see it.</p>
   {% elif gbp_cfg %}
   <p>Sign in with a Google account that has at least <b>Viewer</b> access to the clients' GA4 properties. The permission is read-only: Google itself blocks any change.</p>
   <p class="small muted">Before the first connect: in Google Cloud, enable <i>Google Analytics Data API</i> and <i>Google Analytics Admin API</i>, and add <code>{{ ga4_redirect }}</code> to the OAuth client's redirect URIs.</p>
