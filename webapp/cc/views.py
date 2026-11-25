@@ -207,7 +207,11 @@ def cc_portfolio():
         rows = [r for r in rows if (r["c"]["package"] or "none") == f_pkg]
     if f_flag:
         rows = [r for r in rows if any(fl["code"] == f_flag for fl in r["flags"])]
-    rows.sort(key=lambda r: (SEV_RANK.get(r["health"], 1), -r["reds"], -r["ambers"], (r["c"]["name"] or "").lower()))
+    f_sort = "worst" if request.args.get("sort") == "worst" else "az"  # change 88: A to Z unless asked for worst first
+    if f_sort == "worst":
+        rows.sort(key=lambda r: (SEV_RANK.get(r["health"], 1), -r["reds"], -r["ambers"], (r["c"]["name"] or "").lower()))
+    else:
+        rows.sort(key=lambda r: re.sub(r"[^a-z0-9]+", " ", (r["c"]["name"] or "").lower()).strip())
     active = [r for r in allrows if r["c"]["status"] == "active"]
     codes = lambda r: {fl["code"] for fl in r["flags"]}  # noqa: E731
     strip = {
@@ -222,7 +226,7 @@ def cc_portfolio():
     last_sync = db.q("SELECT MAX(finished_at) AS t FROM cc_sync WHERE status='done'", one=True)["t"]
     running = db.q("SELECT COUNT(*) AS n FROM cc_sync WHERE status IN ('queued','running')", one=True)["n"]
     return render_template("cc_portfolio.html", rows=rows, strip=strip, P=P, flag_codes=flag_codes, month=month_of(today()), L=logos(),
-                           f={"am": f_am, "owner": f_owner, "package": f_pkg, "flag": f_flag, "status": f_status},
+                           f={"am": f_am, "owner": f_owner, "package": f_pkg, "flag": f_flag, "status": f_status, "sort": f_sort},
                            last_sync=last_sync, running=running, clickup_on=clickup.connected(), n_clients=len(allrows))
 
 

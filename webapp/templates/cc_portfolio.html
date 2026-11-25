@@ -2,7 +2,7 @@
 {% import "_cc.html" as m %}
 {% block cc_title %}All clients{% endblock %}
 {% block cc_h1 %}All clients{% endblock %}
-{% block cc_sub %}Every SEO client for {{ month_label(month, True) }}, worst first. Red needs action, amber is at risk or missing data, green is on track. Click a client to open its dashboard.{% endblock %}
+{% block cc_sub %}Every SEO client for {{ month_label(month, True) }}. Red needs action, amber is at risk or missing data, green is on track. Click a client to open its dashboard.{% endblock %}
 {% block cc_meta %}
   Last sync {{ fmt_ago(last_sync) }}{% if running %} · {{ running }} job{{ 's' if running != 1 }} queued{% endif %}
   <form method="post" action="{{ url_for('cc_sync') }}" class="cc-allow" style="display:inline;margin-left:8px"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="btn btn-ghost btn-small" type="submit">Sync all now</button></form>
@@ -41,9 +41,10 @@
   <select name="am" aria-label="Account manager"><option value="">Any AM</option><option value="none" {{ 'selected' if f.am=='none' }}>No AM named</option>{% for pid, p in P.items() if 'am' in (p.roles or '') %}<option value="{{ pid }}" {{ 'selected' if f.am==pid|string }}>{{ p.name }}</option>{% endfor %}</select>
   <select name="owner" aria-label="SEO owner"><option value="">Any SEO owner</option><option value="none" {{ 'selected' if f.owner=='none' }}>No owner named</option>{% for pid, p in P.items() if 'seo' in (p.roles or '') %}<option value="{{ pid }}" {{ 'selected' if f.owner==pid|string }}>{{ p.name }}</option>{% endfor %}</select>
   <select name="package" aria-label="Package"><option value="">Any package</option><option value="none" {{ 'selected' if f.package=='none' }}>Package missing</option>{% for pk in PACKAGES %}<option {{ 'selected' if f.package==pk }}>{{ pk }}</option>{% endfor %}</select>
+  <select name="sort" aria-label="Sort"><option value="az" {{ 'selected' if f.sort=='az' }}>A to Z</option><option value="worst" {{ 'selected' if f.sort=='worst' }}>Worst first</option></select>
   <select name="flag" aria-label="Flag"><option value="">Any flag</option>{% for code in flag_codes %}<option value="{{ code }}" {{ 'selected' if f.flag==code }}>{{ code|replace('_',' ')|capitalize }}</option>{% endfor %}</select>
   {% if f.am or f.owner or f.package or f.flag or f.status != 'active' %}<a href="{{ url_for('cc_portfolio') }}" class="small">Clear filters</a>{% endif %}
-  <span class="count">{{ rows|length }} client{{ 's' if rows|length != 1 }} · worst first</span>
+  <span class="count">{{ rows|length }} client{{ 's' if rows|length != 1 }} · {{ 'worst first' if f.sort == 'worst' else 'A to Z' }}</span>
   <span class="cc-seg" role="group" aria-label="View">
     <button type="button" data-view="icons" aria-pressed="true" title="Large icons"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>Icons</button>
     <button type="button" data-view="list" aria-pressed="false" title="List"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="3" rx="1"/><rect x="2" y="8.5" width="16" height="3" rx="1"/><rect x="2" y="14" width="16" height="3" rx="1"/></svg>List</button>

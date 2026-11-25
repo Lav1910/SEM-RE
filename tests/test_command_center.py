@@ -1286,3 +1286,22 @@ class SeveralGoogleAccounts(WithApp):
         self.assertIn(("properties/1", "info@example.com"), seen)
         via = {r["name"]: r["via"] for r in self.db.q("SELECT name, via FROM cc_ga4_properties")}
         self.assertEqual(via, {"properties/1": "info@example.com", "properties/2": "seo@example.com"})
+
+
+class PortfolioOrder(WithApp):
+    """Change 88: the client grid is A to Z by default; "Worst first" is one option away."""
+
+    def test_a_to_z_by_default_worst_first_on_request(self):
+        stamp = str(int(time.time() * 1000))
+        ids = {}
+        for name, health in (("Zulu Homes " + stamp, "red"), ("Alpha Homes " + stamp, "green"), ("Mike Homes " + stamp, "amber")):
+            ids[name] = self.new_client(name=name, domain=name.split()[0].lower() + stamp + ".example")
+            self.db.x("UPDATE cc_clients SET health=? WHERE id=?", (health, ids[name]))
+        with self.env():
+            c = self.client("ccboss")
+            az = c.get("/delivery").get_data(as_text=True)
+            worst = c.get("/delivery?sort=worst").get_data(as_text=True)
+        pos = lambda page, n: page.split('id="cc-views"', 1)[1].index(n + stamp)  # noqa: E731  (the grid, not the side menu)
+        self.assertLess(pos(az, "Alpha Homes "), pos(az, "Mike Homes ")); self.assertLess(pos(az, "Mike Homes "), pos(az, "Zulu Homes "))
+        self.assertLess(pos(worst, "Zulu Homes "), pos(worst, "Alpha Homes "))  # red first
+        self.assertIn("A to Z", az)
