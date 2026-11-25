@@ -501,9 +501,15 @@
       {% if 'sign-in key' in why %}add the Google OAuth client ID and secret to the server's settings, then connect on the Sync log page.
       {% elif "isn't connected" in why or 'Connect again' in why or "can't be read" in why %}open <a href="{{ url_for('cc_sync') }}">Sync log</a> and click Connect Business Profile.
       {% elif 'quota' in why %}wait for Google to approve API access for the Cloud project; nothing to change here.
-      {% elif 'No Business Profile for' in why %}make sure the connected Google account manages this client's profile (the client adds it as a manager), or pick the profile by hand on the Setup tab.
+      {% elif 'No Business Profile for' in why %}connect the Google account that manages this client's profile (below), have the client add a connected account as a manager, or pick the profile by hand on the Setup tab.
       {% elif 'picked on Setup' in why %}pick the profile again on the Setup tab.
+      {% elif '403' in why or 'permission' in why %}the connected account's role on this profile is too limited: make it a Manager, or connect an account that is one (below).
       {% else %}press Sync now at the top of the page.{% endif %}</p>
+    {# change 87: sign in with another Google account just for clients the main one can't see #}
+    {% if gbp_cfg and gbp_conn and ('No Business Profile for' in why or 'picked on Setup' in why or '403' in why or 'permission' in why) %}
+    <div class="src-connect cc-owner-only"><a class="btn btn-primary btn-small" href="{{ url_for('cc_gbp_connect', extra=1, client=c.id) }}">Connect another Google account</a>
+      <span class="muted">Sign in with the account that manages this profile (for example seo@homebuildermarketers.com). It's added beside {{ gbp_conn.email or 'the main account' }}; nothing else changes.</span></div>
+    {% endif %}
     <p class="small muted" style="margin:0">Once connected you'll see call clicks, website clicks, direction requests and views (30 days, with daily charts), reviews waiting for a reply, and posts, photos and replies counted straight from the profile.</p>
   </section>
   <section class="card span-7">
@@ -595,9 +601,14 @@
     <p><b>To fix:</b>
       {% if 'sign-in key' in why %}add the Google OAuth client ID and secret to the server's settings, then connect on the Sync log page.
       {% elif "isn't connected" in why or 'Connect again' in why or "can't be read" in why %}open <a href="{{ url_for('cc_sync') }}">Sync log</a> and click Connect Analytics.
-      {% elif 'No Analytics property for' in why %}give the connected Google account Viewer access to this client's GA4 property, or pick the property by hand on the Setup tab.
+      {% elif 'No Analytics property for' in why %}connect the Google account that can see this client's GA4 property (below), give a connected account Viewer access, or pick the property by hand on the Setup tab.
       {% elif 'picked on Setup' in why %}pick the property again on the Setup tab.
+      {% elif "can't read this property" in why %}give a connected account Viewer access, or connect an account that has it (below).
       {% else %}press Sync now at the top of the page.{% endif %}</p>
+    {% if gbp_cfg and ga4_conn and ('No Analytics property for' in why or 'picked on Setup' in why or "can't read this property" in why) %}
+    <div class="src-connect cc-owner-only"><a class="btn btn-primary btn-small" href="{{ url_for('cc_ga4_connect', extra=1, client=c.id) }}">Connect another Google account</a>
+      <span class="muted">Sign in with an account that can see this client's GA4 property (for example seo@homebuildermarketers.com). It's added beside {{ ga4_conn.email or 'the main account' }}; nothing else changes.</span></div>
+    {% endif %}
     <p class="small muted" style="margin:0">Once connected you'll see organic sessions, engaged sessions and key events against the previous 30 days and last year, daily charts, top organic landing pages, channels, AI-assistant referrals and which key events fire.</p>
   </section>
   {% endif %}
@@ -735,7 +746,8 @@
       </select>
       <button class="btn btn-ghost btn-small" type="submit">Save</button>
     </form>
-    <p class="small muted" style="margin:8px 0 0">{% if gbp and gbp.profile %}Using <b>{{ gbp.profile.title }}</b>{% if gbp.profile.website %} ({{ gbp.profile.website }}){% endif %}.{% elif gbp_dir %}{{ gbp_dir|length }} profiles available from the connected Google account.{% else %}The list fills in once Business Profile is connected on the Sync log page.{% endif %}</p>
+    <p class="small muted" style="margin:8px 0 0">{% if gbp and gbp.profile %}Using <b>{{ gbp.profile.title }}</b>{% if gbp.profile.website %} ({{ gbp.profile.website }}){% endif %}.{% elif gbp_dir %}{{ gbp_dir|length }} profiles available from the connected Google accounts.{% else %}The list fills in once Business Profile is connected on the Sync log page.{% endif %}
+      {% if gbp_cfg and gbp_conn and not (gbp and gbp.profile) %}<a class="link-btn cc-owner-only" href="{{ url_for('cc_gbp_connect', extra=1, client=c.id) }}">Not in the list? Connect another Google account</a>{% endif %}</p>
   </section>
   <section class="card span-6" id="ga4-choice">
     <h2>Google Analytics {{ m.srcstate(src.ga4.get('state')) }}</h2>
@@ -748,7 +760,8 @@
       </select>
       <button class="btn btn-ghost btn-small" type="submit">Save</button>
     </form>
-    <p class="small muted" style="margin:8px 0 0">{% if ga %}Using <b>{{ ga.display_name }}</b>{% if ga.website %} ({{ ga.website }}){% endif %}.{% elif ga4_dir %}{{ ga4_dir|length }} properties available from the connected Google account.{% else %}The list fills in once Analytics is connected on the Sync log page.{% endif %}</p>
+    <p class="small muted" style="margin:8px 0 0">{% if ga %}Using <b>{{ ga.display_name }}</b>{% if ga.website %} ({{ ga.website }}){% endif %}.{% elif ga4_dir %}{{ ga4_dir|length }} properties available from the connected Google accounts.{% else %}The list fills in once Analytics is connected on the Sync log page.{% endif %}
+      {% if gbp_cfg and ga4_conn and not ga %}<a class="link-btn cc-owner-only" href="{{ url_for('cc_ga4_connect', extra=1, client=c.id) }}">Not in the list? Connect another Google account</a>{% endif %}</p>
   </section>
   <section class="card span-6" id="rules">
     <h2>Special rules</h2>

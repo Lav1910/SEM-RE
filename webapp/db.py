@@ -211,6 +211,9 @@ LATER_COLUMNS = {
     "cc_clients": [("gbp_location", "TEXT"), ("gbp_how", "TEXT NOT NULL DEFAULT 'auto'"),
                    ("ga4_property", "TEXT"), ("ga4_how", "TEXT NOT NULL DEFAULT 'auto'")],  # change 67: GA4 property
     "client_visits": [("counted", "INTEGER NOT NULL DEFAULT 0"), ("scrolled", "INTEGER NOT NULL DEFAULT 0"), ("skip", "TEXT"), ("net", "TEXT")],
+    # change 87: which connected Google account sees this profile / property (NULL = the main account)
+    "cc_gbp_locations": [("via", "TEXT")],
+    "cc_ga4_properties": [("via", "TEXT")],
 }
 
 

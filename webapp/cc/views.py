@@ -277,6 +277,7 @@ def cc_client(cid):
                            gsc=gsc_view(ctx), gbp_profile=gbp_from_aeo(aeo), gbp_months=gbp_months, gbp_grid=gbp_grid,
                            gbp=gbp_view(ctx), gbp_dir=_gbp_directory(), gbp_ok=gbp_ok,
                            ga=ga4_view(ctx), ga4_dir=_ga4_directory(), bg=bing_view(ctx),
+                           gbp_cfg=_gbp_mod().configured(), gbp_conn=_gbp_mod().stored(), ga4_conn=_ga4().stored(),
                            GBP_ITEMS=GBP_ITEMS, sections=sections, gbp_tasks=gbp_tasks, site_posts=site_posts,
                            src={k: ctx["sources"].get(k) or {} for k, _, _ in SOURCES}, cc_client_id=cid,
                            recent_from=recent_from, track_from=start, reply_days=reply_days(c["package"]),
@@ -993,7 +994,8 @@ def cc_sync():
     from . import gbp_sync
     from .sources import gbp
     return render_template("cc_sync.html", log=log_rows, states=states, n_active=n_active, clickup_on=clickup.connected(),
-                           daily=kv.get("cc_daily", ""), gbp_cfg=gbp.configured(), gbp_conn=gbp.stored(),
+                           daily=kv.get("cc_daily", ""), gbp_cfg=gbp.configured(), gbp_conn=gbp.stored(), gbp_extra=gbp.ACC.extras(),
+                           ga4_extra=_ga4().ACC.extras(),
                            gbp_dir=len(gbp_sync.directory()), gbp_dir_at=kv.get("cc_gbp_dir_at", 0), gbp_redirect=_gbp_redirect(),
                            ga4_conn=_ga4().stored(), ga4_dir=len(_ga4_directory()), ga4_dir_at=kv.get("cc_ga4_dir_at", 0),
                            ga4_redirect=_ga4_redirect(), bing_on=_bing().connected(),
@@ -1008,6 +1010,11 @@ def _bing():
 def _ga4():
     from .sources import ga4
     return ga4
+
+
+def _gbp_mod():
+    from .sources import gbp
+    return gbp
 
 
 # ---------------------------------------------------------------- Google Business Profile sign-in (change 66)
@@ -1030,8 +1037,25 @@ def cc_gbp_connect():
         return redirect(url_for("cc_sync"))
     verifier, challenge = gbp.pkce()
     state = secrets.token_urlsafe(24)
-    session["cc_gbp_oauth"] = {"state": state, "verifier": verifier, "at": time.time()}
+    session["cc_gbp_oauth"] = {"state": state, "verifier": verifier, "at": time.time(), **_extra_target()}
     return redirect(gbp.auth_url(_gbp_redirect(), state, challenge))
+
+
+def _extra_target():
+    """change 87: ?extra=1 adds another Google account beside the main one; ?client=<id> comes back to that client."""
+    out = {"extra": request.args.get("extra") == "1"}
+    cid = request.args.get("client", "")
+    if cid.isdigit() and db.q("SELECT 1 FROM cc_clients WHERE id=?", (int(cid),), one=True):
+        out["client"] = int(cid)
+    return out
+
+
+def _after_google(pending, source):
+    """Where to land after a Google sign-in: the client it was started from, else the Sources page."""
+    if pending.get("client"):
+        sync.enqueue(pending["client"], source, "another Google account connected")
+        return redirect(url_for("cc_client", cid=pending["client"]) + "#t-setup")
+    return redirect(url_for("cc_sync"))
 
 
 @app.route("/delivery/gbp/callback")
@@ -1052,12 +1076,15 @@ def cc_gbp_callback():
     except gbp.GBPError as e:
         flash(str(e), "bad")
         return redirect(url_for("cc_sync"))
-    gbp.save(refresh, email, _me())
-    data.log_change(None, "source", "gbp", "connected", None, email or "Google account", _me())
+    extra = bool(pending.get("extra")) and gbp.stored() is not None
+    gbp.save(refresh, email, _me(), extra=extra)
+    data.log_change(None, "source", "gbp", "connected" + (" (extra account)" if extra else ""), None, email or "Google account", _me())
     calls = [0]
     try:
         n = gbp_sync.refresh_directory(calls, force=True)
-        msg = f"Business Profile connected{(' as ' + email) if email else ''}. {n} profile{'s' if n != 1 else ''} found; syncing clients now."
+        msg = (f"{email or 'That account'} added beside the main Business Profile account. " if extra else
+               f"Business Profile connected{(' as ' + email) if email else ''}. ") + \
+            f"{n} profile{'s' if n != 1 else ''} visible across the connected accounts; syncing now."
     except gbp.NotApproved as e:
         msg = f"Signed in{(' as ' + email) if email else ''}, but Google isn't serving data yet: {e}"
     except gbp.GBPError as e:
@@ -1065,17 +1092,25 @@ def cc_gbp_callback():
     sync.enqueue_all("gbp connected", sources=("gbp",))
     _kick()
     flash(msg, "good")
-    return redirect(url_for("cc_sync"))
+    return _after_google(pending, "gbp")
 
 
 @app.route("/delivery/gbp/disconnect", methods=["POST"])
 @cc_required
 def cc_gbp_disconnect():
+    from . import gbp_sync
     from .sources import gbp
-    revoked = gbp.revoke()
-    gbp.forget()
-    data.log_change(None, "source", "gbp", "connected", "yes", "disconnected", _me())
-    flash("Business Profile disconnected" + (" and Google's access revoked." if revoked else ". Also remove the app under your Google account's third-party access."), "good")
+    email = (request.form.get("email") or "").strip() or None  # change 87: one extra account, or the main one
+    with gbp.use(email):
+        revoked = gbp.revoke()
+    gbp.forget(email)
+    data.log_change(None, "source", "gbp", "connected", email or "main account", "disconnected", _me())
+    if gbp.connected():
+        try:
+            gbp_sync.refresh_directory([0], force=True)
+        except (gbp.GBPError, gbp.NotApproved, gbp.Reauth, gbp.NotConnected):
+            pass
+    flash(f"{email or 'Business Profile'} disconnected" + (" and Google's access revoked." if revoked else ". Also remove the app under that Google account's third-party access."), "good")
     return redirect(url_for("cc_sync"))
 
 
@@ -1096,7 +1131,7 @@ def cc_ga4_connect():
         return redirect(url_for("cc_sync"))
     verifier, challenge = gbp.pkce()
     state = secrets.token_urlsafe(24)
-    session["cc_ga4_oauth"] = {"state": state, "verifier": verifier, "at": time.time()}
+    session["cc_ga4_oauth"] = {"state": state, "verifier": verifier, "at": time.time(), **_extra_target()}
     return redirect(ga4.auth_url(_ga4_redirect(), state, challenge))
 
 
@@ -1118,27 +1153,38 @@ def cc_ga4_callback():
     except ga4.GA4Error as e:
         flash(str(e), "bad")
         return redirect(url_for("cc_sync"))
-    ga4.save(refresh, email, _me())
-    data.log_change(None, "source", "ga4", "connected", None, email or "Google account", _me())
+    extra = bool(pending.get("extra")) and ga4.stored() is not None
+    ga4.save(refresh, email, _me(), extra=extra)
+    data.log_change(None, "source", "ga4", "connected" + (" (extra account)" if extra else ""), None, email or "Google account", _me())
     try:
         n = ga4_sync.refresh_directory([0], force=True)
-        msg = f"Analytics connected{(' as ' + email) if email else ''}. {n} propert{'ies' if n != 1 else 'y'} found; syncing clients now."
+        msg = (f"{email or 'That account'} added beside the main Analytics account. " if extra else
+               f"Analytics connected{(' as ' + email) if email else ''}. ") + \
+            f"{n} propert{'ies' if n != 1 else 'y'} visible across the connected accounts; syncing now."
     except (ga4.GA4Error, ga4.QuotaRefused) as e:
         msg = f"Signed in{(' as ' + email) if email else ''}, but listing the properties failed: {e}"
     sync.enqueue_all("ga4 connected", sources=("ga4",))
     _kick()
     flash(msg, "good")
-    return redirect(url_for("cc_sync"))
+    return _after_google(pending, "ga4")
 
 
 @app.route("/delivery/ga4/disconnect", methods=["POST"])
 @cc_required
 def cc_ga4_disconnect():
+    from . import ga4_sync
     from .sources import ga4
-    revoked = ga4.revoke()
-    ga4.forget()
-    data.log_change(None, "source", "ga4", "connected", "yes", "disconnected", _me())
-    flash("Analytics disconnected" + (" and Google's access revoked." if revoked else ". Also remove the app under your Google account's third-party access."), "good")
+    email = (request.form.get("email") or "").strip() or None  # change 87
+    with ga4.use(email):
+        revoked = ga4.revoke()
+    ga4.forget(email)
+    data.log_change(None, "source", "ga4", "connected", email or "main account", "disconnected", _me())
+    if ga4.connected():
+        try:
+            ga4_sync.refresh_directory([0], force=True)
+        except (ga4.GA4Error, ga4.QuotaRefused, ga4.Reauth, ga4.NotConnected):
+            pass
+    flash(f"{email or 'Analytics'} disconnected" + (" and Google's access revoked." if revoked else ". Also remove the app under that Google account's third-party access."), "good")
     return redirect(url_for("cc_sync"))
 
 

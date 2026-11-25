@@ -814,3 +814,11 @@ html.ks-first .ks-by span { animation:ks-by .6s ease-out 1.55s both; }
 @keyframes ks-line { from { transform:scaleX(0); } to { transform:scaleX(1); } }
 @keyframes ks-by { from { opacity:0; transform:translateX(-4px); } to { opacity:1; transform:none; } }
 @media (prefers-reduced-motion: reduce) { html.ks-first .ks-name, html.ks-first .ks-by i, html.ks-first .ks-by span { animation:none; -webkit-mask-image:none; mask-image:none; } }
+
+/* change 87: extra Google accounts on the Sources page */
+.gc-extra { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:6px; }
+.gc-extra li { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; font-size:13px; padding:8px 10px; border:1px solid var(--soft-line); border-radius:10px; }
+.gc-extra li > span { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.gc-extra form { margin:0; }
+.gc-add { margin:10px 0 0; } .gc-add .link-btn { font-weight:600; }
+.src-connect { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:8px; font-size:12.5px; }

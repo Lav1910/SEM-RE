@@ -47,7 +47,6 @@ METRICS = {  # Google's DailyMetric -> our key (views are the four impression me
     "BUSINESS_IMPRESSIONS_MOBILE_MAPS": "views", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH": "views",
 }
 STARS = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
-_access = {"token": None, "exp": 0.0}
 
 
 class NotConnected(Exception):
@@ -66,6 +65,12 @@ class GBPError(Exception):
     pass
 
 
+# change 87: a main sign-in plus extra Google accounts (see gaccounts.py); use(email) picks the account for a block of calls
+from .gaccounts import Accounts  # noqa: E402
+ACC = Accounts(KV_KEY, "Business Profile", NotConnected, Reauth)
+use, accounts_connected = ACC.use, ACC.all
+
+
 # ---------------------------------------------------------------- settings and stored sign-in
 def client_id():
     return config.key("GBP_OAUTH_CLIENT_ID")
@@ -80,48 +85,29 @@ def configured():
 
 
 def stored():
-    """{email, by, connected_at, state} of the stored sign-in, without the token, or None."""
-    rec = kv.get(KV_KEY) or None
-    if not rec or not rec.get("enc"):
-        return None
-    return {k: rec.get(k) for k in ("email", "by", "connected_at", "state", "detail")}
+    """{email, by, connected_at, state, main} of the main sign-in, without the token, or None."""
+    return ACC.stored()
 
 
 def connected():
-    s = stored()
-    return bool(configured() and s and s.get("state") != "reauth")
+    """True when the server key is set and at least one connected Google account can be used."""
+    return bool(configured() and ACC.connected())
 
 
 def _refresh_token():
-    from webapp.cc import secretbox
-    rec = kv.get(KV_KEY) or {}
-    tok = secretbox.open_(rec["enc"]) if rec.get("enc") else None
-    if not tok:
-        if rec.get("enc"):
-            mark("reauth", "The stored Google sign-in can't be read any more (the app's secret key changed)")
-            raise Reauth("stored sign-in unreadable")
-        raise NotConnected("Business Profile not connected")
-    return tok
+    return ACC.refresh_token()
 
 
-def save(refresh_token, email, by):
-    from webapp.cc import secretbox
-    kv.update(KV_KEY, lambda _old: {"enc": secretbox.seal(refresh_token), "email": email, "by": by,
-                                     "connected_at": time.time(), "state": "ok", "detail": None}, {})
-    _access.update(token=None, exp=0.0)
+def save(refresh_token, email, by, extra=False):
+    ACC.save(refresh_token, email, by, extra)
 
 
 def mark(state, detail=None):
-    def fn(old):
-        if not old or not old.get("enc"):
-            return None
-        return {**old, "state": state, "detail": detail}
-    kv.update(KV_KEY, fn, {})
+    ACC.mark(state, detail)
 
 
-def forget():
-    kv.update(KV_KEY, lambda _old: {}, {})
-    _access.update(token=None, exp=0.0)
+def forget(email=None):
+    ACC.forget(email)
 
 
 # ---------------------------------------------------------------- OAuth (the only POSTs, all to Google's sign-in)
@@ -164,7 +150,6 @@ def exchange(code, redirect_uri, verifier):
         raise GBPError("Google didn't return a lasting sign-in. Remove the app's access in your Google account and connect again.")
     if SCOPE.split()[0] not in (r.get("scope") or ""):
         raise GBPError("The Business Profile permission wasn't granted. Connect again and tick the Business Profile box.")
-    _access.update(token=r.get("access_token"), exp=time.time() + int(r.get("expires_in") or 0) - 60)
     return r["refresh_token"], _email_from_id_token(r.get("id_token"))
 
 
@@ -178,8 +163,9 @@ def _email_from_id_token(tok):
 
 
 def access_token():
-    if _access["token"] and _access["exp"] > time.time():
-        return _access["token"]
+    cached = ACC.cache_get()
+    if cached:
+        return cached
     r = _post_form(TOKEN_URL, {"client_id": client_id(), "client_secret": client_secret(),
                                "refresh_token": _refresh_token(), "grant_type": "refresh_token"})
     if r.get("error") in ("invalid_grant", "unauthorized_client", "invalid_client"):
@@ -187,8 +173,8 @@ def access_token():
         raise Reauth(r["error"])
     if r.get("error") or not r.get("access_token"):
         raise GBPError(f"Couldn't refresh the Google sign-in ({r.get('error') or 'no token'})")
-    _access.update(token=r["access_token"], exp=time.time() + int(r.get("expires_in") or 3600) - 60)
-    return _access["token"]
+    ACC.cache_set(r["access_token"], r.get("expires_in"))
+    return r["access_token"]
 
 
 def revoke():
@@ -227,7 +213,7 @@ def get(url, params=None, calls=None):
                 err = {}
             msg, status = str(err.get("message") or "")[:200], str(err.get("status") or "")
             if e.code == 401 and not refreshed:
-                _access.update(token=None, exp=0.0)
+                ACC.cache_clear()
                 refreshed = True
                 continue
             if e.code == 403 and (status == "PERMISSION_DENIED" and ("has not been used" in msg or "disabled" in msg.lower())):
