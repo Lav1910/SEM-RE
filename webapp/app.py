@@ -1025,7 +1025,7 @@ def _history(a, A, platform="all"):
         day = dates.month_day(h["created_at"])
         if hist and hist[-1]["date"] == day:  # several runs on one day: keep the latest
             hist.pop()
-        hist.append(dict(pt, date=day, month=datetime.datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m"), id=h["id"]))
+        hist.append(dict(pt, date=day, month=datetime.datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m"), id=h["id"], t=h["created_at"]))
     return hist
 
 

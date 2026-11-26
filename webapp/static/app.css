@@ -1174,3 +1174,5 @@ html.wm-first .wm-t { -webkit-mask-image:linear-gradient(90deg, #000 0%, #000 46
 .bal-num { font-weight:600; font-size:16px; } .bal-good { color:var(--good); } .bal-warn { color:var(--warn); } .bal-bad { color:var(--bad); } .bal-mute { color:var(--ink); }
 .bal-val .pill { margin-left:6px; vertical-align:2px; }
 .bal-note { display:block; margin-top:2px; }
+/* change 89: a chart with one point says why there's no line yet */
+.chart-note { margin:6px 2px 0; font-size:12.5px; color:var(--ink2); }

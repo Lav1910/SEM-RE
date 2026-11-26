@@ -76,6 +76,15 @@ def measured_engines(A):
     return [e for e in ENGINES if any(a["engine"] == e and a["status"] in ("ok", "no_answer") for a in A.get("answers", []))]
 
 
+def _score(hit_w, tot_w):
+    """0-100, weighted by each question's search demand. change 89: a business named only on low-demand questions gets
+    a small decimal (0.3), never a flat 0 that reads as "never named"."""
+    if not tot_w:
+        return None
+    raw = 100 * hit_w / tot_w
+    return max(0.1, round(raw, 1)) if 0 < raw < 1 else round(raw)
+
+
 def build(A, platform="all", history=None, vs=None, area=None, clean=False):
     """vs: competitor names to compare against (Semrush "Add competitor"); default = the 3 most-named builders.
     area: limit every figure to one market area's questions (Semrush's country tabs, for a local builder).
@@ -105,7 +114,7 @@ def build(A, platform="all", history=None, vs=None, area=None, clean=False):
     my_pages = collections.Counter(c["url"].split("#")[0] for a in ok for c in a["citations"] if is_me(c))
     tot_w = sum(qs[a["question_id"]]["weight"] for a in ok)
     hit_w = sum(qs[a["question_id"]]["weight"] for a in ok if mentioned(a))
-    score = round(100 * hit_w / tot_w) if tot_w else None
+    score = _score(hit_w, tot_w)
     label, caption = band(score)
     gauge = gauge_geometry(score)
     # Semrush "Monthly Audience": search demand behind the questions where the builder is named
@@ -302,7 +311,22 @@ def chart(A, hist):
 
     def col(src, key):
         return [src.get(m, {}).get(key) if src.get(m) else None for m in months]
+
+    # change 89: the 1M view shows each audit day of the last 30 days (6M and All time stay monthly)
+    pts = [h for h in (hist or []) if h.get("t")]
+    recent = [h for h in pts if pts and h["t"] >= pts[-1]["t"] - 30 * 86400]
+
+    def dcol(key):
+        return [h.get(key) for h in recent]
     return {
+        "days": [h.get("date") for h in recent],
+        "daily": {
+            "main": [{"name": "Mentions", "color": "#5B5FD9", "values": dcol("mentions")},
+                     {"name": "Citations", "color": "#18C3A4", "values": dcol("citations")},
+                     {"name": "Cited Pages", "color": "#B37FEB", "values": dcol("pages")}],
+            "audience": [{"name": "Monthly Audience", "color": "#5B5FD9", "values": dcol("audience")}],
+            "vis": [{"name": "AI Visibility score", "color": "#0A686A", "values": dcol("score")}],
+        },
         "months": [lab(m) for m in months],
         "main": [
             {"name": "AI Overview citations", "color": "#0FB2B5", "dash": True, "values": col(semm, "aio_cited")},
