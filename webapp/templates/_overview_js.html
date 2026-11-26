@@ -28,9 +28,11 @@
     var fmt = function (v) { return v >= 10000 ? (v / 1000).toFixed(v >= 100000 ? 0 : 1) + 'k' : v.toLocaleString(); };
 
     var draw = function () {
-      var all = D.months || [], n = range >= 12 ? all.length : Math.min(all.length, range === 1 ? 2 : range);
+      // change 89: 1M = each audit day of the last 30 days; 6M and All time = one point per month
+      var daily = range === 1 && D.days && D.days.length;
+      var all = daily ? D.days : (D.months || []), n = daily || range >= 12 ? all.length : Math.min(all.length, range);
       var start = all.length - n, months = all.slice(start);
-      var series = (D[set] || []).map(function (s) { return {s: s, v: (s.values || []).slice(start)}; });
+      var series = ((daily ? D.daily : D)[set] || []).map(function (s) { return {s: s, v: (s.values || []).slice(start)}; });
       box.innerHTML = '';
       var has = series.some(function (x) { return x.v.some(function (v) { return v !== null && v !== undefined; }); });
       if (!months.length || !has) {
@@ -42,7 +44,13 @@
       max = nice(max * 1.1 || 1);
       var X = function (i) { return L + (months.length === 1 ? pw / 2 : pw * i / (months.length - 1)); };
       var Y = function (v) { return T + ph - ph * v / max; };
-      var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': 'Monthly trend'}, box);
+      var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': daily ? 'Daily trend, last 30 days' : 'Monthly trend'}, box);
+      if (months.length === 1) {  // one point can't show a trend: say so, so the range buttons don't look broken
+        var note = document.createElement('div'); note.className = 'chart-note';
+        note.textContent = daily ? 'One audit day in the last 30 days so far. Each day it is audited again adds a point.'
+                                 : 'One month of audits so far. The trend fills in as it is audited again in later months.';
+        box.appendChild(note);
+      }
       for (var i = 0; i <= 4; i++) {
         var yv = max * i / 4, y = Y(yv);
         el('line', {x1: L, x2: W - R, y1: y, y2: y, class: 'c-grid'}, svg);
